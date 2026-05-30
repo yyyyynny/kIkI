@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.util.TypedValue
 import android.widget.TextView
-import androidx.core.content.ContextCompat
 import com.langsense.app.R
 import kotlin.math.roundToInt
 
@@ -16,11 +15,11 @@ import kotlin.math.roundToInt
 class ReplaceChipView(context: Context) : TextView(context) {
 
     init {
-        setTextColor(ContextCompat.getColor(context, R.color.chip_text))
+        setTextColor(context.getColor(R.color.chip_text))
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
         setBackgroundResource(R.drawable.bg_chip)
         maxWidth = dp(280f)
-        isSingleLine = true
+        setSingleLine()
         ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
         isClickable = true
         isFocusable = false

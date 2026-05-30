@@ -1,5 +1,6 @@
 package com.langsense.app.service
 
+import android.view.KeyCharacterMap
 import android.view.KeyEvent
 
 /**
@@ -49,8 +50,8 @@ class KeyEventMonitor(
     /** 실제 문자를 만들어내는 키만 카운트 (Shift/Ctrl/방향키/볼륨 등 제외). */
     private fun isTypingKey(event: KeyEvent): Boolean {
         if (KeyEvent.isModifierKey(event.keyCode)) return false
-        // unicodeChar != 0 이면 문자 생성 키 (스페이스 포함). 조합 문자 플래그는 제외.
-        val unicode = event.unicodeChar and KeyEvent.COMBINING_ACCENT.inv()
+        // unicodeChar != 0 이면 문자 생성 키 (스페이스 포함). 조합(dead key) 플래그는 제외.
+        val unicode = event.unicodeChar and KeyCharacterMap.COMBINING_ACCENT.inv()
         return unicode != 0
     }
 }
