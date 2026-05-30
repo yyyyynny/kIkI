@@ -47,6 +47,19 @@ class FlashOverlayView(context: Context) : FrameLayout(context) {
         playCycle(count.coerceAtLeast(1), durationMs.toLong(), onEnd)
     }
 
+    /** 진행 중인 애니메이션/예약 콜백을 모두 취소한다(다른 플래시로 교체될 때 누수·오제거 방지). */
+    fun cancel() {
+        animate().cancel()
+        removeCallbacks(null)
+    }
+
+    override fun onDetachedFromWindow() {
+        // 윈도우에서 제거되면 더 이상 콜백이 의미 없으므로 정리한다.
+        animate().cancel()
+        removeCallbacks(null)
+        super.onDetachedFromWindow()
+    }
+
     private fun playCycle(remaining: Int, durationMs: Long, onEnd: () -> Unit) {
         animate().cancel()
         alpha = 1f
@@ -55,6 +68,8 @@ class FlashOverlayView(context: Context) : FrameLayout(context) {
             .setStartDelay(durationMs / 2) // 잠깐 보이게 유지 후 페이드아웃
             .setDuration(durationMs)
             .withEndAction {
+                // 윈도우에서 이미 떨어졌다면(다른 플래시로 교체됨) 콜백을 무시한다.
+                if (!isAttachedToWindow) return@withEndAction
                 if (remaining > 1) {
                     postDelayed({ playCycle(remaining - 1, durationMs, onEnd) }, 60L)
                 } else {

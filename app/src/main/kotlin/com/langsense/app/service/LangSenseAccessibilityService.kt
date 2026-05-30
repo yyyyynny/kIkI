@@ -53,8 +53,8 @@ class LangSenseAccessibilityService : AccessibilityService(),
 
         prefs.register(this)
 
-        // 현재 언어 캐시 + 초기 배지
-        currentLang = imeDetector.primeCurrent()
+        // 리스너 등록 + 현재 언어 캐시 + 초기 배지
+        currentLang = imeDetector.start()
         if (prefs.badgeEnabled) overlay.showBadge(currentLang)
 
         initialized = true
@@ -81,15 +81,29 @@ class LangSenseAccessibilityService : AccessibilityService(),
         event ?: return false
         if (!initialized) return false
         // 포커스 확인 후 카운트. 반환값은 항상 false (이벤트 소비 금지).
-        keyMonitor.onKeyEvent(event, hasEditableFocus())
+        // 1차 판정이 "없음"이면 재확인 콜백으로 일시적 null 을 방어한다(Bug 1).
+        keyMonitor.onKeyEvent(event, hasEditableFocus(), focusReProbe = { hasEditableFocus() })
         return false
     }
 
+    /**
+     * 편집 가능한 입력 포커스 존재 여부.
+     * 활성 윈도우뿐 아니라 전체 윈도우에서 입력 포커스를 탐색하여(멀티윈도우/IME 분리 대응)
+     * 일시적 null 로 인한 오판을 줄인다.
+     */
     private fun hasEditableFocus(): Boolean {
-        val focused = runCatching {
-            rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-        }.getOrNull() ?: return false
-        return focused.isEditable
+        // 1) 활성 윈도우의 입력 포커스
+        runCatching { rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }
+            .getOrNull()?.let { if (it.isEditable) return true }
+
+        // 2) 전체 윈도우 순회 (활성 윈도우가 잠시 비어있을 때 백업)
+        runCatching {
+            for (w in windows) {
+                val node = w?.root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: continue
+                if (node.isEditable) return true
+            }
+        }
+        return false
     }
 
     override fun onInterrupt() { /* no-op */ }
@@ -107,6 +121,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
     private fun cleanup() {
         initialized = false
         if (::prefs.isInitialized) prefs.unregister(this)
+        if (::imeDetector.isInitialized) imeDetector.stop()
         if (::overlay.isInitialized) overlay.removeAll()
     }
 

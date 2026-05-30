@@ -47,4 +47,5 @@
     <!-- Overlay -->
     <string name="overlay_no_focus">선택되지 않음</string>
     <string name="chip_replace_format">「%1$s」 교체?</string>
+    <string name="replace_copied_fallback">교체 결과를 클립보드에 복사했습니다. 붙여넣기 해주세요.</string>
 </resources>
