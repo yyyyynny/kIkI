@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- AppCompat 기반 (Material Components 의존성 없이 가볍게). -->
+    <style name="Theme.LangSense" parent="Theme.AppCompat.DayNight.DarkActionBar">
+        <item name="colorPrimary">@color/lang_english</item>
+        <item name="colorPrimaryDark">#14528C</item>
+        <item name="colorAccent">@color/lang_english</item>
+    </style>
+</resources>

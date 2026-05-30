@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 언어별 플래시 기본 색상 (docs/features.md 기준) -->
+    <color name="lang_korean">#CC2D2D</color>
+    <color name="lang_english">#1A6EBD</color>
+    <color name="lang_japanese">#2D8C4E</color>
+    <color name="lang_default">#555555</color>
+
+    <!-- 배지 / 칩 -->
+    <color name="badge_bg">#CC000000</color>
+    <color name="badge_text">#FFFFFFFF</color>
+    <color name="chip_bg">#1C1C1E</color>
+    <color name="chip_text">#FFFFFFFF</color>
+
+    <color name="ic_launcher_background">#1A6EBD</color>
+</resources>

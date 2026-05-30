@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LangSense</string>
+    <string name="accessibility_service_label">LangSense 언어 감지</string>
+    <string name="accessibility_service_description">블루투스 키보드 사용 시 한/영 전환 상태를 화면에 표시하고, 영타로 잘못 입력된 한국어(한영타)를 한 번에 교체하도록 돕습니다. 모든 처리는 기기 내부에서만 이루어지며 어떤 데이터도 외부로 전송하지 않습니다.</string>
+
+    <!-- MainActivity (온보딩) -->
+    <string name="onboarding_title">LangSense 설정</string>
+    <string name="onboarding_desc">블루투스 키보드의 한/영 상태를 한눈에 보여주고, 영타로 잘못 친 한국어를 즉시 교체합니다.</string>
+    <string name="step_overlay">1. 다른 앱 위에 표시 권한</string>
+    <string name="step_overlay_desc">언어 플래시·배지·교체 버튼을 화면 위에 띄우려면 필요합니다.</string>
+    <string name="step_accessibility">2. 접근성 서비스 활성화</string>
+    <string name="step_accessibility_desc">언어 전환과 텍스트 선택을 감지하려면 접근성 서비스를 켜야 합니다.</string>
+    <string name="step_battery">3. 배터리 최적화 예외 (권장)</string>
+    <string name="step_battery_desc">백그라운드에서 안정적으로 동작하도록 배터리 최적화에서 제외해 주세요.</string>
+    <string name="btn_grant_overlay">권한 허용</string>
+    <string name="btn_open_accessibility">접근성 설정 열기</string>
+    <string name="btn_battery">배터리 설정 열기</string>
+    <string name="btn_settings">앱 설정</string>
+    <string name="status_granted">완료됨</string>
+    <string name="status_needed">필요함</string>
+    <string name="privacy_note">이 앱은 키 입력 내용이나 화면 내용을 수집·저장·전송하지 않습니다. 모든 처리는 온디바이스(로컬)에서만 수행됩니다.</string>
+
+    <!-- SettingsActivity -->
+    <string name="settings_title">LangSense 설정</string>
+    <string name="settings_languages">지원 언어</string>
+    <string name="settings_lang_ko">한국어</string>
+    <string name="settings_lang_en">영어</string>
+    <string name="settings_lang_ja">일본어</string>
+    <string name="settings_flash">전환 플래시</string>
+    <string name="settings_flash_enabled">전환 플래시 켜기</string>
+    <string name="settings_flash_colors">언어별 플래시 색상</string>
+    <string name="settings_flash_duration">깜박임 속도</string>
+    <string name="settings_flash_count">깜박임 횟수</string>
+    <string name="settings_badge">상시 언어 배지</string>
+    <string name="settings_badge_enabled">상시 배지 표시</string>
+    <string name="settings_nofocus">포커스 없는 키 입력 경고</string>
+    <string name="settings_nofocus_enabled">경고 켜기</string>
+    <string name="settings_nofocus_threshold">경고 임계 횟수</string>
+    <string name="settings_replace">한영타 교체</string>
+    <string name="settings_replace_enabled">한영타 교체 켜기</string>
+    <string name="settings_replace_confidence">신뢰도 임계값(%)</string>
+    <string name="settings_color_hex">색상코드(#RRGGBB)</string>
+    <string name="settings_apply">설정이 즉시 적용됩니다</string>
+    <string name="settings_saved">저장됨 · 즉시 적용</string>
+
+    <!-- Overlay -->
+    <string name="overlay_no_focus">선택되지 않음</string>
+    <string name="chip_replace_format">「%1$s」 교체?</string>
+    <string name="replace_copied_fallback">교체 결과를 클립보드에 복사했습니다. 붙여넣기 해주세요.</string>
+</resources>
