@@ -18,6 +18,12 @@ import android.view.KeyEvent
  *    일시적 null 을 거른다. 한 번이라도 편집 포커스가 잡히면 카운터를 즉시 초기화.
  *  - **경고 쿨다운**: 경고를 띄운 직후 [WARN_COOLDOWN_MS] 동안은 다시 띄우지 않아 도배 방지.
  *
+ * ### 저사양 최적화 (Bug 1)
+ * 포커스 조회([focusProbe]/[focusReProbe])는 접근성 노드 트리를 훑는 비싼 작업이라 키마다 미리
+ * 계산하지 않는다. **기능 ON + ACTION_DOWN + 비반복 + 실제 문자 키** 게이트를 모두 통과한 뒤에만
+ * 1차(저비용) 조회를 하고, 그래도 없을 때만 2차(전체 윈도우 순회) 재확인을 한다. 모디파이어·반복·
+ * 단축키·기능 OFF 상황에서는 트리를 전혀 건드리지 않는다.
+ *
  * onKeyEvent 는 절대 이벤트를 소비하지 않는다(항상 false).
  */
 class KeyEventMonitor(
@@ -30,13 +36,13 @@ class KeyEventMonitor(
 
     /**
      * @param event 키 이벤트
-     * @param hasEditableFocus 1차 포커스 판정 결과
-     * @param focusReProbe 포커스가 없다고 나왔을 때 한 번 더 확인하는 콜백(일시적 null 방어)
+     * @param focusProbe 1차(저비용) 편집 포커스 조회 — 게이트 통과 후에만 호출(지연 평가)
+     * @param focusReProbe 1차가 없을 때만 호출하는 2차(전체 윈도우) 재확인(일시적 null 방어)
      * @return 항상 false (이벤트 소비 금지)
      */
     fun onKeyEvent(
         event: KeyEvent,
-        hasEditableFocus: Boolean,
+        focusProbe: () -> Boolean,
         focusReProbe: () -> Boolean
     ): Boolean {
         if (!enabledProvider()) {
@@ -47,7 +53,9 @@ class KeyEventMonitor(
         if (event.repeatCount > 0) return false // 길게 눌러 반복되는 이벤트는 1회로만 취급
         if (!isTypingKey(event)) return false
 
-        val focused = hasEditableFocus || focusReProbe()
+        // 여기까지 통과한 "문자 입력 키"에 한해서만 포커스를 조회한다(저사양 최적화).
+        // 1차가 없을 때만 2차 재확인이 돌아 일시적 null 을 거른다(단락 평가).
+        val focused = focusProbe() || focusReProbe()
         if (focused) {
             noFocusKeyCount = 0
             return false

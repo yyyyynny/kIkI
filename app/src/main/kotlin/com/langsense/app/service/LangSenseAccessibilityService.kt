@@ -80,23 +80,26 @@ class LangSenseAccessibilityService : AccessibilityService(),
     override fun onKeyEvent(event: KeyEvent?): Boolean {
         event ?: return false
         if (!initialized) return false
-        // 포커스 확인 후 카운트. 반환값은 항상 false (이벤트 소비 금지).
-        // 1차 판정이 "없음"이면 재확인 콜백으로 일시적 null 을 방어한다(Bug 1).
-        keyMonitor.onKeyEvent(event, hasEditableFocus(), focusReProbe = { hasEditableFocus() })
+        // 포커스 조회는 게이트 통과 후에만 지연 평가된다(저사양 최적화 Bug 1).
+        // 1차는 활성 윈도우만 보는 저비용 조회, 2차는 그래도 없을 때만 도는 전체 윈도우 백업.
+        keyMonitor.onKeyEvent(
+            event,
+            focusProbe = { hasActiveEditableFocus() },
+            focusReProbe = { hasAnyEditableFocus() }
+        )
         return false
     }
 
-    /**
-     * 편집 가능한 입력 포커스 존재 여부.
-     * 활성 윈도우뿐 아니라 전체 윈도우에서 입력 포커스를 탐색하여(멀티윈도우/IME 분리 대응)
-     * 일시적 null 로 인한 오판을 줄인다.
-     */
-    private fun hasEditableFocus(): Boolean {
-        // 1) 활성 윈도우의 입력 포커스
-        runCatching { rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }
-            .getOrNull()?.let { if (it.isEditable) return true }
+    /** 1차(저비용): 활성 윈도우의 편집 가능한 입력 포커스만 확인. 키마다 호출되므로 가볍게 유지. */
+    private fun hasActiveEditableFocus(): Boolean =
+        runCatching { rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.isEditable }
+            .getOrNull() == true
 
-        // 2) 전체 윈도우 순회 (활성 윈도우가 잠시 비어있을 때 백업)
+    /**
+     * 2차(백업): 전체 윈도우를 순회해 편집 포커스를 탐색(멀티윈도우/IME 분리 대응).
+     * 활성 윈도우가 잠시 비어있을 때 일시적 null 오판을 막기 위한 것으로, 1차가 실패할 때만 호출된다.
+     */
+    private fun hasAnyEditableFocus(): Boolean {
         runCatching {
             for (w in windows) {
                 val node = w?.root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: continue
