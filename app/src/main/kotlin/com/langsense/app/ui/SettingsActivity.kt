@@ -58,7 +58,8 @@ class SettingsActivity : AppCompatActivity() {
         root.addView(sectionHeader(getString(R.string.settings_languages)))
         root.addView(langCheckbox(ImeLocaleParser.KO, R.string.settings_lang_ko))
         root.addView(langCheckbox(ImeLocaleParser.EN, R.string.settings_lang_en))
-        root.addView(langCheckbox(ImeLocaleParser.JA, R.string.settings_lang_ja))
+        // [일본어 비활성화] 일본어 체크박스 주석(추후 재도입 위해 보존).
+        // root.addView(langCheckbox(ImeLocaleParser.JA, R.string.settings_lang_ja))
 
         // --- 전환 플래시 ---
         root.addView(sectionHeader(getString(R.string.settings_flash)))
@@ -84,7 +85,8 @@ class SettingsActivity : AppCompatActivity() {
         root.addView(sectionHeader(getString(R.string.settings_flash_colors)))
         root.addView(colorEditor(ImeLocaleParser.KO, getString(R.string.settings_lang_ko)))
         root.addView(colorEditor(ImeLocaleParser.EN, getString(R.string.settings_lang_en)))
-        root.addView(colorEditor(ImeLocaleParser.JA, getString(R.string.settings_lang_ja)))
+        // [일본어 비활성화] 일본어 색상 편집기 주석(추후 재도입 위해 보존).
+        // root.addView(colorEditor(ImeLocaleParser.JA, getString(R.string.settings_lang_ja)))
 
         // --- 상시 배지 ---
         root.addView(sectionHeader(getString(R.string.settings_badge)))

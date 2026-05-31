@@ -71,7 +71,7 @@ class Prefs(context: Context) {
     fun isLangEnabled(lang: String): Boolean = when (lang) {
         ImeLocaleParser.KO -> sp.getBoolean(KEY_LANG_KO, true)
         ImeLocaleParser.EN -> sp.getBoolean(KEY_LANG_EN, true)
-        ImeLocaleParser.JA -> sp.getBoolean(KEY_LANG_JA, true)
+        // [일본어 비활성화] ImeLocaleParser.JA -> sp.getBoolean(KEY_LANG_JA, true)
         else -> true // 기타 언어는 항상 표시
     }
 
@@ -79,7 +79,7 @@ class Prefs(context: Context) {
         val key = when (lang) {
             ImeLocaleParser.KO -> KEY_LANG_KO
             ImeLocaleParser.EN -> KEY_LANG_EN
-            ImeLocaleParser.JA -> KEY_LANG_JA
+            // [일본어 비활성화] ImeLocaleParser.JA -> KEY_LANG_JA
             else -> return
         }
         sp.edit().putBoolean(key, enabled).apply()
@@ -89,7 +89,7 @@ class Prefs(context: Context) {
     fun colorHex(lang: String): String = when (lang) {
         ImeLocaleParser.KO -> sp.getString(KEY_COLOR_KO, DEFAULT_KO) ?: DEFAULT_KO
         ImeLocaleParser.EN -> sp.getString(KEY_COLOR_EN, DEFAULT_EN) ?: DEFAULT_EN
-        ImeLocaleParser.JA -> sp.getString(KEY_COLOR_JA, DEFAULT_JA) ?: DEFAULT_JA
+        // [일본어 비활성화] ImeLocaleParser.JA -> sp.getString(KEY_COLOR_JA, DEFAULT_JA) ?: DEFAULT_JA
         else -> DEFAULT_OTHER
     }
 
@@ -97,7 +97,7 @@ class Prefs(context: Context) {
         val key = when (lang) {
             ImeLocaleParser.KO -> KEY_COLOR_KO
             ImeLocaleParser.EN -> KEY_COLOR_EN
-            ImeLocaleParser.JA -> KEY_COLOR_JA
+            // [일본어 비활성화] ImeLocaleParser.JA -> KEY_COLOR_JA
             else -> return
         }
         sp.edit().putString(key, normalizeHex(hex)).apply()
@@ -126,6 +126,7 @@ class Prefs(context: Context) {
 
         const val DEFAULT_KO = "#CC2D2D"
         const val DEFAULT_EN = "#1A6EBD"
+        // [일본어 비활성화] 색 기본값/키 보존(현재 미사용, 추후 재도입 시 참조 복구).
         const val DEFAULT_JA = "#2D8C4E"
         const val DEFAULT_OTHER = "#555555"
 
@@ -141,10 +142,10 @@ class Prefs(context: Context) {
         const val KEY_REPLACE_CONFIDENCE = "replace_confidence"
         const val KEY_LANG_KO = "lang_ko"
         const val KEY_LANG_EN = "lang_en"
-        const val KEY_LANG_JA = "lang_ja"
+        const val KEY_LANG_JA = "lang_ja" // [일본어 비활성화] 미사용, 보존
         const val KEY_COLOR_KO = "color_ko"
         const val KEY_COLOR_EN = "color_en"
-        const val KEY_COLOR_JA = "color_ja"
+        const val KEY_COLOR_JA = "color_ja" // [일본어 비활성화] 미사용, 보존
 
         /** "#rrggbb" 형식으로 정규화. 유효하지 않으면 기본 회색. */
         fun normalizeHex(input: String): String {

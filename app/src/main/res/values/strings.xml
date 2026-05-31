@@ -26,7 +26,10 @@
     <string name="settings_languages">지원 언어</string>
     <string name="settings_lang_ko">한국어</string>
     <string name="settings_lang_en">영어</string>
-    <string name="settings_lang_ja">일본어</string>
+    <!-- [일본어 비활성화] 일본어는 발음 입력 후 한자 변환이 많아 한/영 감지 실효가 낮아 비활성화.
+         삭제 대신 주석 보존(추후 재도입 가능).
+    <string name="settings_lang_ja">일본어</string> -->
+
     <string name="settings_flash">전환 플래시</string>
     <string name="settings_flash_enabled">전환 플래시 켜기</string>
     <string name="settings_flash_colors">언어별 플래시 색상</string>

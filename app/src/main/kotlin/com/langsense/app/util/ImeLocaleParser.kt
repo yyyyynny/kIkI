@@ -12,6 +12,10 @@ object ImeLocaleParser {
 
     const val KO = "ko"
     const val EN = "en"
+
+    // [일본어 비활성화] 현재 일본어는 발음 입력 후 한자 변환 단계가 많아 한/영 감지의 실효가 낮아
+    // 기능을 끈다. 삭제하지 않고 주석으로 보존하여 추후 재도입을 쉽게 한다.
+    // 상수 자체는 재도입 시 참조를 되살리기 쉽도록 남겨 둔다(현재 미사용).
     const val JA = "ja"
     const val ZH = "zh"
     const val UNKNOWN = "unknown"
@@ -34,7 +38,8 @@ object ImeLocaleParser {
         if (locale.isEmpty()) return UNKNOWN
         return when {
             locale.startsWith("ko") -> KO
-            locale.startsWith("ja") -> JA
+            // [일본어 비활성화] ja 전용 매핑 주석 처리(추후 재도입 위해 보존).
+            // locale.startsWith("ja") -> JA
             locale.startsWith("en") -> EN
             locale.startsWith("zh") -> ZH
             else -> locale.take(2)
@@ -58,7 +63,8 @@ object ImeLocaleParser {
         return when {
             text.contains("한국어") || text.contains("Korean", ignoreCase = true) -> KO
             text.contains("English", ignoreCase = true) -> EN
-            text.contains("日本語") || text.contains("Japanese", ignoreCase = true) -> JA
+            // [일본어 비활성화] 日本語/Japanese 팝업 텍스트 감지 주석 처리(추후 재도입 위해 보존).
+            // text.contains("日本語") || text.contains("Japanese", ignoreCase = true) -> JA
             text.contains("中文") || text.contains("Chinese", ignoreCase = true) -> ZH
             else -> null
         }
@@ -68,7 +74,7 @@ object ImeLocaleParser {
     fun displayName(lang: String): String = when (lang) {
         KO -> "한국어"
         EN -> "English"
-        JA -> "日本語"
+        // [일본어 비활성화] JA -> "日本語" (추후 재도입 위해 보존)
         ZH -> "中文"
         else -> lang.uppercase()
     }
@@ -77,7 +83,7 @@ object ImeLocaleParser {
     fun badgeLabel(lang: String): String = when (lang) {
         KO -> "한"
         EN -> "EN"
-        JA -> "日"
+        // [일본어 비활성화] JA -> "日" (추후 재도입 위해 보존)
         ZH -> "中"
         else -> lang.take(2).uppercase()
     }
