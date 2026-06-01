@@ -96,6 +96,7 @@ class SettingsActivity : AppCompatActivity() {
 
         // --- 포커스 없는 키 입력 경고 ---
         root.addView(sectionHeader(getString(R.string.settings_nofocus)))
+        root.addView(descRow(getString(R.string.settings_nofocus_desc))) // [3] 기능 설명
         root.addView(switchRow(getString(R.string.settings_nofocus_enabled), prefs.noFocusEnabled) {
             prefs.noFocusEnabled = it; markSaved()
         })
@@ -117,6 +118,7 @@ class SettingsActivity : AppCompatActivity() {
                 min = 50, max = 90, step = 5, value = prefs.replaceConfidence, suffix = "%"
             ) { prefs.replaceConfidence = it; markSaved() }
         )
+        root.addView(descRow(getString(R.string.settings_replace_confidence_desc))) // [4] 신뢰도 설명
 
         val scroll = ScrollView(this).apply { addView(root) }
         setContentView(scroll)
@@ -140,6 +142,14 @@ class SettingsActivity : AppCompatActivity() {
         textSize = 16f
         setTypeface(typeface, android.graphics.Typeface.BOLD)
         setPadding(0, dp(20), 0, dp(6))
+    }
+
+    /** 항목 아래 붙는 짧은 회색 설명 문구(기능/수치 해설). */
+    private fun descRow(text: String): TextView = TextView(this).apply {
+        this.text = text
+        textSize = 12f
+        setTextColor(0xFF888888.toInt())
+        setPadding(0, dp(2), 0, dp(4))
     }
 
     private fun langCheckbox(lang: String, labelRes: Int): CheckBox = CheckBox(this).apply {

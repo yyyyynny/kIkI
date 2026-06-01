@@ -40,9 +40,11 @@
     <string name="settings_nofocus">포커스 없는 키 입력 경고</string>
     <string name="settings_nofocus_enabled">경고 켜기</string>
     <string name="settings_nofocus_threshold">경고 임계 횟수</string>
+    <string name="settings_nofocus_desc">입력칸을 선택하지 않은 채 키보드를 치면 글자가 어디에도 입력되지 않아요. 이때 화면에 경고를 띄워 줍니다.</string>
     <string name="settings_replace">한영타 교체</string>
     <string name="settings_replace_enabled">한영타 교체 켜기</string>
     <string name="settings_replace_confidence">신뢰도 임계값(%)</string>
+    <string name="settings_replace_confidence_desc">영문을 한글 자판 배열로 바꿨을 때 올바른 한글 음절로 조합되는 비율이에요. 값이 높을수록 더 확실한 한영타에만 교체 버튼을 띄웁니다. 예를 들어 dkssud 는 안녕 으로 잘 조합돼 높게, 실제 영어 단어는 조합이 깨져 낮게 나옵니다.</string>
     <string name="settings_color_hex">색상코드(#RRGGBB)</string>
     <string name="settings_apply">설정이 즉시 적용됩니다</string>
     <string name="settings_saved">저장됨 · 즉시 적용</string>
