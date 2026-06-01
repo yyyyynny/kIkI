@@ -1,4 +1,6 @@
-# LangSense — 아키텍처 문서
+# kIkI — 아키텍처 문서
+
+> 앱 표시 이름은 **kIkI**. 클래스명 `LangSenseAccessibilityService` 등 식별자는 유지(코드가 진실).
 
 ## 컴포넌트 흐름도
 
@@ -6,36 +8,35 @@
 [블루투스 키보드 입력]
         │
         ▼
-[Android 시스템]
-  IME 서브타입 변경
-  시스템 팝업 발화 (Samsung One UI)
+[Android 시스템]  IME 서브타입/설정 변경, 시스템 팝업 발화(Samsung One UI)
         │
         ▼
-[LangSenseAccessibilityService]
+[LangSenseAccessibilityService]            # 클래스명은 식별자(불변)
   ├── onAccessibilityEvent()
-  │     TYPE_WINDOW_STATE_CHANGED    → ImeStateDetector
+  │     TYPE_WINDOW_STATE_CHANGED        → ImeStateDetector (백스톱/삼성 팝업)
   │     TYPE_VIEW_TEXT_SELECTION_CHANGED → TextSelectionMonitor
   │
-  └── onKeyEvent()
-        포커스 확인 → KeyEventMonitor
+  └── onKeyEvent()                         # 문자 키 게이트 통과 후에만 포커스 조회(지연 평가)
+        1차 활성 윈도우 → 없으면 2차 전체 윈도우 → KeyEventMonitor
 
-[ImeStateDetector]
-  InputMethodManager.getCurrentInputMethodSubtype()
-  + Samsung 팝업 텍스트 fallback 파싱 (ImeLocaleParser)
-        │
-        ▼ 언어 변경 감지 시
+[ImeStateDetector]  ── 언어 전환 감지(세 경로 병행) ──
+  ① BroadcastReceiver  ACTION_INPUT_METHOD_CHANGED
+  ② ContentObserver    selected_input_method_subtype / default_input_method
+  ③ 윈도우 이벤트 + Samsung 팝업 텍스트(ImeLocaleParser)
+        │  모든 신호 → requestRecheck() 로 합침(coalesce)
+        ▼  COALESCE_MS(150ms) 후 단 1회 emitIfChanged → onLanguageChanged
 [OverlayManager]
-  ├── FlashOverlayView.show(lang)    → 전체화면 플래시
-  └── BadgeOverlayView.update(lang)  → 상시 배지 갱신
+  ├── FlashOverlayView.show(lang)    → 전체화면 플래시 (windowAnimations=0)
+  └── BadgeOverlayView.update(lang)  → 상시 배지 갱신(크기/색 applyStyle)
 
 [KeyEventMonitor]
-  포커스 없는 키 3회 → FlashOverlayView.showNoFocus()
+  포커스 없는 문자 키 N회(기본 3) → OverlayManager.showNoFocusWarning() (쿨다운 2.5s)
 
 [TextSelectionMonitor]
   드래그 선택 감지
-  → HangulConverter.detectEnglishToKorean() 신뢰도 판정
-  → 신뢰도 ≥ 70% 시 ReplaceChipView.show(변환 미리보기)
-  → 사용자 탭 → HangulConverter.convertEngToKor() → ACTION_SET_TEXT
+  → HangulConverter.detectEnglishToKorean() 신뢰도 판정(mapRatio × composeRatio)
+  → 신뢰도 ≥ 임계값(기본 70%) 시 ReplaceChipView.show(변환 미리보기)
+  → 사용자 탭 → HangulConverter.convertEngToKor() → ACTION_SET_TEXT (실패 시 클립보드 fallback)
 ```
 
 ---
@@ -73,8 +74,13 @@ data class ImeState(
     val subtypeId: Int,
     val timestamp: Long
 )
-// 이전 상태와 비교하여 locale 변경 시에만 플래시 발동
+// emitIfChanged: 이전 lastState.locale 과 다를 때만 발동(중복 제거 1차).
+// requestRecheck: 여러 감지 신호를 COALESCE_MS 동안 합쳐 전환당 1회만 emit(중복 제거 2차).
+// → 깜박임 횟수 1 지정 시 정확히 1회. emitCount + Log.d 로 실기기 검증 가능.
 ```
+
+> **언어 지원**: 한국어/영어 + 기타. **일본어는 비활성화**(ImeLocaleParser/Prefs/Settings 의 ja 분기를
+> 삭제 없이 주석 처리). 일본어 IME 는 전용 처리 없이 기타 언어와 같은 일반 경로(회색 `#555555`)로 흐른다.
 
 ---
 
