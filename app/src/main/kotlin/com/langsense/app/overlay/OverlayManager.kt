@@ -61,6 +61,9 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
+        // [7] 기본 윈도우 enter/exit 애니메이션 제거 → 색이 좌→우로 채워지지 않고 전체 화면이
+        // 한 프레임에 꽉 찬 상태로 나타난다. (페이드아웃은 뷰 알파 애니메이션이 따로 처리)
+        params.windowAnimations = 0
         runCatching { wm.addView(view, params) }.onFailure { return }
         flashView = view
         // onEnd 시점에 다른 플래시로 교체되었을 수 있으므로 자기 자신일 때만 제거(오제거 방지).
