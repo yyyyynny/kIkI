@@ -11,7 +11,7 @@ import com.langsense.app.util.ImeLocaleParser
 import com.langsense.app.util.Prefs
 
 /**
- * LangSense 접근성 서비스 — 모든 감지의 진입점.
+ * kIkI 접근성 서비스 — 모든 감지의 진입점. (클래스명은 식별자라 LangSenseAccessibilityService 유지)
  *
  * - onAccessibilityEvent: 윈도우 상태 변경(언어 전환) / 텍스트 선택(한영타)
  * - onKeyEvent: 포커스 없는 키 입력 카운트 (절대 소비하지 않음)

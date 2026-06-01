@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LangSense</string>
-    <string name="accessibility_service_label">LangSense 언어 감지</string>
+    <string name="app_name">kIkI</string>
+    <string name="accessibility_service_label">kIkI 언어 감지</string>
     <string name="accessibility_service_description">블루투스 키보드 사용 시 한/영 전환 상태를 화면에 표시하고, 영타로 잘못 입력된 한국어(한영타)를 한 번에 교체하도록 돕습니다. 모든 처리는 기기 내부에서만 이루어지며 어떤 데이터도 외부로 전송하지 않습니다.</string>
 
     <!-- MainActivity (온보딩) -->
-    <string name="onboarding_title">LangSense 설정</string>
+    <string name="onboarding_title">kIkI 설정</string>
     <string name="onboarding_desc">블루투스 키보드의 한/영 상태를 한눈에 보여주고, 영타로 잘못 친 한국어를 즉시 교체합니다.</string>
     <string name="step_overlay">1. 다른 앱 위에 표시 권한</string>
     <string name="step_overlay_desc">언어 플래시·배지·교체 버튼을 화면 위에 띄우려면 필요합니다.</string>
@@ -22,7 +22,7 @@
     <string name="privacy_note">이 앱은 키 입력 내용이나 화면 내용을 수집·저장·전송하지 않습니다. 모든 처리는 온디바이스(로컬)에서만 수행됩니다.</string>
 
     <!-- SettingsActivity -->
-    <string name="settings_title">LangSense 설정</string>
+    <string name="settings_title">kIkI 설정</string>
     <string name="settings_languages">지원 언어</string>
     <string name="settings_lang_ko">한국어</string>
     <string name="settings_lang_en">영어</string>
