@@ -37,6 +37,12 @@
     <string name="settings_flash_count">깜박임 횟수</string>
     <string name="settings_badge">상시 언어 배지</string>
     <string name="settings_badge_enabled">상시 배지 표시</string>
+    <string name="settings_badge_size">배지 크기</string>
+    <string name="settings_badge_size_small">소</string>
+    <string name="settings_badge_size_medium">중</string>
+    <string name="settings_badge_size_large">대</string>
+    <string name="settings_badge_bg_color">배지 배경색</string>
+    <string name="settings_badge_text_color">배지 글씨색</string>
     <string name="settings_nofocus">포커스 없는 키 입력 경고</string>
     <string name="settings_nofocus_enabled">경고 켜기</string>
     <string name="settings_nofocus_threshold">경고 임계 횟수</string>

@@ -13,6 +13,8 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.GridLayout
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
@@ -92,6 +94,15 @@ class SettingsActivity : AppCompatActivity() {
         root.addView(sectionHeader(getString(R.string.settings_badge)))
         root.addView(switchRow(getString(R.string.settings_badge_enabled), prefs.badgeEnabled) {
             prefs.badgeEnabled = it; markSaved()
+        })
+        // [5] 크기 3단계(소/중/대)
+        root.addView(badgeSizeRow())
+        // [5] 배경색/글씨색 — 플래시 색상과 동일한 공용 색 선택 컴포넌트 재사용
+        root.addView(colorPickerRow(getString(R.string.settings_badge_bg_color), prefs.badgeBgColorHex) {
+            prefs.badgeBgColorHex = it
+        })
+        root.addView(colorPickerRow(getString(R.string.settings_badge_text_color), prefs.badgeTextColorHex) {
+            prefs.badgeTextColorHex = it
         })
 
         // --- 포커스 없는 키 입력 경고 ---
@@ -208,10 +219,20 @@ class SettingsActivity : AppCompatActivity() {
         return container
     }
 
+    /** 언어별 플래시 색상 편집기 — 공용 [colorPickerRow] 를 prefs.colorHex 에 연결. */
+    private fun colorEditor(lang: String, langLabel: String): View =
+        colorPickerRow(langLabel, prefs.colorHex(lang)) { hex -> prefs.setColorHex(lang, hex) }
+
     /**
-     * 언어별 색상 편집기: 미리보기 + #RRGGBB 입력 + 32색 팔레트.
+     * 공용 색 선택 컴포넌트: 라벨 + 미리보기 + #RRGGBB 입력 + 32색 팔레트.
+     * 플래시 색/배지 색 설정이 동일 코드를 공유한다(복붙 방지). 선택/입력 시 [onPicked] 에
+     * 정규화된 "#RRGGBB" 를 넘기고 저장 안내를 표시한다.
      */
-    private fun colorEditor(lang: String, langLabel: String): View {
+    private fun colorPickerRow(
+        label: String,
+        initialHex: String,
+        onPicked: (String) -> Unit
+    ): View {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(10), 0, dp(4))
@@ -225,7 +246,7 @@ class SettingsActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(dp(28), dp(28))
         }
         val hexInput = EditText(this).apply {
-            setText(prefs.colorHex(lang))
+            setText(initialHex)
             filters = arrayOf(InputFilter.LengthFilter(7))
             setSingleLine()
             imeOptions = EditorInfo.IME_ACTION_DONE
@@ -233,22 +254,22 @@ class SettingsActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(dp(120), ViewGroup.LayoutParams.WRAP_CONTENT)
                 .also { it.marginStart = dp(12) }
         }
-        applyPreview(preview, prefs.colorHex(lang))
+        applyPreview(preview, initialHex)
 
-        fun commitHex() {
-            val normalized = Prefs.normalizeHex(hexInput.text.toString())
-            prefs.setColorHex(lang, normalized)
+        fun commit(raw: String) {
+            val normalized = Prefs.normalizeHex(raw)
             hexInput.setText(normalized)
             applyPreview(preview, normalized)
+            onPicked(normalized)
             markSaved()
         }
         hexInput.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_DONE) { commitHex(); true } else false
+            if (actionId == EditorInfo.IME_ACTION_DONE) { commit(hexInput.text.toString()); true } else false
         }
-        hexInput.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) commitHex() }
+        hexInput.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) commit(hexInput.text.toString()) }
 
         headerRow.addView(TextView(this).apply {
-            text = langLabel
+            text = label
             layoutParams = LinearLayout.LayoutParams(dp(56), ViewGroup.LayoutParams.WRAP_CONTENT)
         })
         headerRow.addView(preview)
@@ -268,16 +289,43 @@ class SettingsActivity : AppCompatActivity() {
                 }
                 layoutParams = lp
                 background = swatchDrawable(hex)
-                setOnClickListener {
-                    prefs.setColorHex(lang, hex)
-                    hexInput.setText(hex)
-                    applyPreview(preview, hex)
-                    markSaved()
-                }
+                setOnClickListener { commit(hex) }
             }
             palette.addView(swatch)
         }
         container.addView(palette)
+        return container
+    }
+
+    /** 배지 크기 3단계(소/중/대) 라디오 선택. */
+    private fun badgeSizeRow(): View {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(8), 0, 0)
+        }
+        container.addView(TextView(this).apply {
+            text = getString(R.string.settings_badge_size)
+            textSize = 14f
+        })
+        val group = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
+        val labels = listOf(
+            R.string.settings_badge_size_small,
+            R.string.settings_badge_size_medium,
+            R.string.settings_badge_size_large
+        )
+        val buttons = labels.map { res ->
+            RadioButton(this).apply {
+                id = View.generateViewId()
+                setText(res)
+                setPadding(0, 0, dp(16), 0)
+            }.also { group.addView(it) }
+        }
+        buttons.getOrNull(prefs.badgeSize)?.isChecked = true
+        group.setOnCheckedChangeListener { _, checkedId ->
+            val idx = buttons.indexOfFirst { it.id == checkedId }
+            if (idx >= 0) { prefs.badgeSize = idx; markSaved() }
+        }
+        container.addView(group)
         return container
     }
 

@@ -134,6 +134,10 @@ class LangSenseAccessibilityService : AccessibilityService(),
             Prefs.KEY_BADGE_ENABLED -> {
                 if (prefs.badgeEnabled) overlay.showBadge(currentLang) else overlay.hideBadge()
             }
+            // 배지 크기/색은 표시 중인 배지에 즉시 재적용(꺼져 있으면 다음 표시 때 반영).
+            Prefs.KEY_BADGE_SIZE, Prefs.KEY_BADGE_BG_COLOR, Prefs.KEY_BADGE_TEXT_COLOR -> {
+                if (prefs.badgeEnabled) overlay.updateBadge(currentLang)
+            }
             // 그 외 설정(플래시 색/속도/횟수, 임계값 등)은 사용 시점에 prefs 에서 즉시 읽으므로 별도 처리 불필요.
         }
     }

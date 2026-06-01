@@ -89,7 +89,9 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
             hideBadgeInternal()
             return@onMain
         }
-        if (badgeView == null) {
+        val label = ImeLocaleParser.badgeLabel(lang)
+        val existing = badgeView
+        if (existing == null) {
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
@@ -99,7 +101,8 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
             ).apply { gravity = Gravity.TOP or Gravity.START }
 
             val view = BadgeOverlayView(context, wm, params) { x, y -> prefs.setBadgePosition(x, y) }
-            view.setLanguage(ImeLocaleParser.badgeLabel(lang))
+            applyBadgeStyle(view)
+            view.setLanguage(label)
 
             // 저장 위치가 있으면 사용, 없으면 우하단 기본값
             if (prefs.badgeX >= 0 && prefs.badgeY >= 0) {
@@ -114,9 +117,15 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
             badgeView = view
             badgeParams = params
         } else {
-            badgeView?.setLanguage(ImeLocaleParser.badgeLabel(lang))
+            // 재사용: 라벨 + 크기/색 스타일을 다시 적용(설정 변경 즉시 반영).
+            applyBadgeStyle(existing)
+            existing.setLanguage(label)
         }
     }
+
+    /** 현재 설정(크기/배경색/글씨색)을 배지에 적용. */
+    private fun applyBadgeStyle(view: BadgeOverlayView) =
+        view.applyStyle(prefs.badgeSize, prefs.badgeBgColorArgb(), prefs.badgeTextColorArgb())
 
     fun updateBadge(lang: String) = showBadge(lang)
 
