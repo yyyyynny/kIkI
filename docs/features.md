@@ -14,12 +14,18 @@
 
 각 경로는 `InputMethodManager.getCurrentInputMethodSubtype()` 의 locale 을 읽어 직전과 다르면 발동.
 
-### ★ 중복 발화 합치기 (debounce / coalesce)
+### ★ 2회 깜박임 방지 — 3중 방어
 한 번의 전환이 위 경로에서 신호 다발(브로드캐스트 1 + 옵저버 2 + 윈도우 이벤트 n)을 만든다.
-모든 신호를 **단일 예약(`recheckRunnable`)** 으로 합쳐, 신호가 멎고 `COALESCE_MS`(150ms) 뒤에 **한 번만**
-서브타입(또는 팝업 힌트)을 읽어 발동한다. 따라서 깜박임 횟수 1 지정 시 **정확히 1회**만 깜박이며,
-신호마다 즉시+지연으로 두 번씩 읽던 중복 작업도 사라진다(저사양 최적화). 전환당 `onLanguageChanged`
-호출이 1회임은 `emitCount` + `Log.d` 로 실기기에서 확인할 수 있다.
+1. **신호 합치기(coalesce)**: 모든 신호를 **단일 예약(`recheckRunnable`)** 으로 합쳐 신호가 멎고
+   `COALESCE_MS`(150ms) 뒤에 **한 번만** 서브타입(또는 팝업 힌트)을 읽어 발동.
+2. **발동 후 불응기(`REFRACTORY_MS`=450ms)**: 발동 직후 들어오는 잔여 신호 + 지연된
+   `currentInputMethodSubtype` 캐시가 "직전 언어"를 새 전환처럼 다시 발동(→ 다른 색 2번째 깜박임)하는
+   것을 차단. 불응기 동안엔 재평가를 미뤘다가 캐시 안정 후 1회만 확인.
+3. **`onServiceConnected` 멱등화**: 재연결 시 detector(Receiver/Observer)가 중복 등록되면 한 전환에
+   여러 번 발동하므로, 재진입 시 이전 인스턴스를 `cleanup()` 후 재초기화.
+
+따라서 깜박임 횟수 1 지정 시 **정확히 1회**만 깜박이고, 신호마다 두 번씩 읽던 중복 작업도 사라진다
+(저사양 최적화). 전환당 `onLanguageChanged` 호출이 1회임은 `emitCount` + `Log.d` 로 실기기 확인 가능.
 
 ### Samsung One UI 팝업 보조 감지 (fallback)
 경로 3에서 시스템 팝업 텍스트로 보조 감지(팝업 힌트는 서브타입보다 우선 — 삼성 내부 토글 대응).
@@ -91,24 +97,19 @@ WindowManager.LayoutParams:
 
 ## Feature 3: 포커스 없는 키 입력 경고
 
-### 감지 로직
-```kotlin
-override fun onKeyEvent(event: KeyEvent): Boolean {
-    if (event.action != KeyEvent.ACTION_DOWN) return false
+입력칸을 선택하지 않은 채 키보드를 치면 글자가 어디에도 안 들어간다. 이때만 경고를 띄운다.
 
-    val focusedNode = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-    if (focusedNode == null || !focusedNode.isEditable) {
-        noFocusKeyCount++
-        if (noFocusKeyCount >= 3) {
-            overlayManager.showNoFocusWarning()
-            noFocusKeyCount = 0
-        }
-    } else {
-        noFocusKeyCount = 0
-    }
-    return false // 키 이벤트 소비 금지
-}
-```
+### 감지 로직 (코드 기준: `KeyEventMonitor` + Service)
+`onKeyEvent` 는 **항상 false**(이벤트 미소비). 다음 순서로 평가한다(앞 단계에서 걸러지면 비싼 조회 생략):
+1. 기능 ON + `ACTION_DOWN` + 비반복 + **실제 문자 키**(modifier/단축키/기능키 제외) 게이트.
+2. **입력 실착 확인(최우선·오발동 방지)**: 최근 `RECENT_INPUT_MS`(1.2s) 안에 편집 노드의
+   `typeViewTextChanged`/`typeViewTextSelectionChanged` 가 있었으면(=글자가 실제 입력됨) 포커스
+   있음으로 간주하고 카운터 초기화. 포커스가 정말 없으면 이런 이벤트가 없으므로 진짜 경고는 유지.
+3. 포커스 조회(지연 평가): 1차 활성 윈도우 `findFocus(FOCUS_INPUT)?.isEditable`, 없을 때만
+   2차 전체 윈도우 순회(일시적 null 방어).
+4. 그래도 포커스 없으면 카운터 증가. 임계값(기본 3) 도달 시 경고, 재경고 쿨다운 `WARN_COOLDOWN_MS`(2.5s).
+
+> 텍스트 '내용'은 절대 읽지 않는다(`source.isEditable` 여부만 확인). 카운터는 포커스 획득/입력 실착 시 초기화.
 
 ---
 

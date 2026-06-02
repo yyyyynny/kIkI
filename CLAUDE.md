@@ -91,11 +91,16 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
 입력 포커스가 없는 상태에서 문자 키 입력이 임계값(기본 3회) 이상 감지되면 경고 오버레이 표시.
 
 - 감지: `AccessibilityService.onKeyEvent()` + 포커스 노드 확인
-- **저사양 최적화**: 포커스 조회는 비싸므로 **기능 ON + ACTION_DOWN + 비반복 + 실제 문자 키**
-  게이트를 통과한 뒤에만 지연 평가. 1차는 활성 윈도우만 보는 저비용 조회, 없을 때만 2차로
-  전체 윈도우 순회(일시적 null 방어). 모디파이어/반복/단축키/기능 OFF 에선 노드 트리를 안 건드림.
+- **오발동 방지(최우선)**: 글자가 실제 입력칸에 들어가면 편집 노드가 `typeViewTextChanged`/
+  `typeViewTextSelectionChanged` 이벤트를 낸다. 최근(`RECENT_INPUT_MS`=1.2s) 그런 "입력 실착"이
+  있었으면 포커스 조회 결과와 무관하게 포커스 있음으로 간주해 경고를 억제(포커스가 정말 없으면
+  그 이벤트가 없으므로 진짜 경고는 유지). → "입력은 되는데 경고가 뜨는" 오발동 해결.
+- **저사양 최적화**: 포커스 조회는 비싸므로 **기능 ON + ACTION_DOWN + 비반복 + 실제 문자 키 +
+  최근 입력 실착 없음** 게이트를 통과한 뒤에만 지연 평가. 1차는 활성 윈도우만 보는 저비용 조회,
+  없을 때만 2차로 전체 윈도우 순회(일시적 null 방어). 모디파이어/반복/단축키/기능 OFF 에선 노드 트리를 안 건드림.
 - 표시: `선택되지 않음` 텍스트 오버레이 (Feature 1과 동일한 플래시 방식, 재경고 쿨다운 2.5s)
 - 카운터는 포커스 획득 시 초기화. `onKeyEvent` 는 항상 `false` 반환(이벤트 절대 미소비)
+- 텍스트 '내용'은 읽지 않음(`source.isEditable` 여부만 확인)
 
 ### Feature 4: 한영타 감지 + 인라인 교체
 
@@ -207,10 +212,14 @@ SettingsActivity
 2. **Android 14 Foreground Service**: `foregroundServiceType` 미지정 시 크래시 발생. `specialUse` 타입으로 선언할 것.
 3. **TYPE_APPLICATION_OVERLAY**: API 26+ 필수. API 29 이상만 지원하므로 별도 분기 불필요.
 4. **ACTION_SET_TEXT 호환성**: 일부 앱(WebView 기반, 특수 에디터)에서 동작 안 할 수 있음. 클립보드 fallback 필수 구현.
-5. **Accessibility 오용 방지**: 이 서비스는 키로깅, 화면 내용 수집, 외부 전송을 절대 수행하지 않음. 모든 처리는 로컬 온디바이스. (디버그 로그는 언어 코드만 출력하며 입력 내용은 다루지 않음)
+5. **Accessibility 오용 방지**: 이 서비스는 키로깅, 화면 내용 수집, 외부 전송을 절대 수행하지 않음. 모든 처리는 로컬 온디바이스. `typeViewTextChanged` 도 구독하지만 텍스트 '내용'은 읽지 않고 `source.isEditable` 여부만 본다(포커스 경고 오발동 방지용). 디버그 로그는 언어 코드만 출력.
 6. **One UI 9.x 미지원**: 베타 상태로 AccessibilityEvent 동작 변경 가능성 있음. 별도 분기 작성 금지, 추후 별도 대응.
 7. **[일본어 비활성화]**: 일본어는 발음 입력 후 한자 변환 단계가 많아 한/영 감지 실효가 낮아 기능을 껐다. **삭제하지 않고 전부 주석 처리**(ImeLocaleParser 의 ja·日本語·日 감지, displayName/badgeLabel, Prefs 의 JA 분기/상수, 설정 체크박스·색상, strings/colors)하여 추후 재도입을 쉽게 함. 주석만 처리했으므로 일본어 IME 입력 시 전용 처리는 사라지고 **기타 언어와 동일한 일반 경로(회색 `#555555`, 라벨 "JA")** 로 흐른다(완전 억제는 아님).
-8. **IME 전환 중복 발화 합치기 + 저사양 최적화**: 한 전환이 Broadcast/Observer/윈도우 이벤트에서 여러 신호를 만들어 깜박임이 2회 이상 발생하던 문제를, 모든 신호를 단일 예약으로 합쳐(`COALESCE_MS`=150ms 후 1회) 해결. `onLanguageChanged` 는 전환당 1회만 호출되도록 했고 `emitCount`+`Log.d` 로 실기기 검증 가능. 키 입력 시 전체 윈도우 순회는 문자 키 게이트 통과 후로 지연.
+8. **IME 전환 2회 깜박임 — 3중 방어**: 한 전환이 Broadcast/Observer/윈도우 이벤트에서 여러 신호를 만들어 2회 이상 깜박이던 문제를 다음으로 해결.
+   - (a) **신호 합치기**: 모든 신호를 단일 예약으로 합쳐 `COALESCE_MS`(150ms) 후 1회만 평가.
+   - (b) **발동 후 불응기**(`REFRACTORY_MS`=450ms): 잔여 신호 + 지연된 `currentInputMethodSubtype` 캐시가 "직전 언어"를 다시 발동(다른 색 2번째 깜박임)하는 것을 차단.
+   - (c) **`onServiceConnected` 멱등화**: 재연결 시 중복으로 BroadcastReceiver/ContentObserver 가 등록돼 detector 가 누적되면 한 전환에 여러 번 발동하므로, 재진입 시 `cleanup()` 후 재초기화.
+   `onLanguageChanged` 는 전환당 1회만 호출되도록 했고 `emitCount`+`Log.d` 로 실기기 검증 가능. 키 입력 시 전체 윈도우 순회는 게이트 통과 후로 지연.
 9. **앱 표시 이름 = kIkI**: 사용자에게 보이는 문구만 kIkI. 패키지/applicationId(`com.langsense.app`), 클래스명(`LangSenseAccessibilityService`), 리소스 id(`Theme.LangSense`), Gradle `rootProject.name` 등 **식별자는 절대 변경 금지**.
 
 ---

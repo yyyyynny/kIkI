@@ -11,20 +11,22 @@
 [Android 시스템]  IME 서브타입/설정 변경, 시스템 팝업 발화(Samsung One UI)
         │
         ▼
-[LangSenseAccessibilityService]            # 클래스명은 식별자(불변)
+[LangSenseAccessibilityService]            # 클래스명은 식별자(불변). onServiceConnected 는 멱등(재연결 시 cleanup 먼저)
   ├── onAccessibilityEvent()
   │     TYPE_WINDOW_STATE_CHANGED        → ImeStateDetector (백스톱/삼성 팝업)
-  │     TYPE_VIEW_TEXT_SELECTION_CHANGED → TextSelectionMonitor
+  │     TYPE_VIEW_TEXT_SELECTION_CHANGED → TextSelectionMonitor + 입력 실착 표시
+  │     TYPE_VIEW_TEXT_CHANGED           → 입력 실착 표시(편집칸에 글자 들어감, isEditable 만 확인)
   │
-  └── onKeyEvent()                         # 문자 키 게이트 통과 후에만 포커스 조회(지연 평가)
-        1차 활성 윈도우 → 없으면 2차 전체 윈도우 → KeyEventMonitor
+  └── onKeyEvent()                         # 게이트 → 최근 입력 실착 검사 → (그때만) 포커스 조회(지연 평가)
+        최근 입력 실착 있으면 즉시 통과 / 없을 때만 1차 활성 윈도우 → 2차 전체 윈도우 → KeyEventMonitor
 
-[ImeStateDetector]  ── 언어 전환 감지(세 경로 병행) ──
+[ImeStateDetector]  ── 언어 전환 감지(세 경로 병행) + 2회 깜박임 3중 방어 ──
   ① BroadcastReceiver  ACTION_INPUT_METHOD_CHANGED
   ② ContentObserver    selected_input_method_subtype / default_input_method
   ③ 윈도우 이벤트 + Samsung 팝업 텍스트(ImeLocaleParser)
-        │  모든 신호 → requestRecheck() 로 합침(coalesce)
-        ▼  COALESCE_MS(150ms) 후 단 1회 emitIfChanged → onLanguageChanged
+        │  (a) 모든 신호 → requestRecheck() 로 합침(coalesce, COALESCE_MS 150ms)
+        │  (b) 발동 후 불응기(REFRACTORY_MS 450ms) — 잔여 신호·지연 캐시의 stale 재발동 차단
+        ▼  단 1회 emitIfChanged → onLanguageChanged
 [OverlayManager]
   ├── FlashOverlayView.show(lang)    → 전체화면 플래시 (windowAnimations=0)
   └── BadgeOverlayView.update(lang)  → 상시 배지 갱신(크기/색 applyStyle)
@@ -75,7 +77,8 @@ data class ImeState(
     val timestamp: Long
 )
 // emitIfChanged: 이전 lastState.locale 과 다를 때만 발동(중복 제거 1차).
-// requestRecheck: 여러 감지 신호를 COALESCE_MS 동안 합쳐 전환당 1회만 emit(중복 제거 2차).
+// requestRecheck: 여러 감지 신호를 COALESCE_MS 동안 합침(2차) + 발동 후 REFRACTORY_MS 불응기(3차).
+// onServiceConnected 멱등화: 재연결 시 detector 중복 등록 방지(4차).
 // → 깜박임 횟수 1 지정 시 정확히 1회. emitCount + Log.d 로 실기기 검증 가능.
 ```
 
@@ -102,13 +105,14 @@ data class ImeState(
 
 - 키스트로크 내용 수집 금지
 - 선택된 텍스트는 로컬 한영타 판정에만 사용, 외부 전송 없음
+- `typeViewTextChanged` 도 구독하지만 텍스트 '내용'은 읽지 않고 `source.isEditable` 여부만 확인(포커스 경고 오발동 방지)
 - `onKeyEvent()`는 항상 `false` 반환 (이벤트 소비 금지)
 - 접근성 이벤트 필터는 필요한 타입만 등록
 
 ```xml
 <!-- accessibility_service_config.xml -->
 <accessibility-service
-    android:accessibilityEventTypes="typeWindowStateChanged|typeViewTextSelectionChanged"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeViewTextSelectionChanged|typeViewTextChanged"
     android:accessibilityFeedbackType="feedbackVisual"
     android:accessibilityFlags="flagRetrieveInteractiveWindows|flagRequestFilterKeyEvents"
     android:canRetrieveWindowContent="true"
