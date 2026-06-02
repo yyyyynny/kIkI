@@ -7,6 +7,7 @@ import android.graphics.PixelFormat
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
@@ -26,6 +27,10 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     private val handler = Handler(Looper.getMainLooper())
 
     private var flashView: FlashOverlayView? = null
+    // 같은 색 플래시가 아주 짧은 간격으로 다시 들어오면(잔존 중복 발화) 건너뛰는 렌더 단계 안전망.
+    // 근본 원인은 ImeStateDetector(합치기/불응기/멱등)에서 처리하며, 이건 마지막 시각 방어일 뿐이다.
+    private var lastFlashColorArgb = 0
+    private var lastFlashAt = 0L
     private var badgeView: BadgeOverlayView? = null
     private var badgeParams: WindowManager.LayoutParams? = null
     private var chipView: ReplaceChipView? = null
@@ -50,6 +55,13 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     }
 
     private fun flash(colorArgb: Int, text: String) {
+        // 렌더 단계 안전망: 동일 색 플래시가 FLASH_DEDUP_MS 안에 다시 오면 중복으로 보고 건너뛴다.
+        // (다른 언어는 색이 달라 정상 표시됨. 사람은 같은 언어로 이만큼 빨리 두 번 전환할 수 없음.)
+        val now = SystemClock.uptimeMillis()
+        if (colorArgb == lastFlashColorArgb && now - lastFlashAt < FLASH_DEDUP_MS) return
+        lastFlashColorArgb = colorArgb
+        lastFlashAt = now
+
         removeFlash()
         val view = FlashOverlayView(context)
         val params = WindowManager.LayoutParams(
@@ -292,5 +304,8 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
 
     companion object {
         const val CHIP_TIMEOUT_MS = 2000L
+
+        /** 같은 색 플래시 중복 억제 창(ms). 근본 방어(ImeStateDetector) 뒤의 렌더 단계 마지막 안전망. */
+        const val FLASH_DEDUP_MS = 350L
     }
 }

@@ -219,7 +219,8 @@ SettingsActivity
    - (a) **신호 합치기**: 모든 신호를 단일 예약으로 합쳐 `COALESCE_MS`(150ms) 후 1회만 평가.
    - (b) **발동 후 불응기**(`REFRACTORY_MS`=450ms): 잔여 신호 + 지연된 `currentInputMethodSubtype` 캐시가 "직전 언어"를 다시 발동(다른 색 2번째 깜박임)하는 것을 차단.
    - (c) **`onServiceConnected` 멱등화**: 재연결 시 중복으로 BroadcastReceiver/ContentObserver 가 등록돼 detector 가 누적되면 한 전환에 여러 번 발동하므로, 재진입 시 `cleanup()` 후 재초기화.
-   `onLanguageChanged` 는 전환당 1회만 호출되도록 했고 `emitCount`+`Log.d` 로 실기기 검증 가능. 키 입력 시 전체 윈도우 순회는 게이트 통과 후로 지연.
+   - (d) **렌더 단계 안전망**(`OverlayManager.FLASH_DEDUP_MS`=350ms): 같은 색 플래시가 아주 짧은 간격으로 다시 오면 건너뜀. 위 (a)~(c) 가 근본 방어이고 이건 마지막 시각 방어(원인 진단용 `emitCount` 로그는 그대로 유지).
+   `onLanguageChanged` 는 전환당 1회만 호출되도록 했고 `emitCount`+`Log.d` 로 실기기 검증 가능(렌더 안전망이 가려도 로그로 실제 트리거 수 확인 가능). 키 입력 시 전체 윈도우 순회는 게이트 통과 후로 지연.
 9. **앱 표시 이름 = kIkI**: 사용자에게 보이는 문구만 kIkI. 패키지/applicationId(`com.langsense.app`), 클래스명(`LangSenseAccessibilityService`), 리소스 id(`Theme.LangSense`), Gradle `rootProject.name` 등 **식별자는 절대 변경 금지**.
 
 ---
