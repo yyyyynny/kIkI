@@ -3,12 +3,13 @@
     kIkI 접근성 서비스 설정.
     - typeWindowStateChanged       : IME 전환/시스템 팝업 감지 (Feature 1)
     - typeViewTextSelectionChanged : 드래그 선택 감지 (Feature 4)
+    - typeViewTextChanged          : 입력 실착 감지(편집칸에 글자가 들어감) — 포커스 경고 오발동 방지
     - flagRequestFilterKeyEvents   : onKeyEvent 수신 (Feature 3, 포커스 없는 키 입력)
     - canRequestFilterKeyEvents    : 키 이벤트 필터 권한 요청
-    보안 원칙: 필요한 이벤트 타입만 등록, 키 이벤트는 절대 소비하지 않음.
+    보안 원칙: 필요한 이벤트 타입만 등록, 텍스트 '내용'은 읽지 않고(편집 여부만), 키 이벤트는 절대 소비하지 않음.
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeWindowStateChanged|typeViewTextSelectionChanged"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeViewTextSelectionChanged|typeViewTextChanged"
     android:accessibilityFeedbackType="feedbackVisual"
     android:accessibilityFlags="flagRetrieveInteractiveWindows|flagRequestFilterKeyEvents"
     android:canRequestFilterKeyEvents="true"

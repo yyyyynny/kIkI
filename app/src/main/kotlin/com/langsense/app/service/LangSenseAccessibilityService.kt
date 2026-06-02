@@ -2,6 +2,7 @@ package com.langsense.app.service
 
 import android.accessibilityservice.AccessibilityService
 import android.content.SharedPreferences
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -30,8 +31,19 @@ class LangSenseAccessibilityService : AccessibilityService(),
     private var currentLang: String = ImeLocaleParser.UNKNOWN
     private var initialized = false
 
+    /**
+     * 편집칸에 글자가 실제로 들어간 마지막 시각(uptime). text/selection 변경 이벤트가 편집 노드에서
+     * 올 때 갱신한다. 포커스 없는 키 입력 경고의 오발동(입력은 되는데 경고가 뜨는 문제)을 막는 데 쓴다.
+     */
+    private var lastEditableActivityAt = 0L
+
     override fun onServiceConnected() {
         super.onServiceConnected()
+
+        // ★ 재연결 방어: onServiceConnected 는 같은 인스턴스에서 다시 호출될 수 있다(설정 변경/재바인드).
+        // 정리 없이 재초기화하면 BroadcastReceiver/ContentObserver 가 중복 등록되어 한 번의 한/영 전환에
+        // 여러 detector 가 각각 발동 → "매번 2회 이상 깜박임"의 근본 원인이 된다. 먼저 이전 상태를 정리.
+        if (initialized) cleanup()
 
         prefs = Prefs(this)
         overlay = OverlayManager(this, prefs)
@@ -72,18 +84,33 @@ class LangSenseAccessibilityService : AccessibilityService(),
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ->
                 imeDetector.onWindowStateChanged(event)
-            AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED ->
+            AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> {
+                markEditableActivity(event)
                 selectionMonitor.onSelectionChanged(event)
+            }
+            // 글자가 실제 편집칸에 들어갔다는 가장 직접적인 신호(포커스 경고 오발동 방지용).
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED ->
+                markEditableActivity(event)
         }
+    }
+
+    /** 이벤트 소스가 편집 가능한 노드면 "최근 입력 실착" 시각을 갱신(텍스트 내용은 읽지 않음). */
+    private fun markEditableActivity(event: AccessibilityEvent) {
+        if (!prefs.noFocusEnabled) return // 포커스 경고가 꺼져 있으면 노드 접근조차 하지 않음
+        val editable = runCatching { event.source?.isEditable }.getOrNull()
+        if (editable == true) lastEditableActivityAt = SystemClock.uptimeMillis()
     }
 
     override fun onKeyEvent(event: KeyEvent?): Boolean {
         event ?: return false
         if (!initialized) return false
         // 포커스 조회는 게이트 통과 후에만 지연 평가된다(저사양 최적화 Bug 1).
-        // 1차는 활성 윈도우만 보는 저비용 조회, 2차는 그래도 없을 때만 도는 전체 윈도우 백업.
+        // 최근 입력 실착이 있으면 포커스 조회 없이 "포커스 있음"으로 처리(오경고 방지).
         keyMonitor.onKeyEvent(
             event,
+            recentEditableActivity = {
+                SystemClock.uptimeMillis() - lastEditableActivityAt < RECENT_INPUT_MS
+            },
             focusProbe = { hasActiveEditableFocus() },
             focusReProbe = { hasAnyEditableFocus() }
         )
@@ -140,5 +167,13 @@ class LangSenseAccessibilityService : AccessibilityService(),
             }
             // 그 외 설정(플래시 색/속도/횟수, 임계값 등)은 사용 시점에 prefs 에서 즉시 읽으므로 별도 처리 불필요.
         }
+    }
+
+    companion object {
+        /**
+         * 직전 입력 실착으로 "포커스 있음"을 인정하는 시간(ms). 타이핑 중 편집 이벤트 간격을 넉넉히
+         * 덮어 오경고를 막되, 입력칸을 떠난 뒤에는 곧 경고가 정상 동작하도록 너무 길지 않게 둔다.
+         */
+        private const val RECENT_INPUT_MS = 1200L
     }
 }

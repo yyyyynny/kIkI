@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.database.ContentObserver
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
@@ -53,6 +54,9 @@ class ImeStateDetector(
 
     /** 발동 횟수(전환 1회당 1 증가). 한 전환에 정확히 1회만 늘어야 함을 로그로 검증하기 위함. */
     private var emitCount = 0
+
+    /** 마지막 발동 시각(불응기 계산용). 발동 직후 잔여 신호의 stale 재발동을 막는다. */
+    private var lastEmitAt = 0L
 
     private val imeChangeReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, intent: Intent?) = requestRecheck()
@@ -129,9 +133,22 @@ class ImeStateDetector(
 
     /**
      * 합쳐진 단일 재확인. 팝업 힌트가 있으면 우선(삼성 내부 한/영 토글은 서브타입이 안 바뀔 수 있음),
-     * 없으면 서브타입을 직접 조회한다. 조회는 신호가 멎은 뒤 한 번뿐이라 갱신 지연을 충분히 흡수한다.
+     * 없으면 서브타입을 직접 조회한다.
+     *
+     * ### 불응기(refractory) — Bug 6 의 진짜 원인 방어
+     * 한 번 발동한 직후에도 같은 전환의 잔여 신호(브로드캐스트/옵저버)가 [COALESCE_MS] 밖에서 들어오는데,
+     * 이때 `currentInputMethodSubtype` 가 아직 **이전 언어로 캐시 지연**되어 있으면 "직전 언어"를 새 전환처럼
+     * 다시 발동해 **다른 색으로 두 번째 깜박임**이 생긴다. 그래서 발동 후 [REFRACTORY_MS] 동안은 재평가를
+     * 미뤘다가(서브타입 캐시가 안정된 뒤) 단 한 번만 확인한다. 그 사이 새 힌트가 오면 보존된다.
      */
     private fun runRecheck() {
+        val sinceEmit = SystemClock.uptimeMillis() - lastEmitAt
+        if (sinceEmit < REFRACTORY_MS) {
+            // 불응기 종료 시점으로 한 번만 미룬다(잔여 신호 무시, pendingPopupHint 는 보존).
+            handler.removeCallbacks(recheckRunnable)
+            handler.postDelayed(recheckRunnable, REFRACTORY_MS - sinceEmit)
+            return
+        }
         val hint = pendingPopupHint
         pendingPopupHint = null
         emitIfChanged(hint ?: currentSubtypeLang())
@@ -141,6 +158,7 @@ class ImeStateDetector(
         if (lang == ImeLocaleParser.UNKNOWN) return
         if (lang == lastState?.locale) return
         lastState = ImeState(lang, currentSubtypeId(), System.currentTimeMillis())
+        lastEmitAt = SystemClock.uptimeMillis()
         emitCount++
         // 한 전환당 정확히 1회만 찍혀야 한다(Bug 6 실기기 검증용 로그).
         Log.d(TAG, "language change emitted: $lang (emit #$emitCount)")
@@ -174,5 +192,12 @@ class ImeStateDetector(
          * 잡되, 신호가 멎은 뒤 서브타입이 갱신될 시간을 충분히 주는 값(과거 지연 재확인과 동일 수준).
          */
         private const val COALESCE_MS = 150L
+
+        /**
+         * 발동 직후 불응기(ms). 같은 전환의 잔여 신호 + 지연된 서브타입 캐시가 "직전 언어"로
+         * 재발동해 두 번째(다른 색) 깜박임을 만드는 것을 막는다. 사람이 한/영을 이보다 빠르게
+         * 두 번 바꾸는 일은 없으므로 정상 전환을 놓치지 않는다.
+         */
+        private const val REFRACTORY_MS = 450L
     }
 }
