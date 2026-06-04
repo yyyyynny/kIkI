@@ -305,6 +305,34 @@ WindowManager flags:
 
 ---
 
+## Feature 5: 물방울 간편 메뉴 (배지 탭)
+
+상시 배지를 **탭**하면(드래그와 구분) 배지 주위로 물방울 버튼이 부채꼴로 퍼지는 간편 메뉴.
+
+### 구성
+- `WaterDropView`: `Path` 로 그린 물방울(위 뾰족 + 아래 둥근 bulb). 위→아래 파란 `LinearGradient`
+  + 상단 광택 타원 + 중앙 라벨(흰 글씨). 외부 리소스/이미지 없이 순수 드로잉.
+- `QuickMenuOverlayView`: 전체화면 반투명 스크림(`#66000000`) 오버레이.
+  - 윈도우 플래그: `TYPE_APPLICATION_OVERLAY | FLAG_NOT_FOCUSABLE | FLAG_LAYOUT_IN_SCREEN`
+    (터치는 받되 키 포커스는 안 가져감), `windowAnimations=0`.
+  - 배치: 앵커(배지 중심)에서 화면 중앙을 향하는 각도를 기준으로 약 150° 부채꼴, 반경 ≈118dp,
+    각 버튼은 화면 밖으로 안 나가게 clamp.
+  - 등장: 스크림 페이드 + 버튼별 오버슈트 스케일(스태거)로 "톡톡" 퍼지는 연출.
+  - 닫힘: 빈 곳(스크림) 탭 또는 항목 탭. 배지가 사라지거나 서비스 정리 시 함께 제거.
+
+### 항목 (서비스가 주입: `OverlayManager.setQuickMenuItems`)
+| 라벨 | 동작 |
+|---|---|
+| 앱 | `MainActivity` 실행(`FLAG_ACTIVITY_NEW_TASK`) |
+| 설정 | `SettingsActivity` 실행 |
+| 플래시 | `Prefs.flashEnabled` 토글 + 토스트(켜짐/꺼짐) |
+| 한영타 | `Prefs.replaceEnabled` 토글 + 토스트 |
+| 숨기기 | `Prefs.badgeEnabled=false` (배지 숨김; 설정에서 재활성) |
+
+> 토글 동작은 **탭 시점에** `Prefs` 를 읽어 현재 값을 뒤집으므로 항상 최신 상태로 동작한다.
+
+---
+
 ## ImeLocaleParser 유틸리티
 
 ```kotlin

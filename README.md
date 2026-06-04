@@ -15,6 +15,7 @@
 | 2 | 상시 언어 배지(드래그 이동 + 크기·색 커스텀) | `BadgeOverlayView` |
 | 3 | 포커스 없는 키 입력 경고 | `KeyEventMonitor` |
 | 4 | 한영타 감지 + "교체?" 인라인 교체 | `HangulConverter` + `TextSelectionMonitor` + `ReplaceChipView` |
+| 5 | 배지 탭 → 물방울 간편 메뉴(앱/설정/기능 토글) | `QuickMenuOverlayView` + `WaterDropView` |
 
 - **언어 전환 감지**: `BroadcastReceiver`(`ACTION_INPUT_METHOD_CHANGED`) + `ContentObserver`
   (`selected_input_method_subtype`) + 윈도우 팝업 텍스트를 병행하고, 한 전환에서 쏟아지는 여러 신호를
