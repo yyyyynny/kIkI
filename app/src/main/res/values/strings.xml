@@ -55,6 +55,16 @@
     <string name="settings_apply">설정이 즉시 적용됩니다</string>
     <string name="settings_saved">저장됨 · 즉시 적용</string>
 
+    <!-- 간편 메뉴(물방울) -->
+    <string name="quick_app">앱</string>
+    <string name="quick_settings">설정</string>
+    <string name="quick_flash">플래시</string>
+    <string name="quick_replace">한영타</string>
+    <string name="quick_badge">숨기기</string>
+    <string name="quick_state_on">켜짐</string>
+    <string name="quick_state_off">꺼짐</string>
+    <string name="quick_badge_hidden">배지를 숨겼어요. 설정에서 다시 켤 수 있어요.</string>
+
     <!-- Overlay -->
     <string name="overlay_no_focus">선택되지 않음</string>
     <string name="chip_replace_format">「%1$s」 교체?</string>

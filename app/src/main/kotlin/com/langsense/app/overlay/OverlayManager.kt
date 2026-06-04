@@ -36,6 +36,10 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     private var chipView: ReplaceChipView? = null
     private var chipDismiss: Runnable? = null
 
+    private var quickMenuView: QuickMenuOverlayView? = null
+    /** 간편 메뉴 항목(앱 열기/설정/토글 등). 서비스가 [setQuickMenuItems] 로 주입. */
+    private var quickMenuItems: List<QuickMenuItem> = emptyList()
+
     private val overlayType: Int = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 
     // ---------------------------------------------------------------------
@@ -115,7 +119,11 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
                 PixelFormat.TRANSLUCENT
             ).apply { gravity = Gravity.TOP or Gravity.START }
 
-            val view = BadgeOverlayView(context, wm, params) { x, y -> prefs.setBadgePosition(x, y) }
+            val view = BadgeOverlayView(
+                context, wm, params,
+                onTap = { toggleQuickMenu() },
+                onPositionSaved = { x, y -> prefs.setBadgePosition(x, y) }
+            )
             applyBadgeStyle(view)
             view.setLanguage(label)
 
@@ -147,9 +155,55 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     fun hideBadge() = onMain { hideBadgeInternal() }
 
     private fun hideBadgeInternal() {
+        hideQuickMenuInternal() // 배지가 사라지면 그 주위 메뉴도 함께 닫는다
         badgeView?.let { runCatching { wm.removeView(it) } }
         badgeView = null
         badgeParams = null
+    }
+
+    // ---------------------------------------------------------------------
+    // 간편 메뉴(물방울) — 배지 탭으로 열림
+    // ---------------------------------------------------------------------
+
+    /** 서비스가 간편 메뉴 항목을 주입(앱 열기/설정/기능 토글 등). */
+    fun setQuickMenuItems(items: List<QuickMenuItem>) {
+        quickMenuItems = items
+    }
+
+    /** 배지 탭 시: 열려 있으면 닫고, 닫혀 있으면 배지 위치를 앵커로 메뉴를 연다. */
+    fun toggleQuickMenu() = onMain {
+        if (quickMenuView != null) {
+            hideQuickMenuInternal()
+            return@onMain
+        }
+        val bv = badgeView ?: return@onMain
+        val bp = badgeParams ?: return@onMain
+        if (quickMenuItems.isEmpty()) return@onMain
+        val anchorX = bp.x + bv.width / 2
+        val anchorY = bp.y + bv.height / 2
+
+        val view = QuickMenuOverlayView(context, anchorX, anchorY, quickMenuItems) {
+            hideQuickMenu()
+        }
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            overlayType,
+            // 터치는 받되(스크림/버튼) 키 포커스는 안 가져간다. 전체 화면 모달.
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        )
+        params.windowAnimations = 0 // 등장 연출은 뷰 애니메이션으로 직접 처리
+        runCatching { wm.addView(view, params) }.onFailure { return@onMain }
+        quickMenuView = view
+    }
+
+    fun hideQuickMenu() = onMain { hideQuickMenuInternal() }
+
+    private fun hideQuickMenuInternal() {
+        quickMenuView?.let { runCatching { wm.removeView(it) } }
+        quickMenuView = null
     }
 
     // ---------------------------------------------------------------------
@@ -281,6 +335,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
 
     fun removeAll() = onMain {
         removeFlash()
+        hideQuickMenuInternal()
         hideBadgeInternal()
         removeChip()
     }

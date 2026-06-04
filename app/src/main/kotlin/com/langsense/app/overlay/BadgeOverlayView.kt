@@ -21,6 +21,7 @@ class BadgeOverlayView(
     context: Context,
     private val windowManager: WindowManager,
     private val params: WindowManager.LayoutParams,
+    private val onTap: () -> Unit,
     private val onPositionSaved: (x: Int, y: Int) -> Unit
 ) : TextView(context) {
 
@@ -92,7 +93,8 @@ class BadgeOverlayView(
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (dragging) onPositionSaved(params.x, params.y)
+                    // 드래그면 위치 저장, 단순 탭이면 간편 메뉴 열기.
+                    if (dragging) onPositionSaved(params.x, params.y) else onTap()
                     true
                 }
                 else -> false

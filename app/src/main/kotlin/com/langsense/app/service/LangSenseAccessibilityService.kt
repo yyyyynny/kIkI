@@ -1,13 +1,18 @@
 package com.langsense.app.service
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Intent
 import android.content.SharedPreferences
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Toast
 import com.langsense.app.R
 import com.langsense.app.overlay.OverlayManager
+import com.langsense.app.overlay.QuickMenuItem
+import com.langsense.app.ui.MainActivity
+import com.langsense.app.ui.SettingsActivity
 import com.langsense.app.util.ImeLocaleParser
 import com.langsense.app.util.Prefs
 
@@ -63,6 +68,8 @@ class LangSenseAccessibilityService : AccessibilityService(),
             overlay.showReplaceChip(node, fullText, selStart, selEnd, converted)
         }
 
+        overlay.setQuickMenuItems(buildQuickMenuItems())
+
         prefs.register(this)
 
         // 리스너 등록 + 현재 언어 캐시 + 초기 배지
@@ -70,6 +77,43 @@ class LangSenseAccessibilityService : AccessibilityService(),
         if (prefs.badgeEnabled) overlay.showBadge(currentLang)
 
         initialized = true
+    }
+
+    /**
+     * 배지 탭 시 뜨는 물방울 간편 메뉴 항목. 앱/설정 열기 + 주요 기능 즉석 토글.
+     * 토글 값은 탭 시점에 prefs 에서 읽으므로 한 번만 구성해도 항상 현재 상태로 동작한다.
+     */
+    private fun buildQuickMenuItems(): List<QuickMenuItem> = listOf(
+        QuickMenuItem(getString(R.string.quick_app)) { launchActivity(MainActivity::class.java) },
+        QuickMenuItem(getString(R.string.quick_settings)) { launchActivity(SettingsActivity::class.java) },
+        QuickMenuItem(getString(R.string.quick_flash)) {
+            toggle(R.string.quick_flash, prefs.flashEnabled) { prefs.flashEnabled = it }
+        },
+        QuickMenuItem(getString(R.string.quick_replace)) {
+            toggle(R.string.quick_replace, prefs.replaceEnabled) { prefs.replaceEnabled = it }
+        },
+        QuickMenuItem(getString(R.string.quick_badge)) {
+            prefs.badgeEnabled = false
+            toastMsg(getString(R.string.quick_badge_hidden))
+        }
+    )
+
+    private fun launchActivity(cls: Class<*>) {
+        runCatching {
+            startActivity(Intent(this, cls).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    /** 기능 ON/OFF 토글 + 새 상태를 토스트로 안내. */
+    private fun toggle(labelRes: Int, current: Boolean, set: (Boolean) -> Unit) {
+        val next = !current
+        set(next)
+        val state = getString(if (next) R.string.quick_state_on else R.string.quick_state_off)
+        toastMsg("${getString(labelRes)} $state")
+    }
+
+    private fun toastMsg(msg: String) {
+        runCatching { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
     }
 
     private fun onLanguageChanged(lang: String) {
