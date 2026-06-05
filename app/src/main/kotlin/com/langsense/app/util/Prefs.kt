@@ -47,6 +47,14 @@ class Prefs(context: Context) {
     fun setBadgePosition(x: Int, y: Int) =
         sp.edit().putInt(KEY_BADGE_X, x).putInt(KEY_BADGE_Y, y).apply()
 
+    /**
+     * 간편 메뉴 오브의 고급 글로우(외곽 발광 + 부드러운 그림자, BlurMaskFilter) 사용 여부.
+     * 저사양 기기에서 끄면 blur 없이 가벼운 링 글로우로 대체된다(라이트 모드). 기본 ON.
+     */
+    var orbGlowEnabled: Boolean
+        get() = sp.getBoolean(KEY_ORB_GLOW, true)
+        set(v) = sp.edit().putBoolean(KEY_ORB_GLOW, v).apply()
+
     /** 배지 크기 단계: 0=소, 1=중(기본=기존 외형), 2=대. */
     var badgeSize: Int
         get() = sp.getInt(KEY_BADGE_SIZE, 1).coerceIn(0, 2)
@@ -174,6 +182,7 @@ class Prefs(context: Context) {
         const val KEY_BADGE_X = "badge_x"
         const val KEY_BADGE_Y = "badge_y"
         const val KEY_BADGE_SIZE = "badge_size"
+        const val KEY_ORB_GLOW = "orb_glow_enabled"
         const val KEY_BADGE_BG_COLOR = "badge_bg_color"
         const val KEY_BADGE_TEXT_COLOR = "badge_text_color"
         const val KEY_NOFOCUS_ENABLED = "nofocus_enabled"

@@ -30,8 +30,8 @@
 [OverlayManager]
   ├── FlashOverlayView.show(lang)    → 전체화면 플래시 (windowAnimations=0)
   ├── BadgeOverlayView.update(lang)  → 상시 배지 갱신(크기/색 applyStyle)
-  │     └─ 배지 탭(드래그 아님) → QuickMenuOverlayView (물방울 간편 메뉴: 앱/설정/토글)
-  └── QuickMenuOverlayView           → WaterDropView 항목들(부채꼴 배치, 탭 시 동작 후 닫힘)
+  │     └─ 배지 탭(드래그 아님) → QuickMenuOverlayView (발광 오브 간편 메뉴: 앱/설정/토글)
+  └── QuickMenuOverlayView           → OrbView 항목들(부채꼴 배치, SpringAnimation 등장/드래그/소멸)
 
 [KeyEventMonitor]
   포커스 없는 문자 키 N회(기본 3) → OverlayManager.showNoFocusWarning() (쿨다운 2.5s)

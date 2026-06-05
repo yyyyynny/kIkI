@@ -36,7 +36,9 @@
 
 - **언어**: Kotlin 2.x
 - **빌드**: Gradle + AGP 8.x
-- **최소 의존성 원칙**: 외부 라이브러리 최소화 (AndroidX Core, Lifecycle만 허용)
+- **최소 의존성 원칙**: 외부 라이브러리 최소화 (AndroidX Core, Lifecycle, DynamicAnimation 허용)
+  - `androidx.dynamicanimation` 은 발광 오브 메뉴(Feature 5)의 물리 스프링 애니메이션 전용으로
+    추가한 소형 공식 라이브러리. Compose 도입 없이 동급 연출을 얻기 위한 의도된 예외.
 - **핵심 Android 컴포넌트**:
   - `AccessibilityService` — 키 이벤트/텍스트 선택/윈도우 이벤트 감지 핵심
   - `WindowManager` — 오버레이 UI
@@ -130,13 +132,21 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
 **⚠️ 핵심 구현체**: `HangulConverter.kt`
 두벌식(QWERTY) ↔ 한국어 변환 로직. 상세 스펙은 `docs/features.md` 참조.
 
-### Feature 5: 물방울 간편 메뉴 (배지 탭)
+### Feature 5: 발광 오브 간편 메뉴 (배지 탭)
 
-상시 배지를 **탭**(드래그 아님)하면 배지 주위로 **물방울(teardrop) 모양 버튼**들이 부채꼴로 퍼지는
-간편 메뉴를 띄운다. 빈 곳/항목 탭 시 닫힘.
+상시 배지를 **탭**(드래그 아님)하면 배지 주위로 **발광하는 원형 오브 버튼**들이 부채꼴로 솟아오르는
+간편 메뉴를 띄운다. 빈 곳/항목 탭 시 닫힘. (원신 푸리나 스킬 연출의 빛나는 파랑-보라 구체 스타일)
 
-- 구현: `QuickMenuOverlayView`(전체화면 반투명 스크림) + `WaterDropView`(Path 로 그린 물방울,
-  위→아래 파란 그라데이션 + 상단 광택, 라벨 중앙 — 별도 리소스 불필요). 등장은 오버슈트 스케일 애니메이션.
+- 구현: `QuickMenuOverlayView`(전체화면 반투명 스크림) + `OrbView`(Canvas 로 그린 발광 오브 —
+  `RadialGradient` 파랑→보라 구체 + `BlurMaskFilter` 외곽 글로우/부드러운 그림자 + 상단 specular
+  하이라이트, 라벨 중앙. 별도 리소스 불필요).
+- 애니메이션(모두 `SpringAnimation` 물리 기반, `androidx.dynamicanimation`):
+  - 등장: 아래에서 위로 스프링 바운스(스태거).
+  - 드래그: 손가락을 탄성 있게 추종하고, 놓으면 제자리로 스프링 복귀.
+  - 탭: 살짝 눌리는 scale down 피드백.
+  - 소멸: 페이드아웃 + 축소.
+- 글로우 성능: `Prefs.orbGlowEnabled`(설정 토글, 기본 ON). 저사양 기기에서 끄면 `BlurMaskFilter`
+  없이 가벼운 링 글로우로 대체(라이트 모드)되어 성능 저하가 없다.
 - 배치: 앵커(배지 중심)에서 **화면 중앙 방향**으로 약 150° 부채꼴, 화면 밖으로 안 나가게 clamp.
 - 항목(서비스가 주입): **앱 열기 / 설정 / 플래시 토글 / 한영타 토글 / 배지 숨기기**.
   토글은 탭 시점에 `Prefs` 를 읽어 현재 상태를 뒤집고 토스트로 새 상태(켜짐/꺼짐)를 안내.
@@ -170,7 +180,7 @@ OverlayManager (WindowManager 래퍼)
   ├── FlashOverlayView         — 전체화면 플래시 (Feature 1, 3) / windowAnimations=0
   ├── BadgeOverlayView         — 상시 언어 배지 (Feature 2) / 크기·색 applyStyle / 탭→간편 메뉴
   ├── ReplaceChipView          — "교체?" 미니 버튼 (Feature 4)
-  └── QuickMenuOverlayView     — 물방울 간편 메뉴 (Feature 5) / WaterDropView 항목
+  └── QuickMenuOverlayView     — 발광 오브 간편 메뉴 (Feature 5) / OrbView 항목(SpringAnimation)
 
 util/
   ├── HangulConverter          — 두벌식↔QWERTY 변환 + 한영타 신뢰도 판정 (순수 Kotlin)

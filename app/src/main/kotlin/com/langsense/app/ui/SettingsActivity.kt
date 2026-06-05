@@ -104,6 +104,11 @@ class SettingsActivity : AppCompatActivity() {
         root.addView(colorPickerRow(getString(R.string.settings_badge_text_color), prefs.badgeTextColorHex) {
             prefs.badgeTextColorHex = it
         })
+        // 간편 메뉴(발광 오브) 글로우 — 저사양 기기 라이트 모드 토글
+        root.addView(switchRow(getString(R.string.settings_orb_glow), prefs.orbGlowEnabled) {
+            prefs.orbGlowEnabled = it; markSaved()
+        })
+        root.addView(descRow(getString(R.string.settings_orb_glow_desc)))
 
         // --- 포커스 없는 키 입력 경고 ---
         root.addView(sectionHeader(getString(R.string.settings_nofocus)))

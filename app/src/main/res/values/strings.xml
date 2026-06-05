@@ -43,6 +43,8 @@
     <string name="settings_badge_size_large">대</string>
     <string name="settings_badge_bg_color">배지 배경색</string>
     <string name="settings_badge_text_color">배지 글씨색</string>
+    <string name="settings_orb_glow">간편 메뉴 글로우 효과</string>
+    <string name="settings_orb_glow_desc">배지를 탭하면 나오는 발광 오브 메뉴의 외곽 발광·그림자 효과예요. 저사양 기기에서 끊김이 있으면 끄세요(가벼운 모드로 동작).</string>
     <string name="settings_nofocus">포커스 없는 키 입력 경고</string>
     <string name="settings_nofocus_enabled">경고 켜기</string>
     <string name="settings_nofocus_threshold">경고 임계 횟수</string>
@@ -55,7 +57,7 @@
     <string name="settings_apply">설정이 즉시 적용됩니다</string>
     <string name="settings_saved">저장됨 · 즉시 적용</string>
 
-    <!-- 간편 메뉴(물방울) -->
+    <!-- 간편 메뉴(발광 오브) -->
     <string name="quick_app">앱</string>
     <string name="quick_settings">설정</string>
     <string name="quick_flash">플래시</string>

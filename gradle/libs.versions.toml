@@ -4,12 +4,14 @@ kotlin = "2.0.21"
 coreKtx = "1.13.1"
 appcompat = "1.7.0"
 lifecycle = "2.8.7"
+dynamicanimation = "1.0.0"
 junit = "4.13.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
+androidx-dynamicanimation = { group = "androidx.dynamicanimation", name = "dynamicanimation", version.ref = "dynamicanimation" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]

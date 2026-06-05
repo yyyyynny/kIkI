@@ -57,6 +57,8 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    // 물리 기반 스프링(등장 바운스/탄성 드래그). Compose 없이 동급 애니메이션을 내는 소형 공식 라이브러리.
+    implementation(libs.androidx.dynamicanimation)
 
     testImplementation(libs.junit)
 }

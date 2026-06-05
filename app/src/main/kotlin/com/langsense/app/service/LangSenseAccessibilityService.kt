@@ -80,7 +80,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
     }
 
     /**
-     * 배지 탭 시 뜨는 물방울 간편 메뉴 항목. 앱/설정 열기 + 주요 기능 즉석 토글.
+     * 배지 탭 시 뜨는 발광 오브 간편 메뉴 항목. 앱/설정 열기 + 주요 기능 즉석 토글.
      * 토글 값은 탭 시점에 prefs 에서 읽으므로 한 번만 구성해도 항상 현재 상태로 동작한다.
      */
     private fun buildQuickMenuItems(): List<QuickMenuItem> = listOf(

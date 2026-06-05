@@ -162,7 +162,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     }
 
     // ---------------------------------------------------------------------
-    // 간편 메뉴(물방울) — 배지 탭으로 열림
+    // 간편 메뉴(발광 오브) — 배지 탭으로 열림
     // ---------------------------------------------------------------------
 
     /** 서비스가 간편 메뉴 항목을 주입(앱 열기/설정/기능 토글 등). */
@@ -172,8 +172,9 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
 
     /** 배지 탭 시: 열려 있으면 닫고, 닫혀 있으면 배지 위치를 앵커로 메뉴를 연다. */
     fun toggleQuickMenu() = onMain {
-        if (quickMenuView != null) {
-            hideQuickMenuInternal()
+        val open = quickMenuView
+        if (open != null) {
+            open.close() // 닫기도 페이드+축소 연출 후 onRemove 로 윈도우 제거
             return@onMain
         }
         val bv = badgeView ?: return@onMain
@@ -182,7 +183,9 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         val anchorX = bp.x + bv.width / 2
         val anchorY = bp.y + bv.height / 2
 
-        val view = QuickMenuOverlayView(context, anchorX, anchorY, quickMenuItems) {
+        val view = QuickMenuOverlayView(
+            context, anchorX, anchorY, quickMenuItems, prefs.orbGlowEnabled
+        ) {
             hideQuickMenu()
         }
         val params = WindowManager.LayoutParams(
