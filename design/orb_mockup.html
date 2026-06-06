@@ -3,72 +3,97 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>kIkI 발광 오브 메뉴 — 목업 (푸리나 스타일)</title>
+<title>kIkI 발광 오브 메뉴 — 목업 v2 (비눗방울/구체)</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{
-    /* 살짝 푸른 어두운 배경(앱에선 투명 스크림 위에 뜸) */
     background:radial-gradient(1400px 900px at 60% 45%, #0c2c47 0%, #08192c 55%, #040d18 100%);
     font-family:'Apple SD Gothic Neo','Malgun Gothic','Segoe UI',sans-serif;
     color:#eaf6ff; overflow:hidden;
   }
   .stage{position:fixed; left:50%; top:50%; width:1000px; height:700px; transform:translate(-50%,-50%);}
-
-  /* ===== 연결선 + 중앙 반짝임 (SVG) ===== */
   .web{position:absolute; inset:0; width:100%; height:100%; pointer-events:none}
 
-  /* ===== 발광 오브 ===== */
+  /* float = 둥실 떠 있는 움직임(transform 분리) */
+  .float{position:absolute; margin:-55px 0 0 -55px; animation:bob 4.4s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+
+  /* ===== 입체 비눗방울 오브 ===== */
   .orb{
-    position:absolute; width:104px; height:104px; margin:-52px 0 0 -52px; border-radius:50%;
+    appearance:none; -webkit-appearance:none; padding:0; cursor:pointer;
+    position:relative; width:110px; height:110px; border-radius:50%;
     display:flex; align-items:center; justify-content:center;
-    /* 반투명 에너지 구체: 중심은 어둡고 맑게, 가장자리로 갈수록 밝게 빛남 */
+    /* 입체 구: 좌상단 밝고 우하단 어둡게 */
     background:
-      radial-gradient(circle at 50% 42%,
-        rgba(20,45,120,0.18) 0%,
-        rgba(40,95,205,0.30) 48%,
-        rgba(115,195,255,0.50) 82%,
-        rgba(180,238,255,0.72) 100%);
-    /* 밝은 청록 테두리 + 안팎 부드러운 빛 + 큰 외곽 bloom (여러 겹) */
+      radial-gradient(circle at 36% 30%,
+        rgba(228,251,255,0.55) 0%,
+        rgba(135,200,255,0.34) 28%,
+        rgba(48,100,205,0.24) 58%,
+        rgba(22,48,135,0.34) 84%,
+        rgba(12,28,92,0.46) 100%);
+    /* 안쪽 밝은 링(비눗방울 막) */
+    border:2px solid rgba(200,248,255,0.92);
+    /* 안쪽 깊이감 + 외곽 다층 bloom */
     box-shadow:
-      0 0 0 1.5px rgba(175,238,255,0.85),
-      inset 0 0 22px 3px rgba(190,242,255,0.45),
-      inset 0 10px 26px rgba(255,255,255,0.16),
-      0 0 22px 5px rgba(125,210,255,0.55),
-      0 0 55px 12px rgba(80,150,255,0.35),
-      0 0 110px 30px rgba(95,130,255,0.22);
-    backdrop-filter:blur(2px);
-    animation:bob 4.2s ease-in-out infinite;
+      inset 0 0 26px 4px rgba(190,242,255,0.35),
+      inset 0 -14px 26px rgba(10,30,90,0.45),
+      0 0 24px 5px rgba(125,210,255,0.50),
+      0 0 60px 14px rgba(80,150,255,0.32),
+      0 0 120px 34px rgba(110,120,255,0.20);
+    transition:transform .22s cubic-bezier(.2,.8,.3,1.35), filter .2s, box-shadow .2s;
   }
-  /* 밝게 빛나는 청록 림(rim) 링 */
+  /* 바깥 흐린 링(이중 테두리) */
   .orb::after{
-    content:""; position:absolute; inset:-3px; border-radius:50%;
-    border:2px solid rgba(165,235,255,0.92);
-    box-shadow:0 0 14px rgba(150,228,255,0.95), 0 0 30px rgba(90,165,255,0.55);
-    opacity:.95;
+    content:""; position:absolute; inset:-7px; border-radius:50%;
+    border:1.5px solid rgba(160,228,255,0.42);
+    box-shadow:0 0 16px rgba(120,200,255,0.42);
   }
-  /* 상단 부드러운 광택(딱딱한 점 X) */
-  .orb::before{
-    content:""; position:absolute; left:26%; top:13%; width:40%; height:28%; border-radius:50%;
-    background:radial-gradient(closest-side, rgba(255,255,255,0.85), rgba(255,255,255,0));
-    filter:blur(3px);
+  /* 가장자리 빛 반사(rim light, 우하단 초승달) */
+  .rim{
+    position:absolute; inset:0; border-radius:50%; pointer-events:none;
+    background:radial-gradient(circle at 70% 76%,
+      rgba(195,242,255,0) 58%, rgba(195,242,255,0.55) 76%, rgba(195,242,255,0) 88%);
+  }
+  /* 무지갯빛 비눗방울 sheen — 가장자리에만, 천천히 회전 */
+  .iris{
+    position:absolute; inset:0; border-radius:50%; pointer-events:none;
+    background:conic-gradient(from 200deg,
+      rgba(120,255,240,0) 0deg, rgba(120,255,240,0.40) 45deg,
+      rgba(150,180,255,0) 110deg, rgba(255,140,230,0.34) 200deg,
+      rgba(255,222,140,0.28) 270deg, rgba(120,255,240,0) 360deg);
+    -webkit-mask:radial-gradient(circle, transparent 56%, #000 80%, transparent 100%);
+            mask:radial-gradient(circle, transparent 56%, #000 80%, transparent 100%);
+    mix-blend-mode:screen; opacity:.55; animation:spin 9s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  /* 부드러운 상단 광택(커서 따라 움직임) */
+  .spec{
+    position:absolute; left:50%; top:50%; width:38px; height:28px; border-radius:50%;
+    transform:translate(-50%,-50%); pointer-events:none;
+    background:radial-gradient(closest-side, rgba(255,255,255,0.92), rgba(255,255,255,0));
+    filter:blur(2px);
+    /* 기본 위치: 좌상단 */
+    --hx:-22px; --hy:-26px;
+    transition:transform .08s linear;
   }
   .orb span{
-    position:relative; z-index:2; font-size:16px; font-weight:700; letter-spacing:.5px;
-    color:#fff; text-shadow:0 0 8px rgba(140,220,255,.95), 0 1px 2px rgba(0,0,40,.6);
+    position:relative; z-index:3; font-size:16px; font-weight:700; letter-spacing:.5px; color:#fff;
+    text-shadow:0 0 9px rgba(140,220,255,.95), 0 1px 2px rgba(0,0,40,.6);
   }
-  .orb:nth-child(2){animation-delay:.0s}
-  .orb:nth-child(3){animation-delay:.5s}
-  .orb:nth-child(4){animation-delay:1s}
-  .orb:nth-child(5){animation-delay:1.5s}
-  .orb:nth-child(6){animation-delay:2s}
-  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+  .orb:hover{ transform:scale(1.10); filter:brightness(1.16) saturate(1.08);
+    box-shadow:
+      inset 0 0 26px 4px rgba(200,245,255,0.45),
+      inset 0 -14px 26px rgba(10,30,90,0.4),
+      0 0 30px 7px rgba(140,220,255,0.65),
+      0 0 80px 20px rgba(90,160,255,0.42),
+      0 0 150px 44px rgba(120,130,255,0.26);
+  }
+  .orb:active{ transform:scale(.93); }
 
-  /* 중앙(앵커) 배지 — 실제 앱의 'EN' 배지 자리 */
   .badge{
     position:absolute; left:820px; top:350px; margin:-22px 0 0 -28px;
-    width:56px;height:44px; border-radius:8px;
-    display:flex;align-items:center;justify-content:center;
+    width:56px;height:44px; border-radius:8px; display:flex;align-items:center;justify-content:center;
     background:rgba(8,16,30,.78); color:#cfefff; font-weight:700; font-size:18px;
     box-shadow:0 0 18px rgba(120,200,255,.5), inset 0 0 0 1px rgba(150,225,255,.4);
   }
@@ -78,55 +103,65 @@
 </head>
 <body>
   <div class="stage">
-    <!-- 연결선(빛나는 살) + 중앙 별 반짝임 -->
     <svg class="web" viewBox="0 0 1000 700">
       <defs>
-        <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="3.2"/>
-        </filter>
+        <filter id="soft" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3.4"/></filter>
         <radialGradient id="star" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stop-color="#ffffff"/>
-          <stop offset="35%" stop-color="#cdeeff"/>
+          <stop offset="0%" stop-color="#ffffff"/><stop offset="35%" stop-color="#cdeeff"/>
           <stop offset="100%" stop-color="rgba(150,220,255,0)"/>
         </radialGradient>
       </defs>
-      <!-- 번지는 굵은 선 -->
-      <g stroke="#7fd2ff" stroke-width="3" filter="url(#soft)" opacity=".55" fill="none">
-        <line x1="820" y1="350" x2="755" y2="591"/>
-        <line x1="820" y1="350" x2="622" y2="502"/>
-        <line x1="820" y1="350" x2="570" y2="350"/>
-        <line x1="820" y1="350" x2="622" y2="198"/>
+      <g stroke="#7fd2ff" stroke-width="3" filter="url(#soft)" opacity=".5" fill="none">
+        <line x1="820" y1="350" x2="755" y2="591"/><line x1="820" y1="350" x2="622" y2="502"/>
+        <line x1="820" y1="350" x2="570" y2="350"/><line x1="820" y1="350" x2="622" y2="198"/>
         <line x1="820" y1="350" x2="755" y2="109"/>
       </g>
-      <!-- 또렷한 가는 선 -->
-      <g stroke="#d6f1ff" stroke-width="1" opacity=".8" fill="none">
-        <line x1="820" y1="350" x2="755" y2="591"/>
-        <line x1="820" y1="350" x2="622" y2="502"/>
-        <line x1="820" y1="350" x2="570" y2="350"/>
-        <line x1="820" y1="350" x2="622" y2="198"/>
+      <g stroke="#d6f1ff" stroke-width="1" opacity=".75" fill="none">
+        <line x1="820" y1="350" x2="755" y2="591"/><line x1="820" y1="350" x2="622" y2="502"/>
+        <line x1="820" y1="350" x2="570" y2="350"/><line x1="820" y1="350" x2="622" y2="198"/>
         <line x1="820" y1="350" x2="755" y2="109"/>
       </g>
-      <!-- 중앙 4각 별 반짝임 -->
       <circle cx="820" cy="350" r="60" fill="url(#star)"/>
-      <g fill="#ffffff" filter="url(#soft)" opacity=".95">
-        <path d="M820 314 L826 350 L820 386 L814 350 Z"/>
-        <path d="M784 350 L820 344 L856 350 L820 356 Z"/>
+      <g fill="#fff" filter="url(#soft)" opacity=".95">
+        <path d="M820 312 L827 350 L820 388 L813 350 Z"/><path d="M782 350 L820 343 L858 350 L820 357 Z"/>
       </g>
     </svg>
 
-    <!-- 오브 5개 (실제 앱 메뉴 항목) — 부채꼴 배치 -->
-    <div class="orb" style="left:755px; top:591px"><span>앱</span></div>
-    <div class="orb" style="left:622px; top:502px"><span>설정</span></div>
-    <div class="orb" style="left:570px; top:350px"><span>플래시</span></div>
-    <div class="orb" style="left:622px; top:198px"><span>한영타</span></div>
-    <div class="orb" style="left:755px; top:109px"><span>숨기기</span></div>
+    <!-- 오브 5개 (부채꼴) -->
+    <div class="float" style="left:755px; top:591px"><button class="orb"><i class="rim"></i><i class="iris"></i><i class="spec"></i><span>앱</span></button></div>
+    <div class="float" style="left:622px; top:502px"><button class="orb"><i class="rim"></i><i class="iris"></i><i class="spec"></i><span>설정</span></button></div>
+    <div class="float" style="left:570px; top:350px"><button class="orb"><i class="rim"></i><i class="iris"></i><i class="spec"></i><span>플래시</span></button></div>
+    <div class="float" style="left:622px; top:198px"><button class="orb"><i class="rim"></i><i class="iris"></i><i class="spec"></i><span>한영타</span></button></div>
+    <div class="float" style="left:755px; top:109px"><button class="orb"><i class="rim"></i><i class="iris"></i><i class="spec"></i><span>숨기기</span></button></div>
 
     <div class="badge">EN</div>
   </div>
 
   <div class="hint">
-    <b>목표 디자인</b> · 반투명 에너지 구체 + 밝은 청록 림 링 + 큰 외곽 발광(bloom) + 앵커에서 뻗는 빛나는 연결선 + 중앙 반짝임<br>
-    이대로 안드로이드에 구현합니다. 고칠 점(색/크기/연결선 유무 등) 말씀해 주세요.
+    <b>목업 v2</b> · 입체 비눗방울(이중 링 + 무지갯빛 표면) · 마우스 올려보세요(커지고/하이라이트가 따라옴) · 누르면 들어감<br>
+    이대로 안드로이드에 구현합니다. 고칠 점 알려주세요.
   </div>
+
+  <script>
+    // 커서 따라 상단 광택이 살짝 움직임 → 입체감
+    document.querySelectorAll('.orb').forEach(function(orb){
+      var spec = orb.querySelector('.spec');
+      orb.addEventListener('mousemove', function(e){
+        var r = orb.getBoundingClientRect();
+        var dx = (e.clientX - (r.left + r.width/2)) / (r.width/2);   // -1..1
+        var dy = (e.clientY - (r.top  + r.height/2)) / (r.height/2);
+        // 광택은 광원 방향(반대로 살짝)으로 이동
+        var px = 28 - dx*16, py = 30 - dy*16;
+        spec.style.transform = 'translate(' + (-px) + '%,' + (-py) + '%)';
+        spec.style.left = (50 - dx*14) + '%';
+        spec.style.top  = (50 - dy*14) + '%';
+      });
+      orb.addEventListener('mouseleave', function(){
+        spec.style.left = '34%'; spec.style.top = '30%';
+      });
+      // 초기 광택 위치(좌상단)
+      spec.style.left = '34%'; spec.style.top = '30%';
+    });
+  </script>
 </body>
 </html>
