@@ -20,6 +20,9 @@ class FlashOverlayView(context: Context) : FrameLayout(context) {
         setTypeface(typeface, android.graphics.Typeface.BOLD)
     }
 
+    /** 다음 깜박임 사이클 예약(보류) — 취소 시 정확히 제거하기 위해 참조를 보관한다. */
+    private var pendingCycle: Runnable? = null
+
     init {
         addView(
             label,
@@ -50,14 +53,24 @@ class FlashOverlayView(context: Context) : FrameLayout(context) {
     /** 진행 중인 애니메이션/예약 콜백을 모두 취소한다(다른 플래시로 교체될 때 누수·오제거 방지). */
     fun cancel() {
         animate().cancel()
-        removeCallbacks(null)
+        cancelPendingCycle()
     }
 
     override fun onDetachedFromWindow() {
         // 윈도우에서 제거되면 더 이상 콜백이 의미 없으므로 정리한다.
         animate().cancel()
-        removeCallbacks(null)
+        cancelPendingCycle()
         super.onDetachedFromWindow()
+    }
+
+    /**
+     * 보류 중인 다음 사이클 예약을 정확히 제거한다.
+     * (이전 구현의 removeCallbacks(null) 은 게시된 람다 콜백이 null 이 아니라 실제로는 아무것도
+     * 제거하지 못했다 — 뷰 제거 후에도 예약이 살아남는 누수/레이스의 원인이었다. Bug 4 감사)
+     */
+    private fun cancelPendingCycle() {
+        pendingCycle?.let { removeCallbacks(it) }
+        pendingCycle = null
     }
 
     private fun playCycle(remaining: Int, durationMs: Long, onEnd: () -> Unit) {
@@ -71,11 +84,18 @@ class FlashOverlayView(context: Context) : FrameLayout(context) {
                 // 윈도우에서 이미 떨어졌다면(다른 플래시로 교체됨) 콜백을 무시한다.
                 if (!isAttachedToWindow) return@withEndAction
                 if (remaining > 1) {
-                    postDelayed({ playCycle(remaining - 1, durationMs, onEnd) }, 60L)
+                    val next = Runnable { playCycle(remaining - 1, durationMs, onEnd) }
+                    pendingCycle = next
+                    postDelayed(next, INTER_BLINK_MS)
                 } else {
                     onEnd()
                 }
             }
             .start()
+    }
+
+    companion object {
+        /** 깜박임 사이클 사이의 짧은 간격(ms). */
+        private const val INTER_BLINK_MS = 60L
     }
 }

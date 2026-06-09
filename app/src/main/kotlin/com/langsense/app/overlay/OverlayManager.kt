@@ -42,12 +42,22 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
 
     private val overlayType: Int = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 
+    /**
+     * 정리(removeAll) 후 도착하는 늦은 콜백이 오버레이를 다시 추가하지 못하게 막는 플래그 (Bug 4 감사).
+     * 버그 1 수정으로 백그라운드 키 평가 스레드 → onWarn → onMain 경로가 생겨, 서비스 정리 직후
+     * 큐에 남아 있던 post 가 실행되며 뷰를 재생성해 누수될 수 있다. removeAll 에서 동기로 set 하고
+     * 모든 표시 진입점에서 확인한다. (재연결 시 서비스가 OverlayManager 를 새로 만들므로 상태 오염 없음)
+     */
+    @Volatile
+    private var released = false
+
     // ---------------------------------------------------------------------
     // Feature 1 / 3: 플래시
     // ---------------------------------------------------------------------
 
     /** 언어 전환 플래시. 설정이 꺼져있거나 해당 언어가 비활성이면 무시. */
     fun showFlash(lang: String) = onMain {
+        if (released) return@onMain
         if (!prefs.flashEnabled) return@onMain
         if (!prefs.isLangEnabled(lang)) return@onMain
         flash(prefs.flashColorArgb(lang), ImeLocaleParser.displayName(lang))
@@ -55,6 +65,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
 
     /** 포커스 없는 키 입력 경고(동일한 플래시 방식, 회색 + 안내 텍스트). */
     fun showNoFocusWarning(message: String) = onMain {
+        if (released) return@onMain
         flash(0xD9555555.toInt(), message)
     }
 
@@ -104,6 +115,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     // ---------------------------------------------------------------------
 
     fun showBadge(lang: String) = onMain {
+        if (released) return@onMain
         if (!prefs.badgeEnabled) {
             hideBadgeInternal()
             return@onMain
@@ -170,15 +182,18 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         quickMenuItems = items
     }
 
-    /** 배지 탭 시: 열려 있으면 닫고, 닫혀 있으면 배지 위치를 앵커로 메뉴를 연다. */
+    /** 배지 탭 시: 열려 있으면 (수납 애니메이션과 함께) 닫고, 닫혀 있으면 배지를 앵커로 메뉴를 연다. */
     fun toggleQuickMenu() = onMain {
-        if (quickMenuView != null) {
-            hideQuickMenuInternal()
+        if (released) return@onMain
+        quickMenuView?.let {
+            badgeView?.pulse()
+            it.requestCollapse() // 수납 애니메이션 후 onDismiss 콜백이 윈도우를 제거한다
             return@onMain
         }
         val bv = badgeView ?: return@onMain
         val bp = badgeParams ?: return@onMain
         if (quickMenuItems.isEmpty()) return@onMain
+        bv.pulse()
         val anchorX = bp.x + bv.width / 2
         val anchorY = bp.y + bv.height / 2
 
@@ -225,6 +240,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         selEnd: Int,
         converted: String
     ) = onMain {
+        if (released) return@onMain
         removeChip()
         val view = ReplaceChipView(context)
         view.bind(converted) {
@@ -333,11 +349,15 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     // 정리
     // ---------------------------------------------------------------------
 
-    fun removeAll() = onMain {
-        removeFlash()
-        hideQuickMenuInternal()
-        hideBadgeInternal()
-        removeChip()
+    fun removeAll() {
+        // 늦은 콜백이 이후 뷰를 다시 추가하지 못하도록 동기로 먼저 막는다(Bug 4 감사).
+        released = true
+        onMain {
+            removeFlash()
+            hideQuickMenuInternal()
+            hideBadgeInternal()
+            removeChip()
+        }
     }
 
     // ---------------------------------------------------------------------

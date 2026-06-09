@@ -126,7 +126,16 @@ class ImeStateDetector(
      * @param popupHint 윈도우 이벤트에서 파싱한 팝업 언어(있으면 서브타입보다 우선 — 삼성 내부 토글 대응).
      */
     private fun requestRecheck(popupHint: String? = null) {
-        if (popupHint != null && popupHint != ImeLocaleParser.UNKNOWN) pendingPopupHint = popupHint
+        // (Bug 2) 발동 직후 불응기 동안 들어오는 팝업 힌트는 "방금 처리한 전환의 잔향(메아리)"이다.
+        // 삼성 One UI 는 한/영 전환 시 팝업 윈도우 이벤트를 여러 번 내보내는데, 그중 직전 언어
+        // 텍스트가 불응기 안에 잡혀 pendingPopupHint 에 저장되면 불응기 경계에서 권위 있는 subtype
+        // 대신 그 stale 힌트로 "다른 색 두 번째 플래시"가 발동했다(횟수 1 → 2). 그래서 불응기 동안엔
+        // 힌트를 저장하지 않아 경계 재확인이 subtype(권위 소스)만 읽도록 한다.
+        // 새 토글의 팝업은 불응기(450ms)가 지난 뒤 들어오므로(사람이 그보다 빨리 못 바꿈) 정상 반영된다.
+        val inRefractory = SystemClock.uptimeMillis() - lastEmitAt < REFRACTORY_MS
+        if (popupHint != null && popupHint != ImeLocaleParser.UNKNOWN && !inRefractory) {
+            pendingPopupHint = popupHint
+        }
         handler.removeCallbacks(recheckRunnable)
         handler.postDelayed(recheckRunnable, COALESCE_MS)
     }

@@ -63,6 +63,13 @@ class SettingsActivity : AppCompatActivity() {
         // [일본어 비활성화] 일본어 체크박스 주석(추후 재도입 위해 보존).
         // root.addView(langCheckbox(ImeLocaleParser.JA, R.string.settings_lang_ja))
 
+        // --- 터치 키보드 제외 (추가 기능 2) ---
+        root.addView(sectionHeader(getString(R.string.settings_exclude_touch_kb)))
+        root.addView(descRow(getString(R.string.settings_exclude_touch_kb_desc)))
+        root.addView(switchRow(getString(R.string.settings_exclude_touch_kb_enabled), prefs.excludeTouchKeyboard) {
+            prefs.excludeTouchKeyboard = it; markSaved()
+        })
+
         // --- 전환 플래시 ---
         root.addView(sectionHeader(getString(R.string.settings_flash)))
         root.addView(switchRow(getString(R.string.settings_flash_enabled), prefs.flashEnabled) {
