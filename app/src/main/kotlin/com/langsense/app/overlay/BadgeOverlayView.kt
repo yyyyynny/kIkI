@@ -2,7 +2,7 @@ package com.langsense.app.overlay
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -21,6 +21,7 @@ class BadgeOverlayView(
     context: Context,
     private val windowManager: WindowManager,
     private val params: WindowManager.LayoutParams,
+    private val onTap: () -> Unit,
     private val onPositionSaved: (x: Int, y: Int) -> Unit
 ) : TextView(context) {
 
@@ -32,19 +33,42 @@ class BadgeOverlayView(
 
     init {
         gravity = Gravity.CENTER
-        setTextColor(Color.WHITE)
         setTypeface(typeface, android.graphics.Typeface.BOLD)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-        setBackgroundResource(com.langsense.app.R.drawable.bg_badge)
-        val h = dp(4f)
-        val w = dp(8f)
-        setPadding(w, h, w, h)
-        minWidth = dp(40f)
+        // 크기·색은 applyStyle 로 적용한다(설정 변경 시 재호출로 즉시 반영). 기본값은 중(1)+기존 색.
+        applyStyle(SIZE_MEDIUM, DEFAULT_BG_ARGB, DEFAULT_TEXT_ARGB)
         setupTouch()
     }
 
     fun setLanguage(label: String) {
         text = label
+    }
+
+    /**
+     * 크기 단계(0=소, 1=중, 2=대)와 배경/글씨 ARGB 를 적용한다(Feature 2 커스터마이즈).
+     * 중(1) + 기본 색은 기존 외형(14sp / 패딩 8·4dp / minWidth 40dp / #CC000000·흰색)과 동일하다.
+     * 둥근 모서리(6dp)는 기존 bg_badge 드로어블과 동일하게 코드로 그린다.
+     */
+    fun applyStyle(sizeLevel: Int, bgArgb: Int, textArgb: Int) {
+        val spec = sizeSpec(sizeLevel)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, spec.textSp)
+        setTextColor(textArgb)
+        val padH = dp(spec.padHDp)
+        val padV = dp(spec.padVDp)
+        setPadding(padH, padV, padH, padV)
+        minWidth = dp(spec.minWDp)
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(6f).toFloat()
+            setColor(bgArgb)
+        }
+    }
+
+    private data class SizeSpec(val textSp: Float, val padHDp: Float, val padVDp: Float, val minWDp: Float)
+
+    private fun sizeSpec(level: Int): SizeSpec = when (level) {
+        SIZE_SMALL -> SizeSpec(12f, 6f, 3f, 32f)
+        SIZE_LARGE -> SizeSpec(18f, 11f, 6f, 52f)
+        else -> SizeSpec(14f, 8f, 4f, 40f) // 중(기본) = 기존 외형
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -69,7 +93,8 @@ class BadgeOverlayView(
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (dragging) onPositionSaved(params.x, params.y)
+                    // 드래그면 위치 저장, 단순 탭이면 간편 메뉴 열기.
+                    if (dragging) onPositionSaved(params.x, params.y) else onTap()
                     true
                 }
                 else -> false
@@ -98,6 +123,14 @@ class BadgeOverlayView(
     ).roundToInt()
 
     companion object {
+        const val SIZE_SMALL = 0
+        const val SIZE_MEDIUM = 1
+        const val SIZE_LARGE = 2
+
+        /** init 기본값(=기존 외형). OverlayManager 가 곧바로 prefs 값으로 applyStyle 재호출한다. */
+        private const val DEFAULT_BG_ARGB = 0xCC000000.toInt()
+        private const val DEFAULT_TEXT_ARGB = 0xFFFFFFFF.toInt()
+
         /** 우하단 기본 위치 계산 (gravity TOP|START 기준 좌표). */
         fun defaultPosition(view: View): Pair<Int, Int> {
             val dm = view.resources.displayMetrics

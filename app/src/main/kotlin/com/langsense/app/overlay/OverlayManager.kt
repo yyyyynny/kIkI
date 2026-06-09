@@ -7,6 +7,7 @@ import android.graphics.PixelFormat
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
@@ -26,10 +27,18 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     private val handler = Handler(Looper.getMainLooper())
 
     private var flashView: FlashOverlayView? = null
+    // 같은 색 플래시가 아주 짧은 간격으로 다시 들어오면(잔존 중복 발화) 건너뛰는 렌더 단계 안전망.
+    // 근본 원인은 ImeStateDetector(합치기/불응기/멱등)에서 처리하며, 이건 마지막 시각 방어일 뿐이다.
+    private var lastFlashColorArgb = 0
+    private var lastFlashAt = 0L
     private var badgeView: BadgeOverlayView? = null
     private var badgeParams: WindowManager.LayoutParams? = null
     private var chipView: ReplaceChipView? = null
     private var chipDismiss: Runnable? = null
+
+    private var quickMenuView: QuickMenuOverlayView? = null
+    /** 간편 메뉴 항목(앱 열기/설정/토글 등). 서비스가 [setQuickMenuItems] 로 주입. */
+    private var quickMenuItems: List<QuickMenuItem> = emptyList()
 
     private val overlayType: Int = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 
@@ -50,6 +59,13 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     }
 
     private fun flash(colorArgb: Int, text: String) {
+        // 렌더 단계 안전망: 동일 색 플래시가 FLASH_DEDUP_MS 안에 다시 오면 중복으로 보고 건너뛴다.
+        // (다른 언어는 색이 달라 정상 표시됨. 사람은 같은 언어로 이만큼 빨리 두 번 전환할 수 없음.)
+        val now = SystemClock.uptimeMillis()
+        if (colorArgb == lastFlashColorArgb && now - lastFlashAt < FLASH_DEDUP_MS) return
+        lastFlashColorArgb = colorArgb
+        lastFlashAt = now
+
         removeFlash()
         val view = FlashOverlayView(context)
         val params = WindowManager.LayoutParams(
@@ -61,6 +77,9 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
+        // [7] 기본 윈도우 enter/exit 애니메이션 제거 → 색이 좌→우로 채워지지 않고 전체 화면이
+        // 한 프레임에 꽉 찬 상태로 나타난다. (페이드아웃은 뷰 알파 애니메이션이 따로 처리)
+        params.windowAnimations = 0
         runCatching { wm.addView(view, params) }.onFailure { return }
         flashView = view
         // onEnd 시점에 다른 플래시로 교체되었을 수 있으므로 자기 자신일 때만 제거(오제거 방지).
@@ -89,7 +108,9 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
             hideBadgeInternal()
             return@onMain
         }
-        if (badgeView == null) {
+        val label = ImeLocaleParser.badgeLabel(lang)
+        val existing = badgeView
+        if (existing == null) {
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
@@ -98,8 +119,13 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
                 PixelFormat.TRANSLUCENT
             ).apply { gravity = Gravity.TOP or Gravity.START }
 
-            val view = BadgeOverlayView(context, wm, params) { x, y -> prefs.setBadgePosition(x, y) }
-            view.setLanguage(ImeLocaleParser.badgeLabel(lang))
+            val view = BadgeOverlayView(
+                context, wm, params,
+                onTap = { toggleQuickMenu() },
+                onPositionSaved = { x, y -> prefs.setBadgePosition(x, y) }
+            )
+            applyBadgeStyle(view)
+            view.setLanguage(label)
 
             // 저장 위치가 있으면 사용, 없으면 우하단 기본값
             if (prefs.badgeX >= 0 && prefs.badgeY >= 0) {
@@ -114,18 +140,70 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
             badgeView = view
             badgeParams = params
         } else {
-            badgeView?.setLanguage(ImeLocaleParser.badgeLabel(lang))
+            // 재사용: 라벨 + 크기/색 스타일을 다시 적용(설정 변경 즉시 반영).
+            applyBadgeStyle(existing)
+            existing.setLanguage(label)
         }
     }
+
+    /** 현재 설정(크기/배경색/글씨색)을 배지에 적용. */
+    private fun applyBadgeStyle(view: BadgeOverlayView) =
+        view.applyStyle(prefs.badgeSize, prefs.badgeBgColorArgb(), prefs.badgeTextColorArgb())
 
     fun updateBadge(lang: String) = showBadge(lang)
 
     fun hideBadge() = onMain { hideBadgeInternal() }
 
     private fun hideBadgeInternal() {
+        hideQuickMenuInternal() // 배지가 사라지면 그 주위 메뉴도 함께 닫는다
         badgeView?.let { runCatching { wm.removeView(it) } }
         badgeView = null
         badgeParams = null
+    }
+
+    // ---------------------------------------------------------------------
+    // 간편 메뉴(물방울) — 배지 탭으로 열림
+    // ---------------------------------------------------------------------
+
+    /** 서비스가 간편 메뉴 항목을 주입(앱 열기/설정/기능 토글 등). */
+    fun setQuickMenuItems(items: List<QuickMenuItem>) {
+        quickMenuItems = items
+    }
+
+    /** 배지 탭 시: 열려 있으면 닫고, 닫혀 있으면 배지 위치를 앵커로 메뉴를 연다. */
+    fun toggleQuickMenu() = onMain {
+        if (quickMenuView != null) {
+            hideQuickMenuInternal()
+            return@onMain
+        }
+        val bv = badgeView ?: return@onMain
+        val bp = badgeParams ?: return@onMain
+        if (quickMenuItems.isEmpty()) return@onMain
+        val anchorX = bp.x + bv.width / 2
+        val anchorY = bp.y + bv.height / 2
+
+        val view = QuickMenuOverlayView(context, anchorX, anchorY, quickMenuItems) {
+            hideQuickMenu()
+        }
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            overlayType,
+            // 터치는 받되(스크림/버튼) 키 포커스는 안 가져간다. 전체 화면 모달.
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        )
+        params.windowAnimations = 0 // 등장 연출은 뷰 애니메이션으로 직접 처리
+        runCatching { wm.addView(view, params) }.onFailure { return@onMain }
+        quickMenuView = view
+    }
+
+    fun hideQuickMenu() = onMain { hideQuickMenuInternal() }
+
+    private fun hideQuickMenuInternal() {
+        quickMenuView?.let { runCatching { wm.removeView(it) } }
+        quickMenuView = null
     }
 
     // ---------------------------------------------------------------------
@@ -257,6 +335,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
 
     fun removeAll() = onMain {
         removeFlash()
+        hideQuickMenuInternal()
         hideBadgeInternal()
         removeChip()
     }
@@ -280,5 +359,8 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
 
     companion object {
         const val CHIP_TIMEOUT_MS = 2000L
+
+        /** 같은 색 플래시 중복 억제 창(ms). 근본 방어(ImeStateDetector) 뒤의 렌더 단계 마지막 안전망. */
+        const val FLASH_DEDUP_MS = 350L
     }
 }

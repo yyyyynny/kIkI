@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LangSense</string>
-    <string name="accessibility_service_label">LangSense 언어 감지</string>
+    <string name="app_name">kIkI</string>
+    <string name="accessibility_service_label">kIkI 언어 감지</string>
     <string name="accessibility_service_description">블루투스 키보드 사용 시 한/영 전환 상태를 화면에 표시하고, 영타로 잘못 입력된 한국어(한영타)를 한 번에 교체하도록 돕습니다. 모든 처리는 기기 내부에서만 이루어지며 어떤 데이터도 외부로 전송하지 않습니다.</string>
 
     <!-- MainActivity (온보딩) -->
-    <string name="onboarding_title">LangSense 설정</string>
+    <string name="onboarding_title">kIkI 설정</string>
     <string name="onboarding_desc">블루투스 키보드의 한/영 상태를 한눈에 보여주고, 영타로 잘못 친 한국어를 즉시 교체합니다.</string>
     <string name="step_overlay">1. 다른 앱 위에 표시 권한</string>
     <string name="step_overlay_desc">언어 플래시·배지·교체 버튼을 화면 위에 띄우려면 필요합니다.</string>
@@ -22,11 +22,14 @@
     <string name="privacy_note">이 앱은 키 입력 내용이나 화면 내용을 수집·저장·전송하지 않습니다. 모든 처리는 온디바이스(로컬)에서만 수행됩니다.</string>
 
     <!-- SettingsActivity -->
-    <string name="settings_title">LangSense 설정</string>
+    <string name="settings_title">kIkI 설정</string>
     <string name="settings_languages">지원 언어</string>
     <string name="settings_lang_ko">한국어</string>
     <string name="settings_lang_en">영어</string>
-    <string name="settings_lang_ja">일본어</string>
+    <!-- [일본어 비활성화] 일본어는 발음 입력 후 한자 변환이 많아 한/영 감지 실효가 낮아 비활성화.
+         삭제 대신 주석 보존(추후 재도입 가능).
+    <string name="settings_lang_ja">일본어</string> -->
+
     <string name="settings_flash">전환 플래시</string>
     <string name="settings_flash_enabled">전환 플래시 켜기</string>
     <string name="settings_flash_colors">언어별 플래시 색상</string>
@@ -34,15 +37,33 @@
     <string name="settings_flash_count">깜박임 횟수</string>
     <string name="settings_badge">상시 언어 배지</string>
     <string name="settings_badge_enabled">상시 배지 표시</string>
+    <string name="settings_badge_size">배지 크기</string>
+    <string name="settings_badge_size_small">소</string>
+    <string name="settings_badge_size_medium">중</string>
+    <string name="settings_badge_size_large">대</string>
+    <string name="settings_badge_bg_color">배지 배경색</string>
+    <string name="settings_badge_text_color">배지 글씨색</string>
     <string name="settings_nofocus">포커스 없는 키 입력 경고</string>
     <string name="settings_nofocus_enabled">경고 켜기</string>
     <string name="settings_nofocus_threshold">경고 임계 횟수</string>
+    <string name="settings_nofocus_desc">입력칸을 선택하지 않은 채 키보드를 치면 글자가 어디에도 입력되지 않아요. 이때 화면에 경고를 띄워 줍니다.</string>
     <string name="settings_replace">한영타 교체</string>
     <string name="settings_replace_enabled">한영타 교체 켜기</string>
     <string name="settings_replace_confidence">신뢰도 임계값(%)</string>
+    <string name="settings_replace_confidence_desc">영문을 한글 자판 배열로 바꿨을 때 올바른 한글 음절로 조합되는 비율이에요. 값이 높을수록 더 확실한 한영타에만 교체 버튼을 띄웁니다. 예를 들어 dkssud 는 안녕 으로 잘 조합돼 높게, 실제 영어 단어는 조합이 깨져 낮게 나옵니다.</string>
     <string name="settings_color_hex">색상코드(#RRGGBB)</string>
     <string name="settings_apply">설정이 즉시 적용됩니다</string>
     <string name="settings_saved">저장됨 · 즉시 적용</string>
+
+    <!-- 간편 메뉴(물방울) -->
+    <string name="quick_app">앱</string>
+    <string name="quick_settings">설정</string>
+    <string name="quick_flash">플래시</string>
+    <string name="quick_replace">한영타</string>
+    <string name="quick_badge">숨기기</string>
+    <string name="quick_state_on">켜짐</string>
+    <string name="quick_state_off">꺼짐</string>
+    <string name="quick_badge_hidden">배지를 숨겼어요. 설정에서 다시 켤 수 있어요.</string>
 
     <!-- Overlay -->
     <string name="overlay_no_focus">선택되지 않음</string>

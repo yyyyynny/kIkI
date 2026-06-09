@@ -47,6 +47,34 @@ class Prefs(context: Context) {
     fun setBadgePosition(x: Int, y: Int) =
         sp.edit().putInt(KEY_BADGE_X, x).putInt(KEY_BADGE_Y, y).apply()
 
+    /** 배지 크기 단계: 0=소, 1=중(기본=기존 외형), 2=대. */
+    var badgeSize: Int
+        get() = sp.getInt(KEY_BADGE_SIZE, 1).coerceIn(0, 2)
+        set(v) = sp.edit().putInt(KEY_BADGE_SIZE, v.coerceIn(0, 2)).apply()
+
+    /** 배지 배경색(#RRGGBB). 표시 시 [BADGE_BG_ALPHA] 가 적용돼 기본값이면 기존 #CC000000 과 동일. */
+    var badgeBgColorHex: String
+        get() = sp.getString(KEY_BADGE_BG_COLOR, DEFAULT_BADGE_BG) ?: DEFAULT_BADGE_BG
+        set(v) = sp.edit().putString(KEY_BADGE_BG_COLOR, normalizeHex(v)).apply()
+
+    /** 배지 글씨색(#RRGGBB). 기본 흰색(불투명). */
+    var badgeTextColorHex: String
+        get() = sp.getString(KEY_BADGE_TEXT_COLOR, DEFAULT_BADGE_TEXT) ?: DEFAULT_BADGE_TEXT
+        set(v) = sp.edit().putString(KEY_BADGE_TEXT_COLOR, normalizeHex(v)).apply()
+
+    /** 배지 배경 ARGB(반투명 [BADGE_BG_ALPHA] 적용). 기본값은 기존 #CC000000 과 100% 동일. */
+    fun badgeBgColorArgb(): Int {
+        val rgb = parseColorOrDefault(badgeBgColorHex, DEFAULT_BADGE_BG)
+        val alpha = (BADGE_BG_ALPHA * 255).toInt()
+        return Color.argb(alpha, Color.red(rgb), Color.green(rgb), Color.blue(rgb))
+    }
+
+    /** 배지 글씨 ARGB(불투명). 기본값은 기존 흰색과 동일. */
+    fun badgeTextColorArgb(): Int {
+        val rgb = parseColorOrDefault(badgeTextColorHex, DEFAULT_BADGE_TEXT)
+        return Color.argb(255, Color.red(rgb), Color.green(rgb), Color.blue(rgb))
+    }
+
     // ---- Feature 3: 포커스 없는 키 입력 경고 ----
     var noFocusEnabled: Boolean
         get() = sp.getBoolean(KEY_NOFOCUS_ENABLED, true)
@@ -71,7 +99,7 @@ class Prefs(context: Context) {
     fun isLangEnabled(lang: String): Boolean = when (lang) {
         ImeLocaleParser.KO -> sp.getBoolean(KEY_LANG_KO, true)
         ImeLocaleParser.EN -> sp.getBoolean(KEY_LANG_EN, true)
-        ImeLocaleParser.JA -> sp.getBoolean(KEY_LANG_JA, true)
+        // [일본어 비활성화] ImeLocaleParser.JA -> sp.getBoolean(KEY_LANG_JA, true)
         else -> true // 기타 언어는 항상 표시
     }
 
@@ -79,7 +107,7 @@ class Prefs(context: Context) {
         val key = when (lang) {
             ImeLocaleParser.KO -> KEY_LANG_KO
             ImeLocaleParser.EN -> KEY_LANG_EN
-            ImeLocaleParser.JA -> KEY_LANG_JA
+            // [일본어 비활성화] ImeLocaleParser.JA -> KEY_LANG_JA
             else -> return
         }
         sp.edit().putBoolean(key, enabled).apply()
@@ -89,7 +117,7 @@ class Prefs(context: Context) {
     fun colorHex(lang: String): String = when (lang) {
         ImeLocaleParser.KO -> sp.getString(KEY_COLOR_KO, DEFAULT_KO) ?: DEFAULT_KO
         ImeLocaleParser.EN -> sp.getString(KEY_COLOR_EN, DEFAULT_EN) ?: DEFAULT_EN
-        ImeLocaleParser.JA -> sp.getString(KEY_COLOR_JA, DEFAULT_JA) ?: DEFAULT_JA
+        // [일본어 비활성화] ImeLocaleParser.JA -> sp.getString(KEY_COLOR_JA, DEFAULT_JA) ?: DEFAULT_JA
         else -> DEFAULT_OTHER
     }
 
@@ -97,7 +125,7 @@ class Prefs(context: Context) {
         val key = when (lang) {
             ImeLocaleParser.KO -> KEY_COLOR_KO
             ImeLocaleParser.EN -> KEY_COLOR_EN
-            ImeLocaleParser.JA -> KEY_COLOR_JA
+            // [일본어 비활성화] ImeLocaleParser.JA -> KEY_COLOR_JA
             else -> return
         }
         sp.edit().putString(key, normalizeHex(hex)).apply()
@@ -105,14 +133,18 @@ class Prefs(context: Context) {
 
     /** 플래시에 사용할 ARGB 색상(불투명도 [FLASH_ALPHA] 적용). 잘못된 코드는 기본 회색으로. */
     fun flashColorArgb(lang: String): Int {
-        val rgb = try {
-            Color.parseColor(colorHex(lang))
-        } catch (e: IllegalArgumentException) {
-            Color.parseColor(DEFAULT_OTHER)
-        }
+        val rgb = parseColorOrDefault(colorHex(lang), DEFAULT_OTHER)
         val alpha = (FLASH_ALPHA * 255).toInt()
         return Color.argb(alpha, Color.red(rgb), Color.green(rgb), Color.blue(rgb))
     }
+
+    /** "#RRGGBB" 파싱(실패 시 default, default 도 실패하면 회색). 플래시/배지 색 공용. */
+    private fun parseColorOrDefault(hex: String, default: String): Int =
+        try {
+            Color.parseColor(hex)
+        } catch (e: IllegalArgumentException) {
+            try { Color.parseColor(default) } catch (e2: IllegalArgumentException) { Color.GRAY }
+        }
 
     fun register(listener: SharedPreferences.OnSharedPreferenceChangeListener) =
         sp.registerOnSharedPreferenceChangeListener(listener)
@@ -124,8 +156,14 @@ class Prefs(context: Context) {
         const val NAME = "langsense_prefs"
         const val FLASH_ALPHA = 0.85f
 
+        /** 배지 배경 불투명도(0.8 = 0xCC). 기본 배경(#000000)에 적용하면 기존 #CC000000 과 동일. */
+        const val BADGE_BG_ALPHA = 0.8f
+        const val DEFAULT_BADGE_BG = "#000000"
+        const val DEFAULT_BADGE_TEXT = "#FFFFFF"
+
         const val DEFAULT_KO = "#CC2D2D"
         const val DEFAULT_EN = "#1A6EBD"
+        // [일본어 비활성화] 색 기본값/키 보존(현재 미사용, 추후 재도입 시 참조 복구).
         const val DEFAULT_JA = "#2D8C4E"
         const val DEFAULT_OTHER = "#555555"
 
@@ -135,16 +173,19 @@ class Prefs(context: Context) {
         const val KEY_BADGE_ENABLED = "badge_enabled"
         const val KEY_BADGE_X = "badge_x"
         const val KEY_BADGE_Y = "badge_y"
+        const val KEY_BADGE_SIZE = "badge_size"
+        const val KEY_BADGE_BG_COLOR = "badge_bg_color"
+        const val KEY_BADGE_TEXT_COLOR = "badge_text_color"
         const val KEY_NOFOCUS_ENABLED = "nofocus_enabled"
         const val KEY_NOFOCUS_THRESHOLD = "nofocus_threshold"
         const val KEY_REPLACE_ENABLED = "replace_enabled"
         const val KEY_REPLACE_CONFIDENCE = "replace_confidence"
         const val KEY_LANG_KO = "lang_ko"
         const val KEY_LANG_EN = "lang_en"
-        const val KEY_LANG_JA = "lang_ja"
+        const val KEY_LANG_JA = "lang_ja" // [일본어 비활성화] 미사용, 보존
         const val KEY_COLOR_KO = "color_ko"
         const val KEY_COLOR_EN = "color_en"
-        const val KEY_COLOR_JA = "color_ja"
+        const val KEY_COLOR_JA = "color_ja" // [일본어 비활성화] 미사용, 보존
 
         /** "#rrggbb" 형식으로 정규화. 유효하지 않으면 기본 회색. */
         fun normalizeHex(input: String): String {
