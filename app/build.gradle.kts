@@ -17,6 +17,29 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // ── 고정 공유 서명키 (요청 사항: 삭제 없이 덮어쓰기 설치) ─────────────────────────
+    // 모든 빌드(로컬/CI)가 같은 키로 서명되면 기존 설치 위에 바로 덮어쓰기가 된다.
+    // 키스토어 경로/비밀번호는 저장소에 박지 않고 Gradle 속성(또는 환경변수 ORG_GRADLE_PROJECT_*)에서
+    // 읽는다. 값이 없거나 파일이 없으면 기본 디버그 서명으로 안전하게 폴백한다(저장소에 비밀 없음).
+    val sharedStoreFile = (project.findProperty("KIKI_STORE_FILE") as String?) ?: "kiki-shared.jks"
+    val sharedStorePassword = project.findProperty("KIKI_STORE_PASSWORD") as String?
+    val sharedKeyAlias = project.findProperty("KIKI_KEY_ALIAS") as String?
+    val sharedKeyPassword = project.findProperty("KIKI_KEY_PASSWORD") as String?
+    val sharedKeystore = file(sharedStoreFile)
+    val useSharedSigning = sharedKeystore.exists() &&
+        sharedStorePassword != null && sharedKeyAlias != null && sharedKeyPassword != null
+
+    signingConfigs {
+        if (useSharedSigning) {
+            create("shared") {
+                storeFile = sharedKeystore
+                storePassword = sharedStorePassword
+                keyAlias = sharedKeyAlias
+                keyPassword = sharedKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -24,9 +47,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (useSharedSigning) signingConfig = signingConfigs.getByName("shared")
         }
         debug {
             isMinifyEnabled = false
+            // 공유 키가 설정돼 있으면 디버그도 그 키로 서명(머신/CI 간 서명 일치 → 덮어쓰기 설치 가능).
+            if (useSharedSigning) signingConfig = signingConfigs.getByName("shared")
         }
     }
 

@@ -51,6 +51,9 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     @Volatile
     private var released = false
 
+    /** 마지막 "언어 전환" 플래시 시각(uptime). 색과 무관한 에피소드 가드용(아래 showFlash 참조). */
+    private var lastLangFlashAt = 0L
+
     // ---------------------------------------------------------------------
     // Feature 1 / 3: 플래시
     // ---------------------------------------------------------------------
@@ -60,6 +63,14 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         if (released) return@onMain
         if (!prefs.flashEnabled) return@onMain
         if (!prefs.isLangEnabled(lang)) return@onMain
+        // (Bug 2 고질 중복 깜박임 최종 차단) 언어 전환 플래시는 "한 전환 에피소드당 1회"만 낸다.
+        // 색과 무관하게 최소 간격(LANG_FLASH_MIN_INTERVAL_MS) 안의 재요청은 같은 전환에서 비롯된 중복
+        // (다중 감지 신호·지연된 서브타입 캐시·stale 언어 재발동)으로 보고 건너뛴다. 사람이 한/영을 이보다
+        // 빠르게 두 번 바꾸지 않으므로 정상 전환은 놓치지 않는다. (ImeStateDetector 의 합치기/불응기가
+        // 1차 방어, 이 가드가 색을 가리지 않는 최종 방어 — 다른 색 2번째 깜박임까지 확실히 차단)
+        val now = SystemClock.uptimeMillis()
+        if (now - lastLangFlashAt < LANG_FLASH_MIN_INTERVAL_MS) return@onMain
+        lastLangFlashAt = now
         flash(prefs.flashColorArgb(lang), ImeLocaleParser.displayName(lang))
     }
 
@@ -382,5 +393,12 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
 
         /** 같은 색 플래시 중복 억제 창(ms). 근본 방어(ImeStateDetector) 뒤의 렌더 단계 마지막 안전망. */
         const val FLASH_DEDUP_MS = 350L
+
+        /**
+         * 언어 전환 플래시의 "전환 에피소드" 최소 간격(ms). 색과 무관하게 이 간격 안의 추가 플래시는
+         * 같은 전환의 중복으로 보고 건너뛴다. ImeStateDetector 불응기(450ms)+합치기 창보다 넉넉히 크게
+         * 잡아, 지연된 stale 언어가 다른 색으로 한 번 더 깜박이는 고질 현상까지 차단한다.
+         */
+        const val LANG_FLASH_MIN_INTERVAL_MS = 700L
     }
 }

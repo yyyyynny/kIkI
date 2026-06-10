@@ -30,6 +30,12 @@ jobs:
           java-version: "17"
           cache: gradle
 
+      # 빌드 자동화/도구 실행에 Node.js 24 를 고정 사용(요청 사항).
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 

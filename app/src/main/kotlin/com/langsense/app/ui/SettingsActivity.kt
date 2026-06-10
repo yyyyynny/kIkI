@@ -39,6 +39,15 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var prefs: Prefs
     private lateinit var savedHint: TextView
 
+    /**
+     * 래디얼 메뉴 등 외부에서 바뀔 수 있는 토글(배지/플래시/한영타). 화면 재개 시 현재 값으로 다시
+     * 동기화해 stale 표시를 막는다(이슈 4: 숨기기 후 설정 화면 토글이 안 꺼져 보이던 문제).
+     */
+    private val boundToggles = mutableListOf<Pair<CheckBox, () -> Boolean>>()
+
+    /** onResume 동기화 중 onCheckedChanged 가 prefs 를 되쓰지 않도록 막는 가드. */
+    private var syncingToggles = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
@@ -72,7 +81,7 @@ class SettingsActivity : AppCompatActivity() {
 
         // --- 전환 플래시 ---
         root.addView(sectionHeader(getString(R.string.settings_flash)))
-        root.addView(switchRow(getString(R.string.settings_flash_enabled), prefs.flashEnabled) {
+        root.addView(boundSwitchRow(getString(R.string.settings_flash_enabled), { prefs.flashEnabled }) {
             prefs.flashEnabled = it; markSaved()
         })
         // 깜박임 속도 100~500ms
@@ -99,7 +108,7 @@ class SettingsActivity : AppCompatActivity() {
 
         // --- 상시 배지 ---
         root.addView(sectionHeader(getString(R.string.settings_badge)))
-        root.addView(switchRow(getString(R.string.settings_badge_enabled), prefs.badgeEnabled) {
+        root.addView(boundSwitchRow(getString(R.string.settings_badge_enabled), { prefs.badgeEnabled }) {
             prefs.badgeEnabled = it; markSaved()
         })
         // [5] 크기 3단계(소/중/대)
@@ -127,7 +136,7 @@ class SettingsActivity : AppCompatActivity() {
 
         // --- 한영타 교체 ---
         root.addView(sectionHeader(getString(R.string.settings_replace)))
-        root.addView(switchRow(getString(R.string.settings_replace_enabled), prefs.replaceEnabled) {
+        root.addView(boundSwitchRow(getString(R.string.settings_replace_enabled), { prefs.replaceEnabled }) {
             prefs.replaceEnabled = it; markSaved()
         })
         root.addView(
@@ -147,6 +156,26 @@ class SettingsActivity : AppCompatActivity() {
         return true
     }
 
+    override fun onResume() {
+        super.onResume()
+        // 외부(래디얼 메뉴)에서 바뀐 토글 값을 현재 prefs 기준으로 다시 맞춘다(stale 표시 방지).
+        syncingToggles = true
+        boundToggles.forEach { (cb, get) -> cb.isChecked = get() }
+        syncingToggles = false
+    }
+
+    /**
+     * 외부에서도 바뀔 수 있는 토글 행. 일반 [switchRow] 와 같지만 [boundToggles] 에 등록해
+     * onResume 에서 현재 값으로 재동기화한다. 동기화 중에는 [syncingToggles] 가드로 되쓰기를 막는다.
+     */
+    private fun boundSwitchRow(label: String, get: () -> Boolean, set: (Boolean) -> Unit): CheckBox =
+        CheckBox(this).apply {
+            text = label
+            isChecked = get()
+            setOnCheckedChangeListener { _, checked -> if (!syncingToggles) set(checked) }
+            boundToggles.add(this to get)
+        }
+
     private fun markSaved() {
         savedHint.text = getString(R.string.settings_saved)
     }
@@ -157,9 +186,11 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun sectionHeader(title: String): TextView = TextView(this).apply {
         text = title
-        textSize = 16f
+        textSize = 16.5f
+        setTextColor(getColor(R.color.ui_accent)) // 살짝 세련된 강조색(이슈 7: UI 약간 다듬기)
+        letterSpacing = 0.01f
         setTypeface(typeface, android.graphics.Typeface.BOLD)
-        setPadding(0, dp(20), 0, dp(6))
+        setPadding(0, dp(22), 0, dp(8))
     }
 
     /** 항목 아래 붙는 짧은 회색 설명 문구(기능/수치 해설). */

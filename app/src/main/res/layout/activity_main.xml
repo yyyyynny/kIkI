@@ -14,7 +14,9 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/onboarding_title"
-            android:textSize="22sp"
+            android:textColor="@color/ui_accent"
+            android:textSize="24sp"
+            android:letterSpacing="0.01"
             android:textStyle="bold" />
 
         <TextView
@@ -36,6 +38,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:text="@string/step_overlay"
+            android:textColor="@color/ui_accent"
             android:textSize="17sp"
             android:textStyle="bold" />
 
@@ -73,6 +76,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:text="@string/step_accessibility"
+            android:textColor="@color/ui_accent"
             android:textSize="17sp"
             android:textStyle="bold" />
 
@@ -110,6 +114,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:text="@string/step_battery"
+            android:textColor="@color/ui_accent"
             android:textSize="17sp"
             android:textStyle="bold" />
 

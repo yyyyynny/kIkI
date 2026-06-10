@@ -7,9 +7,12 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.util.TypedValue
+import android.view.animation.LinearInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
+import kotlin.math.PI
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /** 간편 메뉴 항목(표시 라벨 + 탭 동작). */
 data class QuickMenuItem(val label: String, val onClick: () -> Unit)
@@ -47,6 +50,12 @@ class QuickMenuOverlayView(
     private var expandFraction = 0f
     private var animator: ValueAnimator? = null
 
+    /** 휴지 상태 앰비언트(부유+빛 점) 애니메이터 — 펼침이 끝난 뒤, 메뉴가 열려 있는 동안만 무한 반복. */
+    private var ambientAnimator: ValueAnimator? = null
+    private var ambientPhase = 0f
+    /** 펼침 완료 시점의 오브별 기준 translationY(부유는 이 값에 오프셋을 더해 표현). */
+    private var restingTy = FloatArray(0)
+
     private val overshoot = OvershootInterpolator(RadialMenuStyle.OVERSHOOT_TENSION)
 
     private val scrimPaint = Paint().apply { color = RadialMenuStyle.SCRIM_COLOR }
@@ -62,6 +71,8 @@ class QuickMenuOverlayView(
         strokeWidth = dp(RadialMenuStyle.LINE_CRISP_WIDTH_DP).toFloat()
         strokeCap = Paint.Cap.ROUND
     }
+    /** 스포크 위를 흐르는 빛 점 페인트(글로우+코어 2겹으로 그려 하드웨어 가속에서도 안전). */
+    private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val linePath = Path()
 
     private val orbW = dp(RadialMenuStyle.ORB_W_DP + 2 * RadialMenuStyle.ORB_GLOW_SPREAD_DP)
@@ -105,6 +116,8 @@ class QuickMenuOverlayView(
         } else {
             // 재배치(회전 등) 시 현재 진행도로 위치만 다시 반영.
             applyFraction(expandFraction)
+            // 앰비언트 동작 중이면 부유 기준점도 새 위치로 갱신(어긋남 방지).
+            if (ambientAnimator != null) captureRestingPositions()
         }
     }
 
@@ -136,13 +149,17 @@ class QuickMenuOverlayView(
         collapsing = false
         applyFraction(0f) // 앵커 위치(scale 0)에서 시작하도록 먼저 반영
         val total = RadialMenuStyle.EXPAND_DURATION_MS + (orbs.size - 1) * RadialMenuStyle.EXPAND_STAGGER_MS
-        runAnimator(from = 0f, to = 1f, duration = total, onEnd = null)
+        // 펼침이 끝나면(자연 종료) 휴지 상태 앰비언트(부유+빛 점)를 시작한다.
+        runAnimator(from = 0f, to = 1f, duration = total, onEnd = { startAmbient() })
     }
 
     /** 외부(스크림/항목 탭)에서 수납을 요청. 수납 애니메이션 후 [onDismiss] 로 윈도우 제거. */
     fun requestCollapse() {
         if (collapsing) return
+        // 이미 윈도우에서 떨어졌으면(예: '숨기기'가 배지를 먼저 없애며 메뉴까지 제거) 애니메이션 없이 종료.
+        if (!isAttachedToWindow) return
         collapsing = true
+        stopAmbient()
         runAnimator(
             from = expandFraction, to = 0f,
             duration = RadialMenuStyle.COLLAPSE_DURATION_MS,
@@ -200,6 +217,50 @@ class QuickMenuOverlayView(
         invalidate() // 스크림/별자리 선 다시 그리기
     }
 
+    // ── 휴지(idle) 앰비언트: 부유(bob) + 빛 점(travel dot) ─────────────────────
+
+    /**
+     * 메뉴가 완전히 펼쳐진 뒤 오브가 살짝 떠다니고(bob) 스포크 위로 빛 점이 흐르는 연출을 시작한다.
+     * 메뉴가 열려 있는 동안만 도는 무한 반복이라 배터리 영향은 메뉴 표시 시간으로 한정된다.
+     */
+    private fun startAmbient() {
+        if (collapsing) return
+        captureRestingPositions()
+        ambientAnimator?.cancel()
+        ambientAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = RadialMenuStyle.AMBIENT_PERIOD_MS
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = LinearInterpolator()
+            addUpdateListener {
+                ambientPhase = it.animatedValue as Float
+                applyAmbient()
+            }
+            start()
+        }
+    }
+
+    private fun stopAmbient() {
+        ambientAnimator?.cancel()
+        ambientAnimator = null
+    }
+
+    /** 펼침 완료 시점의 오브별 translationY 를 부유의 기준값으로 보관. */
+    private fun captureRestingPositions() {
+        restingTy = FloatArray(orbs.size) { orbs[it].translationY }
+    }
+
+    /** 매 프레임 오브에 부유 오프셋을 적용하고(translationY) 빛 점을 위해 다시 그린다. */
+    private fun applyAmbient() {
+        if (restingTy.size != orbs.size) return
+        val amp = dp(RadialMenuStyle.BOB_AMP_DP).toFloat()
+        for (i in orbs.indices) {
+            // 오브별 위상차로 물결처럼 시차를 둔다.
+            val phase = (ambientPhase + i * RadialMenuStyle.BOB_PHASE_STEP) * 2f * PI.toFloat()
+            orbs[i].translationY = restingTy[i] + sin(phase) * amp
+        }
+        invalidate() // 빛 점/선 다시 그리기(오브 현재 위치 기준)
+    }
+
     // ── 그리기(스크림 + 별자리 선) ───────────────────────────────────────────
 
     override fun dispatchDraw(canvas: Canvas) {
@@ -247,6 +308,31 @@ class QuickMenuOverlayView(
             canvas.drawPath(linePath, lineGlowPaint)
             canvas.drawPath(linePath, lineCrispPaint)
         }
+
+        // 빛 점: 각 스포크(배지→오브) 위를 천천히 흐른다(시간 기반 위상, 오브별 스태거).
+        drawTravelDots(canvas, ax, ay, cx, cy, a)
+    }
+
+    /** 스포크를 따라 흐르는 빛 점. 양 끝에서 옅고 가운데서 진하게(sin) 페이드해 자연스럽게. */
+    private fun drawTravelDots(canvas: Canvas, ax: Float, ay: Float, cx: FloatArray, cy: FloatArray, vis: Float) {
+        val period = RadialMenuStyle.TRAVEL_DOT_PERIOD_MS
+        val base = (android.os.SystemClock.uptimeMillis() % period).toFloat() / period
+        val core = dp(RadialMenuStyle.TRAVEL_DOT_RADIUS_DP).toFloat()
+        for (i in orbs.indices) {
+            val t = ((base + i.toFloat() / orbs.size) % 1f)
+            val px = lerp(ax, cx[i], t)
+            val py = lerp(ay, cy[i], t)
+            val fade = sin(t * PI).toFloat() * vis // 끝에서 0, 중앙에서 최대 + 메뉴 가시성 반영
+            if (fade <= 0.01f) continue
+            // 글로우(크고 옅게)
+            dotPaint.color = RadialMenuStyle.TRAVEL_DOT_GLOW
+            dotPaint.alpha = (((RadialMenuStyle.TRAVEL_DOT_GLOW ushr 24) and 0xFF) * fade).roundToInt().coerceIn(0, 255)
+            canvas.drawCircle(px, py, core * 2.4f, dotPaint)
+            // 코어(작고 밝게)
+            dotPaint.color = RadialMenuStyle.TRAVEL_DOT_COLOR
+            dotPaint.alpha = (255 * fade).roundToInt().coerceIn(0, 255)
+            canvas.drawCircle(px, py, core, dotPaint)
+        }
     }
 
     // ── 탭 처리 ───────────────────────────────────────────────────────────────
@@ -261,6 +347,7 @@ class QuickMenuOverlayView(
     override fun onDetachedFromWindow() {
         animator?.cancel()
         animator = null
+        stopAmbient()
         super.onDetachedFromWindow()
     }
 

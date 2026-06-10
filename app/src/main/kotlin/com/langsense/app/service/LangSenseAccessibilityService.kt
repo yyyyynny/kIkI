@@ -9,6 +9,7 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.Toast
 import com.langsense.app.R
 import com.langsense.app.overlay.OverlayManager
@@ -98,17 +99,49 @@ class LangSenseAccessibilityService : AccessibilityService(),
 
         // 리스너 등록 + 현재 언어 캐시 + 초기 배지
         currentLang = imeDetector.start()
-        refreshBadge()
-
         initialized = true
+        // 초기 소프트 키보드 표시 상태 반영 후 배지 표시(기능 OFF면 windows 순회 없이 배지만 평가).
+        refreshSoftKeyboardState()
+        refreshBadge()
     }
 
+    /** 소프트 키보드(IME 창)가 현재 화면에 떠 있는지 캐시. "터치 키보드 제외" 게이트 기준(추가 기능 2). */
+    private var softKeyboardVisible = false
+
     /**
-     * 기능 활성 여부 (추가 기능 2). "터치 키보드 제외"가 꺼져 있으면 항상 활성(기존 동작),
-     * 켜져 있으면 외장 키보드가 연결돼 있을 때만 활성(소프트 키보드만 쓰는 동안 전부 비활성).
+     * 기능 활성 여부 (추가 기능 2).
+     * "터치 키보드 제외"가 꺼져 있으면 항상 활성(기존 동작). 켜져 있으면 **소프트 키보드(터치 입력)가
+     * 떠 있지 않을 때만** 활성 — 즉 외장 키보드로 입력 중(소프트 키보드 숨김)이면 활성, 화면 터치
+     * 키보드를 쓰는 동안(소프트 키보드 표시)이면 플래시/배지/경고/교체를 모두 끈다.
+     *
+     * 'HW 키보드 연결 여부'가 아니라 '소프트 키보드 표시 여부'로 판정하는 이유: 외장 키보드를 상시
+     * 연결해 두는 사용자는 연결 기준이면 늘 활성이라 터치 입력 시 꺼지지 않는다(기존 미작동 원인).
+     * 소프트 키보드 표시 여부가 "지금 어느 키보드로 입력하는가"를 직접 반영해 두 요건을 동시에 만족한다.
      */
     private fun featuresEnabled(): Boolean =
-        !prefs.excludeTouchKeyboard || (keyboardDetector?.connected == true)
+        !prefs.excludeTouchKeyboard || !softKeyboardVisible
+
+    /** 접근성 윈도우에 IME(소프트 키보드) 창이 있으면 표시 중으로 본다. */
+    private fun computeSoftKeyboardVisible(): Boolean = runCatching {
+        windows.any { it?.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+    }.getOrDefault(false)
+
+    /**
+     * 소프트 키보드 표시 상태를 갱신하고, 바뀌면 배지 표시를 다시 평가.
+     * 기능 OFF(기본)면 비싼 windows 순회를 하지 않아 일반 사용자에겐 부하가 없다.
+     */
+    private fun refreshSoftKeyboardState() {
+        if (!initialized) return
+        if (!prefs.excludeTouchKeyboard) {
+            if (softKeyboardVisible) { softKeyboardVisible = false; refreshBadge() }
+            return
+        }
+        val now = computeSoftKeyboardVisible()
+        if (now != softKeyboardVisible) {
+            softKeyboardVisible = now
+            refreshBadge()
+        }
+    }
 
     /** 배지 표시/숨김을 배지 설정과 기능 활성 여부에 따라 일관되게 반영. */
     private fun refreshBadge() {
@@ -116,10 +149,10 @@ class LangSenseAccessibilityService : AccessibilityService(),
         else overlay.hideBadge()
     }
 
-    /** 외장 키보드 연결/해제 시: 배지 갱신(켜지면 표시, 꺼지면 숨김 — 배지가 닫히며 간편 메뉴도 함께 닫힘). */
+    /** 외장 키보드 연결/해제 시: 소프트 키보드 표시 상태가 함께 바뀌므로 재평가(추가 기능 2). */
     private fun onKeyboardPresenceChanged() {
         if (!initialized) return
-        refreshBadge()
+        refreshSoftKeyboardState()
     }
 
     /**
@@ -137,6 +170,8 @@ class LangSenseAccessibilityService : AccessibilityService(),
         },
         QuickMenuItem(getString(R.string.quick_badge)) {
             prefs.badgeEnabled = false
+            // 설정 리스너 타이밍과 무관하게 즉시 배지를 숨긴다(이중 안전 — 숨기기 직후 미반영 방지).
+            refreshBadge()
             toastMsg(getString(R.string.quick_badge_hidden))
         }
     )
@@ -161,7 +196,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
 
     private fun onLanguageChanged(lang: String) {
         currentLang = lang
-        // 터치 키보드 제외 ON + 외장 키보드 없음 → 플래시/배지 모두 비활성(추가 기능 2).
+        // 터치 키보드 제외 ON + 소프트 키보드 표시 중 → 플래시/배지 모두 비활성(추가 기능 2).
         if (!featuresEnabled()) return
         overlay.showFlash(lang)
         overlay.updateBadge(lang)
@@ -171,11 +206,16 @@ class LangSenseAccessibilityService : AccessibilityService(),
         event ?: return
         if (!initialized) return
         when (event.eventType) {
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ->
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
                 imeDetector.onWindowStateChanged(event)
+                refreshSoftKeyboardState()
+            }
+            // 소프트 키보드(IME) 창의 등장/소멸은 주로 이 이벤트로 온다 → 표시 상태 재평가(추가 기능 2).
+            // (기능 OFF 면 refreshSoftKeyboardState 가 즉시 빠져나가 일반 사용자에겐 부하가 없다)
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> refreshSoftKeyboardState()
             AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> {
                 markEditableActivity(event)
-                // 터치 키보드 제외 ON + 외장 키보드 없음 → 한영타 교체 비활성(추가 기능 2).
+                // 터치 키보드 제외 ON + 소프트 키보드 표시 중 → 한영타 교체 비활성(추가 기능 2).
                 if (featuresEnabled()) selectionMonitor.onSelectionChanged(event)
             }
             // 글자가 실제 편집칸에 들어갔다는 가장 직접적인 신호(포커스 경고 오발동 방지용).
@@ -204,8 +244,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
     override fun onKeyEvent(event: KeyEvent?): Boolean {
         val e = event ?: return false
         if (!initialized) return false
-        // 터치 키보드 제외 ON + 외장 키보드 없음 → 포커스 없는 키 입력 경고 비활성(추가 기능 2).
-        // (이 경우 물리 키 이벤트 자체가 거의 없지만, 가상 키 등 예외를 위해 게이트한다)
+        // 터치 키보드 제외 ON + 소프트 키보드 표시 중 → 포커스 없는 키 입력 경고 비활성(추가 기능 2).
         if (!featuresEnabled()) return false
         // (Bug 1) 메인(디스패치) 스레드에서는 키 이벤트 속성만 보는 저비용 판정만 동기로 하고 즉시 반환한다.
         // 무거운 포커스 조회(노드 트리 IPC)는 백그라운드 스레드로 넘겨 키 디스패치가 멈추지 않게 한다.
@@ -249,7 +288,9 @@ class LangSenseAccessibilityService : AccessibilityService(),
      */
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (initialized) keyboardDetector?.recheck()
+        if (!initialized) return
+        keyboardDetector?.recheck()
+        refreshSoftKeyboardState()
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
@@ -279,8 +320,9 @@ class LangSenseAccessibilityService : AccessibilityService(),
     override fun onSharedPreferenceChanged(sp: SharedPreferences?, key: String?) {
         if (!initialized) return
         when (key) {
-            // 배지 표시 설정 또는 "터치 키보드 제외" 토글이 바뀌면 배지 표시/숨김을 다시 평가(추가 기능 2).
-            Prefs.KEY_BADGE_ENABLED, Prefs.KEY_EXCLUDE_TOUCH_KEYBOARD -> refreshBadge()
+            Prefs.KEY_BADGE_ENABLED -> refreshBadge()
+            // "터치 키보드 제외"를 켜면 현재 소프트 키보드 표시 상태를 즉시 계산해 반영(추가 기능 2).
+            Prefs.KEY_EXCLUDE_TOUCH_KEYBOARD -> refreshSoftKeyboardState().also { refreshBadge() }
             // 배지 크기/색은 표시 중인 배지에 즉시 재적용(꺼져 있으면 다음 표시 때 반영).
             Prefs.KEY_BADGE_SIZE, Prefs.KEY_BADGE_BG_COLOR, Prefs.KEY_BADGE_TEXT_COLOR -> {
                 if (prefs.badgeEnabled && featuresEnabled()) overlay.updateBadge(currentLang)

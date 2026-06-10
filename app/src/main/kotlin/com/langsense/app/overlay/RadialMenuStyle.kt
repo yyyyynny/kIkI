@@ -44,23 +44,27 @@ object RadialMenuStyle {
     const val LINE_GLOW = 0x4C4DA8FF.toInt()
     const val LINE_CRISP = 0x8CCDEEFF.toInt()
 
-    // ── 치수 (dp; 밀도 변환은 사용처에서) ──────────────────────────────────────
-    /** 오브 유리구슬 박스 크기(dp). HTML .orb 80x56 비율을 안드로이드 터치 친화 크기로 옮김. */
-    const val ORB_W_DP = 72f
-    const val ORB_H_DP = 52f
+    /** 선 위를 흐르는 빛 점(travel dot) — HTML .travel-dot fill #cdeeff. */
+    const val TRAVEL_DOT_COLOR = 0xFFCDEEFF.toInt()
+    const val TRAVEL_DOT_GLOW = 0x807FD2FF.toInt()
 
-    /** 라벨이 들어갈 오브 아래 영역(dp). (HTML 은 라벨이 오브 아래 -24px) */
-    const val LABEL_AREA_DP = 22f
+    // ── 치수 (dp; 밀도 변환은 사용처에서) ──────────────────────────────────────
+    /** 오브 유리구슬 박스 크기(dp). 기존이 과대해(피드백) 더 작고 단정하게 줄임. */
+    const val ORB_W_DP = 56f
+    const val ORB_H_DP = 40f
+
+    /** 라벨이 들어갈 오브 아래 영역(dp). (HTML 은 라벨이 오브 아래) */
+    const val LABEL_AREA_DP = 20f
 
     /** 부채꼴 이상적 반지름(dp). 공간 충분 시 그대로 사용(RadialFanLayout 의 desiredRadius). */
-    const val FAN_RADIUS_DP = 140f
+    const val FAN_RADIUS_DP = 116f
 
     /** 부채꼴 펼침 각도(도). HTML 140°(110°~250°). 모서리에서 화면에 넣기 위해 최소 각도까지 좁힘. */
     const val FAN_SPAN_DEG = 140.0
     const val FAN_MIN_SPAN_DEG = 70.0
 
-    /** 인접 오브 중심 거리 최소값(dp) — 겹침 방지(오브 폭 72 + 여유 8). */
-    const val ORB_MIN_GAP_DP = 80f
+    /** 인접 오브 중심 거리 최소값(dp) — 겹침 방지(오브 폭 56 + 여유 8). */
+    const val ORB_MIN_GAP_DP = 64f
 
     /** 화면 가장자리 여백(dp). */
     const val BOUNDS_MARGIN_DP = 10f
@@ -68,15 +72,18 @@ object RadialMenuStyle {
     /** 오브 테두리/링/선 굵기(dp). */
     const val ORB_RIM_WIDTH_DP = 1.5f
     const val ORB_INNER_RING_WIDTH_DP = 1f
-    const val ORB_CORNER_DP = 18f
-    const val LINE_GLOW_WIDTH_DP = 4f
+    const val ORB_CORNER_DP = 14f
+    const val LINE_GLOW_WIDTH_DP = 3.5f
     const val LINE_CRISP_WIDTH_DP = 1.2f
 
     /** 외곽 글로우가 오브 밖으로 번지는 정도(dp). */
-    const val ORB_GLOW_SPREAD_DP = 10f
+    const val ORB_GLOW_SPREAD_DP = 8f
 
     /** 라벨 글자 크기(sp). HTML 12px. */
-    const val LABEL_TEXT_SP = 12f
+    const val LABEL_TEXT_SP = 11f
+
+    /** 빛 점 반지름(dp). */
+    const val TRAVEL_DOT_RADIUS_DP = 2.6f
 
     // ── 애니메이션 타이밍(ms) ────────────────────────────────────────────────
     /** 오브 펼침 1개 지속(HTML 0.46s, overshoot). */
@@ -96,4 +103,17 @@ object RadialMenuStyle {
 
     /** OvershootInterpolator 장력(HTML cubic-bezier(0.34,1.56,0.64,1) 의 튕김 근사). */
     const val OVERSHOOT_TENSION = 1.6f
+
+    // ── 휴지(idle) 상태 앰비언트 모션 — 메뉴가 열려 있는 동안만 동작(배터리 영향 한정) ──────────
+    /** 앰비언트(부유+빛 점) 한 주기(ms). HTML bob 3.8~5.3s / travel dot 흐름. */
+    const val AMBIENT_PERIOD_MS = 2600L
+
+    /** 오브 부유(bob) 진폭(dp) — 위아래로 살짝 떠다님(HTML bob -5~-10px). */
+    const val BOB_AMP_DP = 5f
+
+    /** 오브별 부유 위상차(주기 대비 비율) — 물결처럼 시차를 두고 움직이게. */
+    const val BOB_PHASE_STEP = 0.18f
+
+    /** 빛 점이 스포크를 한 번 흐르는 데 걸리는 시간(ms) — 길수록 천천히 흐름. */
+    const val TRAVEL_DOT_PERIOD_MS = 1400L
 }
