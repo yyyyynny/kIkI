@@ -45,6 +45,21 @@
     (`selected_input_method_subtype` / `default_input_method`) — **IME 언어 전환 즉시 감지(주 경로)**
   - `TYPE_WINDOW_STATE_CHANGED` + Samsung 팝업 텍스트 — 백스톱/삼성 내부 토글 보조 경로
 
+### 빌드/툴체인 버전(고정)
+
+> CI(`.github/workflows/ci.yml`)와 로컬 빌드가 동일하게 쓰는 고정 버전. 변경 시 이 표와 CI 를 함께 갱신.
+
+| 항목 | 버전 | 비고 |
+|---|---|---|
+| JDK | **17** (Temurin) | AGP 8.x / Gradle 8.11.1 요구 |
+| Gradle | **8.11.1** | `gradle/wrapper/gradle-wrapper.properties` |
+| AGP | **8.7.3** | `gradle/libs.versions.toml` |
+| compileSdk / targetSdk | **35** | minSdk 29 |
+| build-tools | **35.0.0** | CI 에서 `sdkmanager` 로 설치 |
+| Node.js | **24** | 프로젝트 표준(JS 기반 도구/스크립트 작성 시 24 기준) |
+
+- CI 사용법·실패 진단·브랜치 보호 설정은 `docs/CI_가이드.md` 참조.
+
 ---
 
 ## 핵심 기능 명세

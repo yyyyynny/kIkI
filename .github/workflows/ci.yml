@@ -1,0 +1,127 @@
+name: CI
+
+# 트리거(웹앱 템플릿과 동일 원칙):
+#  - pull_request: PR 생성/갱신 시
+#  - push: main 및 claude/** 작업 브랜치
+#  - workflow_dispatch: Actions 탭에서 수동 실행
+on:
+  pull_request:
+  push:
+    branches: [main, "claude/**"]
+  workflow_dispatch:
+
+# 같은 ref 에 새 커밋이 오면 이전 실행을 자동 취소 → 빠른 피드백, 러너 절약
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# 최소 권한(코드 읽기만). 시크릿/서명키는 CI 에 넣지 않는다(릴리스 서명은 별도).
+permissions:
+  contents: read
+
+jobs:
+  # ── 검사 잡: Android Lint + 디버그 빌드 ────────────────────────────────────
+  build-lint:
+    name: 빌드 · 린트
+    runs-on: ubuntu-latest
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@v4
+
+      - name: JDK 17 설치 (Temurin)   # AGP 8.x / Gradle 8.11.1 요구 버전
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Node.js 24 설치 (프로젝트 표준 — JS 기반 도구/스크립트용)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Gradle 설정 + 캐시
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Android SDK 설치
+        uses: android-actions/setup-android@v3
+
+      - name: 필요한 SDK 패키지 설치
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: gradlew 실행 권한 부여
+        run: chmod +x ./gradlew
+
+      - name: Android Lint (lintDebug)
+        run: |
+          echo "::group::Android Lint 실행"
+          ./gradlew lintDebug --stacktrace
+          echo "::endgroup::"
+
+      - name: 디버그 APK 빌드 (assembleDebug)
+        run: |
+          echo "::group::디버그 APK 빌드"
+          ./gradlew assembleDebug --stacktrace
+          echo "::endgroup::"
+
+      - name: APK 업로드(아티팩트)
+        uses: actions/upload-artifact@v4
+        with:
+          name: kiki-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Lint 리포트 업로드(실패해도 항상)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ── 테스트 잡: 단위 테스트 ─────────────────────────────────────────────────
+  test:
+    name: 단위 테스트
+    runs-on: ubuntu-latest
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@v4
+
+      - name: JDK 17 설치 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Node.js 24 설치 (프로젝트 표준)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Gradle 설정 + 캐시
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Android SDK 설치
+        uses: android-actions/setup-android@v3
+
+      - name: 필요한 SDK 패키지 설치
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: gradlew 실행 권한 부여
+        run: chmod +x ./gradlew
+
+      - name: 단위 테스트 (testDebugUnitTest)
+        run: |
+          echo "::group::단위 테스트 실행"
+          ./gradlew testDebugUnitTest --stacktrace
+          echo "::endgroup::"
+
+      - name: 테스트 리포트 업로드(실패해도 항상)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: app/build/reports/tests/testDebugUnitTest
+          if-no-files-found: ignore
+          retention-days: 7
