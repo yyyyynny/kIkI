@@ -55,7 +55,6 @@ class RadialOrbView(context: Context) : View(context) {
     }
 
     private val orbRect = RectF()
-    private val corner get() = dp(RadialMenuStyle.ORB_CORNER_DP)
 
     /** 오브(유리구슬) 박스 높이(px). 뷰 상단(글로우 여백 아래)에 오브, 그 아래에 라벨 영역. */
     private val orbBoxH: Float get() = dp(RadialMenuStyle.ORB_H_DP)
@@ -107,29 +106,23 @@ class RadialOrbView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         if (width == 0 || height == 0) return
 
-        // 1) 외곽 글로우
+        // 오브는 정원(둥근 사각형이 "네모 칸" 같다는 피드백 반영). 반지름은 박스의 절반.
         val cx = orbRect.centerX()
         val cy = orbRect.centerY()
-        val glowR = min(orbRect.width(), orbRect.height()) / 2f + dp(RadialMenuStyle.ORB_GLOW_SPREAD_DP)
-        canvas.drawCircle(cx, cy, glowR, glowPaint)
+        val r = min(orbRect.width(), orbRect.height()) / 2f
 
-        // 2) 유리 채움
-        canvas.drawRoundRect(orbRect, corner, corner, fillPaint)
-        // 3) 상단 광택(오브 영역으로 클립)
-        canvas.save()
-        canvas.clipRect(orbRect)
-        canvas.drawRoundRect(orbRect, corner, corner, glossPaint)
-        canvas.restore()
-        // 4) 시안 림
-        canvas.drawRoundRect(orbRect, corner, corner, rimPaint)
+        // 1) 외곽 글로우
+        val glowR = r + dp(RadialMenuStyle.ORB_GLOW_SPREAD_DP)
+        canvas.drawCircle(cx, cy, glowR, glowPaint)
+        // 2) 유리 채움(원)
+        canvas.drawCircle(cx, cy, r, fillPaint)
+        // 3) 상단 광택(좌상단 스페큘러) — 광택 그라데이션이 가장자리에서 투명해 원 안에 자연히 담긴다.
+        canvas.drawCircle(cx, cy, r, glossPaint)
+        // 4) 시안 림(원 안쪽에 들어오도록 굵기 절반만큼 줄여 그림)
+        val rimInset = dp(RadialMenuStyle.ORB_RIM_WIDTH_DP) / 2f
+        canvas.drawCircle(cx, cy, r - rimInset, rimPaint)
         // 5) 안쪽 얇은 링(살짝 inset)
-        val inset = dp(4f)
-        val innerCorner = (corner - inset).coerceAtLeast(0f)
-        canvas.drawRoundRect(
-            orbRect.left + inset, orbRect.top + inset,
-            orbRect.right - inset, orbRect.bottom - inset,
-            innerCorner, innerCorner, innerRingPaint
-        )
+        canvas.drawCircle(cx, cy, r - dp(4f), innerRingPaint)
 
         // 6) 라벨 — 오브 아래 영역 중앙
         if (label.isNotEmpty()) {

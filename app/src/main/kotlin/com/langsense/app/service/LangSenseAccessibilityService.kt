@@ -121,9 +121,31 @@ class LangSenseAccessibilityService : AccessibilityService(),
     private fun featuresEnabled(): Boolean =
         !prefs.excludeTouchKeyboard || !softKeyboardVisible
 
-    /** 접근성 윈도우에 IME(소프트 키보드) 창이 있으면 표시 중으로 본다. */
+    /** IME 창 높이 측정 재사용 버퍼(메인 스레드 전용 — windows 콜백/이벤트가 모두 메인). */
+    private val imeBoundsBuf = android.graphics.Rect()
+
+    /**
+     * 접근성 윈도우에 "실제 화면 터치 키보드(IME 입력뷰)"가 떠 있으면 표시 중으로 본다.
+     *
+     * ⚠️ 치명 버그 방지: 단순히 `TYPE_INPUT_METHOD` 창의 **존재**만으로 판정하면 안 된다.
+     * 외장(블루투스) 키보드를 쓰는 사용자가 시스템 설정에서 '하드웨어 키보드 툴바'(클립보드/추천
+     * strip)를 켜 두면, 이 **얇은 툴바도 TYPE_INPUT_METHOD 창**이라 존재만 보면 외장 키보드로
+     * 입력 중인데도 "터치 키보드 켜짐"으로 오인해 기능 전체가 꺼졌다(사용자 보고 버그).
+     *
+     * 그래서 IME 창의 **높이**로 구분한다: 실제 터치 키보드는 화면을 크게 가리지만(보통 30%+),
+     * HW 키보드 툴바는 얇은 띠(보통 한 자릿수 %)다. 화면 높이의
+     * [IME_KEYBOARD_MIN_SCREEN_FRACTION] 이상을 차지하는 IME 창이 하나라도 있을 때만
+     * '터치 키보드 표시'로 본다(툴바만 떠 있으면 외장 키보드 입력으로 보고 기능 유지).
+     */
     private fun computeSoftKeyboardVisible(): Boolean = runCatching {
-        windows.any { it?.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+        val screenH = resources.displayMetrics.heightPixels
+        if (screenH <= 0) return@runCatching false
+        val minKeyboardPx = screenH * IME_KEYBOARD_MIN_SCREEN_FRACTION
+        windows.any { w ->
+            if (w?.type != AccessibilityWindowInfo.TYPE_INPUT_METHOD) return@any false
+            w.getBoundsInScreen(imeBoundsBuf)
+            imeBoundsBuf.height() >= minKeyboardPx // 얇은 HW 키보드 툴바는 '키보드 표시'로 보지 않음
+        }
     }.getOrDefault(false)
 
     /**
@@ -344,5 +366,13 @@ class LangSenseAccessibilityService : AccessibilityService(),
          * 그대로 유지하면서 연타 시 IPC 폭주만 줄인다.
          */
         private const val EDIT_RECHECK_MS = 300L
+
+        /**
+         * IME 창을 '실제 화면 터치 키보드'로 인정하는 최소 높이(화면 높이 대비 비율).
+         * 외장 키보드 툴바(클립보드/추천 strip, 보통 한 자릿수 %)와 실제 터치 키보드(보통 30%+)
+         * 사이에 넉넉한 여백이 있어, 0.22 면 기기/화면 방향이 달라도 안정적으로 둘을 가른다.
+         * (이 값 미만 높이의 IME 창은 툴바로 보고 기능을 끄지 않는다 — 외장 키보드 툴바 오인 버그 방지)
+         */
+        private const val IME_KEYBOARD_MIN_SCREEN_FRACTION = 0.22f
     }
 }

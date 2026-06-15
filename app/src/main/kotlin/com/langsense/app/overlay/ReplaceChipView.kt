@@ -3,7 +3,7 @@ package com.langsense.app.overlay
 import android.annotation.SuppressLint
 import android.content.Context
 import android.util.TypedValue
-import android.widget.TextView
+import androidx.appcompat.widget.AppCompatTextView
 import com.langsense.app.R
 import kotlin.math.roundToInt
 
@@ -12,7 +12,7 @@ import kotlin.math.roundToInt
  * 본체만 클릭 가능하며 2초 후 자동 소멸한다(소멸은 [OverlayManager] 가 관리).
  */
 @SuppressLint("ViewConstructor")
-class ReplaceChipView(context: Context) : TextView(context) {
+class ReplaceChipView(context: Context) : AppCompatTextView(context) {
 
     init {
         setTextColor(context.getColor(R.color.chip_text))

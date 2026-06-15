@@ -208,7 +208,10 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         val anchorX = bp.x + bv.width / 2
         val anchorY = bp.y + bv.height / 2
 
-        val view = QuickMenuOverlayView(context, anchorX, anchorY, quickMenuItems) {
+        val view = QuickMenuOverlayView(
+            context, anchorX, anchorY, quickMenuItems,
+            reduceMotion = prefs.radialReduceMotion // 저사양 모드면 펼친 뒤 연속 애니메이션을 끈다
+        ) {
             hideQuickMenu()
         }
         val params = WindowManager.LayoutParams(

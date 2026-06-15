@@ -49,9 +49,12 @@ object RadialMenuStyle {
     const val TRAVEL_DOT_GLOW = 0x807FD2FF.toInt()
 
     // ── 치수 (dp; 밀도 변환은 사용처에서) ──────────────────────────────────────
-    /** 오브 유리구슬 박스 크기(dp). 기존이 과대해(피드백) 더 작고 단정하게 줄임. */
-    const val ORB_W_DP = 56f
-    const val ORB_H_DP = 40f
+    /**
+     * 오브 유리구슬 크기(dp). 피드백: 네모(둥근 사각형)가 "큼직한 네모 칸" 같아 지저분 →
+     * **정원(가로=세로)** 으로 그려 깔끔한 유리구슬로 바꾸고 크기도 더 줄였다(라벨은 오브 아래).
+     */
+    const val ORB_W_DP = 46f
+    const val ORB_H_DP = 46f
 
     /** 라벨이 들어갈 오브 아래 영역(dp). (HTML 은 라벨이 오브 아래) */
     const val LABEL_AREA_DP = 20f
@@ -63,8 +66,8 @@ object RadialMenuStyle {
     const val FAN_SPAN_DEG = 140.0
     const val FAN_MIN_SPAN_DEG = 70.0
 
-    /** 인접 오브 중심 거리 최소값(dp) — 겹침 방지(오브 폭 56 + 여유 8). */
-    const val ORB_MIN_GAP_DP = 64f
+    /** 인접 오브 중심 거리 최소값(dp) — 겹침 방지(오브 지름 46 + 여유 8). */
+    const val ORB_MIN_GAP_DP = 54f
 
     /** 화면 가장자리 여백(dp). */
     const val BOUNDS_MARGIN_DP = 10f
@@ -72,7 +75,7 @@ object RadialMenuStyle {
     /** 오브 테두리/링/선 굵기(dp). */
     const val ORB_RIM_WIDTH_DP = 1.5f
     const val ORB_INNER_RING_WIDTH_DP = 1f
-    const val ORB_CORNER_DP = 14f
+    const val ORB_CORNER_DP = 14f // (현재 오브는 정원으로 그려 미사용 — 추후 모양 변경 대비 보존)
     const val LINE_GLOW_WIDTH_DP = 3.5f
     const val LINE_CRISP_WIDTH_DP = 1.2f
 
@@ -105,15 +108,28 @@ object RadialMenuStyle {
     const val OVERSHOOT_TENSION = 1.6f
 
     // ── 휴지(idle) 상태 앰비언트 모션 — 메뉴가 열려 있는 동안만 동작(배터리 영향 한정) ──────────
-    /** 앰비언트(부유+빛 점) 한 주기(ms). HTML bob 3.8~5.3s / travel dot 흐름. */
-    const val AMBIENT_PERIOD_MS = 2600L
+    /**
+     * 부유(bob) 기준 한 주기(ms). 오브마다 [BOB_PERIOD_JITTER] 범위로 살짝 달라져(랜덤) 모두
+     * 똑같이 움직이는 "하드코딩 느낌"을 없앤다. 절대 시간 기반이라 반복 경계에서 튀지 않는다.
+     */
+    const val AMBIENT_PERIOD_MS = 3000L
+
+    /**
+     * 부유 시작 시 진폭을 0→최대로 부드럽게 끌어올리는 시간(ms). 펼침이 끝나자마자 갑자기
+     * 큰 속도로 흔들려 부자연스럽던 문제(피드백)를 없애기 위한 ease-in 엔벌로프 길이.
+     */
+    const val AMBIENT_RAMP_MS = 900L
 
     /** 오브 부유(bob) 진폭(dp) — 위아래로 살짝 떠다님(HTML bob -5~-10px). */
     const val BOB_AMP_DP = 5f
 
-    /** 오브별 부유 위상차(주기 대비 비율) — 물결처럼 시차를 두고 움직이게. */
-    const val BOB_PHASE_STEP = 0.18f
+    /** 부유 주기/진폭 랜덤 변동 폭(±비율). 오브마다 미세하게 달라 자연스러운 물결이 된다. */
+    const val BOB_PERIOD_JITTER = 0.28f
+    const val BOB_AMP_JITTER = 0.22f
 
-    /** 빛 점이 스포크를 한 번 흐르는 데 걸리는 시간(ms) — 길수록 천천히 흐름. */
-    const val TRAVEL_DOT_PERIOD_MS = 1400L
+    /** 빛 점이 스포크를 한 번 흐르는 데 걸리는 기준 시간(ms) — 길수록 천천히 흐름. */
+    const val TRAVEL_DOT_PERIOD_MS = 1500L
+
+    /** 빛 점 속도 랜덤 변동 폭(±비율) — 스포크마다 흐름 속도가 약간씩 다르게. */
+    const val TRAVEL_DOT_SPEED_JITTER = 0.25f
 }

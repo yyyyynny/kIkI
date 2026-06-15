@@ -6,10 +6,12 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.os.SystemClock
 import android.util.TypedValue
 import android.view.animation.LinearInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
+import java.util.Random
 import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -36,6 +38,8 @@ class QuickMenuOverlayView(
     private val anchorX: Int,
     private val anchorY: Int,
     items: List<QuickMenuItem>,
+    /** 저사양(움직임 줄이기) 모드: 펼친 뒤 부유/빛 점 같은 연속 애니메이션을 끈다(펼침/수납은 유지). */
+    private val reduceMotion: Boolean,
     private val onDismiss: () -> Unit
 ) : FrameLayout(context) {
 
@@ -52,9 +56,28 @@ class QuickMenuOverlayView(
 
     /** 휴지 상태 앰비언트(부유+빛 점) 애니메이터 — 펼침이 끝난 뒤, 메뉴가 열려 있는 동안만 무한 반복. */
     private var ambientAnimator: ValueAnimator? = null
-    private var ambientPhase = 0f
+    /** 앰비언트 시작 시각(uptime). 부유는 절대 시간 기반이라 반복 경계에서 튀지 않고 ease-in 도 가능. */
+    private var ambientStartUptime = 0L
     /** 펼침 완료 시점의 오브별 기준 translationY(부유는 이 값에 오프셋을 더해 표현). */
     private var restingTy = FloatArray(0)
+
+    /**
+     * 오브별 랜덤 변동(하드코딩 느낌 제거): 부유 위상/주기/진폭, 빛 점 위상/속도를 오브마다 살짝
+     * 다르게 둬 물결처럼 자연스럽게 움직이게 한다. 메뉴를 열 때마다 새로 뽑아 매번 미세하게 다르다.
+     */
+    private val rnd = Random()
+    private val bobPhase0 = FloatArray(items.size) { rnd.nextFloat() }                    // 시작 위상 [0,1)
+    private val bobPeriodScale = FloatArray(items.size) { jitter(RadialMenuStyle.BOB_PERIOD_JITTER) }
+    private val bobAmpScale = FloatArray(items.size) { jitter(RadialMenuStyle.BOB_AMP_JITTER) }
+    private val dotPhase0 = FloatArray(items.size) { rnd.nextFloat() }
+    private val dotSpeedScale = FloatArray(items.size) { jitter(RadialMenuStyle.TRAVEL_DOT_SPEED_JITTER) }
+
+    /** 별자리 선/빛 점 그리기에서 매 프레임 재사용하는 오브 현재 중심 좌표 버퍼(프레임당 할당 제거). */
+    private val drawCx = FloatArray(items.size)
+    private val drawCy = FloatArray(items.size)
+
+    /** 1±range 범위의 랜덤 배율(예: range=0.2 → 0.8~1.2). 0 이하로 떨어지지 않게 안전하게. */
+    private fun jitter(range: Float): Float = (1f + (rnd.nextFloat() * 2f - 1f) * range).coerceAtLeast(0.5f)
 
     private val overshoot = OvershootInterpolator(RadialMenuStyle.OVERSHOOT_TENSION)
 
@@ -150,7 +173,8 @@ class QuickMenuOverlayView(
         applyFraction(0f) // 앵커 위치(scale 0)에서 시작하도록 먼저 반영
         val total = RadialMenuStyle.EXPAND_DURATION_MS + (orbs.size - 1) * RadialMenuStyle.EXPAND_STAGGER_MS
         // 펼침이 끝나면(자연 종료) 휴지 상태 앰비언트(부유+빛 점)를 시작한다.
-        runAnimator(from = 0f, to = 1f, duration = total, onEnd = { startAmbient() })
+        // 저사양 모드면 연속 애니메이션을 아예 시작하지 않아 펼친 뒤 완전히 정적이다(전력 최소).
+        runAnimator(from = 0f, to = 1f, duration = total, onEnd = { if (!reduceMotion) startAmbient() })
     }
 
     /** 외부(스크림/항목 탭)에서 수납을 요청. 수납 애니메이션 후 [onDismiss] 로 윈도우 제거. */
@@ -222,19 +246,21 @@ class QuickMenuOverlayView(
     /**
      * 메뉴가 완전히 펼쳐진 뒤 오브가 살짝 떠다니고(bob) 스포크 위로 빛 점이 흐르는 연출을 시작한다.
      * 메뉴가 열려 있는 동안만 도는 무한 반복이라 배터리 영향은 메뉴 표시 시간으로 한정된다.
+     *
+     * 애니메이터는 **프레임 틱(다시 그리기 트리거)** 으로만 쓰고, 실제 부유 값은 [applyAmbient] 가
+     * 절대 시간으로 계산한다. 덕분에 (1) 오브마다 다른 주기를 줘도 반복 경계에서 튀지 않고,
+     * (2) 시작 시 진폭을 0→최대로 끌어올려(ease-in) 펼침 직후 갑자기 흔들리던 부자연스러움을 없앤다.
      */
     private fun startAmbient() {
         if (collapsing) return
         captureRestingPositions()
+        ambientStartUptime = SystemClock.uptimeMillis()
         ambientAnimator?.cancel()
         ambientAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = RadialMenuStyle.AMBIENT_PERIOD_MS
             repeatCount = ValueAnimator.INFINITE
             interpolator = LinearInterpolator()
-            addUpdateListener {
-                ambientPhase = it.animatedValue as Float
-                applyAmbient()
-            }
+            addUpdateListener { applyAmbient() }
             start()
         }
     }
@@ -247,18 +273,30 @@ class QuickMenuOverlayView(
     /** 펼침 완료 시점의 오브별 translationY 를 부유의 기준값으로 보관. */
     private fun captureRestingPositions() {
         restingTy = FloatArray(orbs.size) { orbs[it].translationY }
+        ambientStartUptime = SystemClock.uptimeMillis() // 기준점 갱신 시 ease-in 도 다시 시작
     }
 
     /** 매 프레임 오브에 부유 오프셋을 적용하고(translationY) 빛 점을 위해 다시 그린다. */
     private fun applyAmbient() {
         if (restingTy.size != orbs.size) return
         val amp = dp(RadialMenuStyle.BOB_AMP_DP).toFloat()
+        val elapsed = (SystemClock.uptimeMillis() - ambientStartUptime).toFloat()
+        // 진폭 ease-in 엔벌로프: 0→1 로 부드럽게(smoothstep) 올라와 시작 순간 속도가 0 에 가깝다.
+        val env = smoothstep01(elapsed / RadialMenuStyle.AMBIENT_RAMP_MS)
+        val basePeriod = RadialMenuStyle.AMBIENT_PERIOD_MS
         for (i in orbs.indices) {
-            // 오브별 위상차로 물결처럼 시차를 둔다.
-            val phase = (ambientPhase + i * RadialMenuStyle.BOB_PHASE_STEP) * 2f * PI.toFloat()
-            orbs[i].translationY = restingTy[i] + sin(phase) * amp
+            // 오브별 랜덤 주기/위상/진폭 → 똑같이 움직이지 않고 물결처럼 자연스럽게.
+            val periodMs = basePeriod * bobPeriodScale[i]
+            val phase = (elapsed / periodMs + bobPhase0[i]) * 2f * PI.toFloat()
+            orbs[i].translationY = restingTy[i] + sin(phase) * amp * bobAmpScale[i] * env
         }
         invalidate() // 빛 점/선 다시 그리기(오브 현재 위치 기준)
+    }
+
+    /** 0..1 구간 smoothstep(3t²−2t³). 범위 밖은 0/1 로 클램프. */
+    private fun smoothstep01(x: Float): Float {
+        val t = x.coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
     }
 
     // ── 그리기(스크림 + 별자리 선) ───────────────────────────────────────────
@@ -281,9 +319,9 @@ class QuickMenuOverlayView(
         lineGlowPaint.alpha = (((RadialMenuStyle.LINE_GLOW ushr 24) and 0xFF) * a).roundToInt().coerceIn(0, 255)
         lineCrispPaint.alpha = (((RadialMenuStyle.LINE_CRISP ushr 24) and 0xFF) * a).roundToInt().coerceIn(0, 255)
 
-        // 오브의 현재 중심(애니메이션 반영) 좌표.
-        val cx = FloatArray(orbs.size)
-        val cy = FloatArray(orbs.size)
+        // 오브의 현재 중심(애니메이션 반영) 좌표 — 매 프레임 할당하지 않도록 재사용 버퍼에 채운다.
+        val cx = drawCx
+        val cy = drawCy
         for (i in orbs.indices) {
             val orb = orbs[i]
             cx[i] = orb.translationX + orb.left + orb.width / 2f
@@ -309,17 +347,19 @@ class QuickMenuOverlayView(
             canvas.drawPath(linePath, lineCrispPaint)
         }
 
-        // 빛 점: 각 스포크(배지→오브) 위를 천천히 흐른다(시간 기반 위상, 오브별 스태거).
-        drawTravelDots(canvas, ax, ay, cx, cy, a)
+        // 빛 점: 각 스포크(배지→오브) 위를 천천히 흐른다(절대 시간 기반, 오브별 랜덤 위상/속도).
+        // 저사양 모드면 연속 재그리기가 없으므로 아예 그리지 않는다(정적 유지).
+        if (!reduceMotion) drawTravelDots(canvas, ax, ay, cx, cy, a)
     }
 
     /** 스포크를 따라 흐르는 빛 점. 양 끝에서 옅고 가운데서 진하게(sin) 페이드해 자연스럽게. */
     private fun drawTravelDots(canvas: Canvas, ax: Float, ay: Float, cx: FloatArray, cy: FloatArray, vis: Float) {
-        val period = RadialMenuStyle.TRAVEL_DOT_PERIOD_MS
-        val base = (android.os.SystemClock.uptimeMillis() % period).toFloat() / period
+        val now = SystemClock.uptimeMillis().toFloat()
+        val period = RadialMenuStyle.TRAVEL_DOT_PERIOD_MS.toFloat()
         val core = dp(RadialMenuStyle.TRAVEL_DOT_RADIUS_DP).toFloat()
         for (i in orbs.indices) {
-            val t = ((base + i.toFloat() / orbs.size) % 1f)
+            // 스포크마다 속도/시작 위상이 살짝 달라 lockstep 으로 보이지 않게(랜덤성).
+            val t = ((now / (period / dotSpeedScale[i]) + dotPhase0[i]) % 1f)
             val px = lerp(ax, cx[i], t)
             val py = lerp(ay, cy[i], t)
             val fade = sin(t * PI).toFloat() * vis // 끝에서 0, 중앙에서 최대 + 메뉴 가시성 반영

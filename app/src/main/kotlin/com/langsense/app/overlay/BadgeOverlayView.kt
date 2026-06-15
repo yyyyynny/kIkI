@@ -8,7 +8,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.TextView
+import androidx.appcompat.widget.AppCompatTextView
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -23,7 +23,7 @@ class BadgeOverlayView(
     private val params: WindowManager.LayoutParams,
     private val onTap: () -> Unit,
     private val onPositionSaved: (x: Int, y: Int) -> Unit
-) : TextView(context) {
+) : AppCompatTextView(context) {
 
     private var downRawX = 0f
     private var downRawY = 0f

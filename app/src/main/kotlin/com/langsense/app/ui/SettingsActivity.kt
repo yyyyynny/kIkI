@@ -121,6 +121,13 @@ class SettingsActivity : AppCompatActivity() {
             prefs.badgeTextColorHex = it
         })
 
+        // --- 플로팅 메뉴(배지 탭) ---
+        root.addView(sectionHeader(getString(R.string.settings_radial)))
+        root.addView(descRow(getString(R.string.settings_radial_reduce_motion_desc)))
+        root.addView(switchRow(getString(R.string.settings_radial_reduce_motion), prefs.radialReduceMotion) {
+            prefs.radialReduceMotion = it; markSaved()
+        })
+
         // --- 포커스 없는 키 입력 경고 ---
         root.addView(sectionHeader(getString(R.string.settings_nofocus)))
         root.addView(descRow(getString(R.string.settings_nofocus_desc))) // [3] 기능 설명
