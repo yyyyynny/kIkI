@@ -64,7 +64,7 @@ jobs:
           echo "::endgroup::"
 
       - name: APK 업로드(아티팩트)
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: kiki-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
@@ -73,7 +73,7 @@ jobs:
 
       - name: Lint 리포트 업로드(실패해도 항상)
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: lint-report
           path: app/build/reports/lint-results-debug.html
@@ -119,7 +119,7 @@ jobs:
 
       - name: 테스트 리포트 업로드(실패해도 항상)
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: unit-test-report
           path: app/build/reports/tests/testDebugUnitTest
