@@ -35,7 +35,7 @@ jobs:
           java-version: "17"
 
       - name: Node.js 24 설치 (프로젝트 표준 — JS 기반 도구/스크립트용)
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
 
@@ -95,7 +95,7 @@ jobs:
           java-version: "17"
 
       - name: Node.js 24 설치 (프로젝트 표준)
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
 
