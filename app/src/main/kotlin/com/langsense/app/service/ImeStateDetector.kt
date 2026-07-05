@@ -69,15 +69,18 @@ class ImeStateDetector(
     /** 서비스 시작 시 호출: 리스너 등록 + 현재 언어 캐시(플래시 없이). 현재 언어 코드 반환. */
     fun start(): String {
         if (!registered) {
-            runCatching {
+            // (Bug 4) 등록이 실제로 실패해도 무조건 registered=true 로 기록하면, 주 감지 경로
+            // (Broadcast/Observer)가 조용히 죽은 채로 다시는 재등록을 시도하지 않는다. 각 등록의
+            // 성공 여부를 그대로 반영해, 실패 시 다음 start() 호출에서 재시도할 수 있게 한다.
+            val receiverOk = runCatching {
                 ContextCompat.registerReceiver(
                     appContext,
                     imeChangeReceiver,
                     IntentFilter(Intent.ACTION_INPUT_METHOD_CHANGED),
                     ContextCompat.RECEIVER_NOT_EXPORTED
                 )
-            }
-            runCatching {
+            }.isSuccess
+            val observerOk = runCatching {
                 val cr = appContext.contentResolver
                 // Settings.Secure 의 일부 IME 키 상수는 @hide 이므로 안정적인 문자열 키를 직접 사용한다.
                 cr.registerContentObserver(
@@ -88,8 +91,11 @@ class ImeStateDetector(
                     Settings.Secure.getUriFor(Settings.Secure.DEFAULT_INPUT_METHOD),
                     false, subtypeObserver
                 )
+            }.isSuccess
+            registered = receiverOk && observerOk
+            if (!registered) {
+                Log.w(TAG, "listener registration incomplete (receiver=$receiverOk, observer=$observerOk)")
             }
-            registered = true
         }
         val lang = currentSubtypeLang()
         if (lang != ImeLocaleParser.UNKNOWN) {
