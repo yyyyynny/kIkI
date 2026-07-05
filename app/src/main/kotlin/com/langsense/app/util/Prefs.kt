@@ -95,6 +95,24 @@ class Prefs(context: Context) {
         get() = sp.getInt(KEY_REPLACE_CONFIDENCE, 70).coerceIn(50, 90)
         set(v) = sp.edit().putInt(KEY_REPLACE_CONFIDENCE, v.coerceIn(50, 90)).apply()
 
+    // ---- 추가 기능 2: 터치 키보드 제외 ----
+    /**
+     * ON 이면 외장(하드웨어) 키보드가 연결돼 있을 때만 기능이 동작하고, 소프트(터치) 키보드만
+     * 쓰는 동안에는 플래시/배지/경고/교체를 전부 끈다. 기본 OFF(=항상 동작, 기존 동작 보존).
+     */
+    var excludeTouchKeyboard: Boolean
+        get() = sp.getBoolean(KEY_EXCLUDE_TOUCH_KEYBOARD, false)
+        set(v) = sp.edit().putBoolean(KEY_EXCLUDE_TOUCH_KEYBOARD, v).apply()
+
+    // ---- 플로팅 메뉴(배지 탭 래디얼 메뉴) ----
+    /**
+     * 저사양(움직임 줄이기) 모드. ON 이면 메뉴를 펼친 뒤의 연속 애니메이션(부유/빛 점)을 꺼서
+     * 펼친 메뉴가 완전히 정적이 된다(펼침/수납 애니메이션은 유지). 저사양 기기 발열/전력 절감용. 기본 OFF.
+     */
+    var radialReduceMotion: Boolean
+        get() = sp.getBoolean(KEY_RADIAL_REDUCE_MOTION, false)
+        set(v) = sp.edit().putBoolean(KEY_RADIAL_REDUCE_MOTION, v).apply()
+
     // ---- 지원 언어 토글 ----
     fun isLangEnabled(lang: String): Boolean = when (lang) {
         ImeLocaleParser.KO -> sp.getBoolean(KEY_LANG_KO, true)
@@ -180,6 +198,8 @@ class Prefs(context: Context) {
         const val KEY_NOFOCUS_THRESHOLD = "nofocus_threshold"
         const val KEY_REPLACE_ENABLED = "replace_enabled"
         const val KEY_REPLACE_CONFIDENCE = "replace_confidence"
+        const val KEY_EXCLUDE_TOUCH_KEYBOARD = "exclude_touch_keyboard"
+        const val KEY_RADIAL_REDUCE_MOTION = "radial_reduce_motion"
         const val KEY_LANG_KO = "lang_ko"
         const val KEY_LANG_EN = "lang_en"
         const val KEY_LANG_JA = "lang_ja" // [일본어 비활성화] 미사용, 보존

@@ -55,6 +55,16 @@
     <string name="settings_apply">설정이 즉시 적용됩니다</string>
     <string name="settings_saved">저장됨 · 즉시 적용</string>
 
+    <!-- 터치 키보드 제외 (추가 기능 2) -->
+    <string name="settings_exclude_touch_kb">터치 키보드 제외</string>
+    <string name="settings_exclude_touch_kb_enabled">터치 키보드 제외 켜기</string>
+    <string name="settings_exclude_touch_kb_desc">켜면 화면 터치 키보드를 쓰는 동안에는 플래시·배지·경고·교체 기능을 모두 끄고, 블루투스 등 외장 키보드로 입력할 때만 동작합니다. 외장 키보드의 클립보드/추천 툴바만 떠 있는 경우는 터치 키보드로 보지 않아 그대로 동작합니다.</string>
+
+    <!-- 플로팅 메뉴(배지 탭 래디얼 메뉴) -->
+    <string name="settings_radial">플로팅 메뉴(배지 탭)</string>
+    <string name="settings_radial_reduce_motion">저사양 모드 (움직임 줄이기)</string>
+    <string name="settings_radial_reduce_motion_desc">켜면 메뉴를 펼친 뒤 오브가 떠다니는 움직임과 선을 따라 흐르는 빛 효과를 꺼서 펼친 메뉴가 가만히 멈춰 있습니다. 펼치고 접는 동작은 그대로예요. 저사양 기기에서 발열·전력을 줄이고 싶을 때 켜세요.</string>
+
     <!-- 간편 메뉴(물방울) -->
     <string name="quick_app">앱</string>
     <string name="quick_settings">설정</string>

@@ -14,4 +14,8 @@
     <color name="chip_text">#FFFFFFFF</color>
 
     <color name="ic_launcher_background">#1A6EBD</color>
+
+    <!-- UI 강조색(섹션 헤더/타이틀) — 살짝 세련된 느낌의 공용 액센트 -->
+    <color name="ui_accent">#2E7DD1</color>
+    <color name="ui_divider">#22808080</color>
 </resources>

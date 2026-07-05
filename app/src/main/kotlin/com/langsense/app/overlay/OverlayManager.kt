@@ -42,19 +42,41 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
 
     private val overlayType: Int = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 
+    /**
+     * 정리(removeAll) 후 도착하는 늦은 콜백이 오버레이를 다시 추가하지 못하게 막는 플래그 (Bug 4 감사).
+     * 버그 1 수정으로 백그라운드 키 평가 스레드 → onWarn → onMain 경로가 생겨, 서비스 정리 직후
+     * 큐에 남아 있던 post 가 실행되며 뷰를 재생성해 누수될 수 있다. removeAll 에서 동기로 set 하고
+     * 모든 표시 진입점에서 확인한다. (재연결 시 서비스가 OverlayManager 를 새로 만들므로 상태 오염 없음)
+     */
+    @Volatile
+    private var released = false
+
+    /** 마지막 "언어 전환" 플래시 시각(uptime). 색과 무관한 에피소드 가드용(아래 showFlash 참조). */
+    private var lastLangFlashAt = 0L
+
     // ---------------------------------------------------------------------
     // Feature 1 / 3: 플래시
     // ---------------------------------------------------------------------
 
     /** 언어 전환 플래시. 설정이 꺼져있거나 해당 언어가 비활성이면 무시. */
     fun showFlash(lang: String) = onMain {
+        if (released) return@onMain
         if (!prefs.flashEnabled) return@onMain
         if (!prefs.isLangEnabled(lang)) return@onMain
+        // (Bug 2 고질 중복 깜박임 최종 차단) 언어 전환 플래시는 "한 전환 에피소드당 1회"만 낸다.
+        // 색과 무관하게 최소 간격(LANG_FLASH_MIN_INTERVAL_MS) 안의 재요청은 같은 전환에서 비롯된 중복
+        // (다중 감지 신호·지연된 서브타입 캐시·stale 언어 재발동)으로 보고 건너뛴다. 사람이 한/영을 이보다
+        // 빠르게 두 번 바꾸지 않으므로 정상 전환은 놓치지 않는다. (ImeStateDetector 의 합치기/불응기가
+        // 1차 방어, 이 가드가 색을 가리지 않는 최종 방어 — 다른 색 2번째 깜박임까지 확실히 차단)
+        val now = SystemClock.uptimeMillis()
+        if (now - lastLangFlashAt < LANG_FLASH_MIN_INTERVAL_MS) return@onMain
+        lastLangFlashAt = now
         flash(prefs.flashColorArgb(lang), ImeLocaleParser.displayName(lang))
     }
 
     /** 포커스 없는 키 입력 경고(동일한 플래시 방식, 회색 + 안내 텍스트). */
     fun showNoFocusWarning(message: String) = onMain {
+        if (released) return@onMain
         flash(0xD9555555.toInt(), message)
     }
 
@@ -104,6 +126,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     // ---------------------------------------------------------------------
 
     fun showBadge(lang: String) = onMain {
+        if (released) return@onMain
         if (!prefs.badgeEnabled) {
             hideBadgeInternal()
             return@onMain
@@ -170,19 +193,25 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         quickMenuItems = items
     }
 
-    /** 배지 탭 시: 열려 있으면 닫고, 닫혀 있으면 배지 위치를 앵커로 메뉴를 연다. */
+    /** 배지 탭 시: 열려 있으면 (수납 애니메이션과 함께) 닫고, 닫혀 있으면 배지를 앵커로 메뉴를 연다. */
     fun toggleQuickMenu() = onMain {
-        if (quickMenuView != null) {
-            hideQuickMenuInternal()
+        if (released) return@onMain
+        quickMenuView?.let {
+            badgeView?.pulse()
+            it.requestCollapse() // 수납 애니메이션 후 onDismiss 콜백이 윈도우를 제거한다
             return@onMain
         }
         val bv = badgeView ?: return@onMain
         val bp = badgeParams ?: return@onMain
         if (quickMenuItems.isEmpty()) return@onMain
+        bv.pulse()
         val anchorX = bp.x + bv.width / 2
         val anchorY = bp.y + bv.height / 2
 
-        val view = QuickMenuOverlayView(context, anchorX, anchorY, quickMenuItems) {
+        val view = QuickMenuOverlayView(
+            context, anchorX, anchorY, quickMenuItems,
+            reduceMotion = prefs.radialReduceMotion // 저사양 모드면 펼친 뒤 연속 애니메이션을 끈다
+        ) {
             hideQuickMenu()
         }
         val params = WindowManager.LayoutParams(
@@ -225,6 +254,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         selEnd: Int,
         converted: String
     ) = onMain {
+        if (released) return@onMain
         removeChip()
         val view = ReplaceChipView(context)
         view.bind(converted) {
@@ -333,11 +363,15 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     // 정리
     // ---------------------------------------------------------------------
 
-    fun removeAll() = onMain {
-        removeFlash()
-        hideQuickMenuInternal()
-        hideBadgeInternal()
-        removeChip()
+    fun removeAll() {
+        // 늦은 콜백이 이후 뷰를 다시 추가하지 못하도록 동기로 먼저 막는다(Bug 4 감사).
+        released = true
+        onMain {
+            removeFlash()
+            hideQuickMenuInternal()
+            hideBadgeInternal()
+            removeChip()
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -362,5 +396,12 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
 
         /** 같은 색 플래시 중복 억제 창(ms). 근본 방어(ImeStateDetector) 뒤의 렌더 단계 마지막 안전망. */
         const val FLASH_DEDUP_MS = 350L
+
+        /**
+         * 언어 전환 플래시의 "전환 에피소드" 최소 간격(ms). 색과 무관하게 이 간격 안의 추가 플래시는
+         * 같은 전환의 중복으로 보고 건너뛴다. ImeStateDetector 불응기(450ms)+합치기 창보다 넉넉히 크게
+         * 잡아, 지연된 stale 언어가 다른 색으로 한 번 더 깜박이는 고질 현상까지 차단한다.
+         */
+        const val LANG_FLASH_MIN_INTERVAL_MS = 700L
     }
 }

@@ -10,7 +10,23 @@ import android.view.KeyEvent
  * 입력 포커스(편집 가능한 노드)가 없는 상태에서 "문자 입력 키"가 연속 [thresholdProvider] 회
  * 이상 눌리면 [onWarn] 을 호출한다.
  *
- * ### 오발동 방지 (Bug 1 / 오경고)
+ * ### 스레드 모델 (Bug 1 — 입력 끊김/문자 몰림 근본 수정)
+ * 접근성 서비스의 `onKeyEvent` 는 **메인(디스패치) 스레드**에서 호출되고, 시스템은 이 콜백이
+ * 반환될 때까지 다음 키 디스패치를 기다린다(키 이벤트 필터링). 따라서 콜백 안에서 접근성 노드
+ * 트리를 IPC 로 훑는 **무거운 포커스 조회**(`rootInActiveWindow.findFocus`, 전체 `windows` 순회)를
+ * 동기로 수행하면 키마다 수십 ms 가 쌓여, 블루투스 키보드로 빠르게 칠 때 "1~2초 멈췄다가
+ * 버퍼된 글자가 한꺼번에 쏟아지는" 증상이 생긴다.
+ *
+ * 그래서 처리를 둘로 나눈다.
+ *  - [isTypingCandidate] : 키 이벤트 객체의 속성만 보는 **순수·저비용** 판정(노드 접근/IPC 없음).
+ *    디스패치 스레드에서 동기로 호출하고 즉시 결과를 받아 `onKeyEvent` 가 곧바로 반환되게 한다.
+ *  - [handleCandidate]   : 포커스 조회·카운터·경고 등 **무거운 로직**. 서비스가 백그라운드 스레드로
+ *    넘겨 호출하므로 키 디스패치를 절대 막지 않는다.
+ *
+ * 카운터/타임스탬프 상태는 오직 [handleCandidate] 안에서만 변경되며, 서비스가 이를 단일 백그라운드
+ * 스레드에서만 호출하므로 별도 동기화 없이 안전하다.
+ *
+ * ### 오발동 방지 (오경고)
  * 블루투스 키보드로 정상 타이핑 중에도 `findFocus(FOCUS_INPUT)` 가 순간적으로 null 을
  * 반환할 때가 있어(렌더 타이밍), 이를 그대로 믿으면 "선택되지 않음" 경고가 잘못 뜬다. 다음으로 방어한다:
  *  - **입력 실착(landing) 확인이 최우선**: 글자가 실제 입력칸에 들어가면 그 편집 노드가
@@ -21,12 +37,6 @@ import android.view.KeyEvent
  *  - **재확인(grace)**: 포커스가 없다고 나오면 [focusReProbe] 로 한 번 더 확인하여
  *    일시적 null 을 거른다. 한 번이라도 편집 포커스가 잡히면 카운터를 즉시 초기화.
  *  - **경고 쿨다운**: 경고를 띄운 직후 [WARN_COOLDOWN_MS] 동안은 다시 띄우지 않아 도배 방지.
- *
- * ### 저사양 최적화 (Bug 1)
- * 포커스 조회([focusProbe]/[focusReProbe])는 접근성 노드 트리를 훑는 비싼 작업이라 키마다 미리
- * 계산하지 않는다. **기능 ON + ACTION_DOWN + 비반복 + 실제 문자 키** 게이트를 모두 통과한 뒤에만
- * 1차(저비용) 조회를 하고, 그래도 없을 때만 2차(전체 윈도우 순회) 재확인을 한다. 모디파이어·반복·
- * 단축키·기능 OFF 상황에서는 트리를 전혀 건드리지 않는다.
  *
  * onKeyEvent 는 절대 이벤트를 소비하지 않는다(항상 false).
  */
@@ -39,39 +49,49 @@ class KeyEventMonitor(
     private var lastWarnAt = 0L
 
     /**
-     * @param event 키 이벤트
-     * @param recentEditableActivity 최근에 편집칸의 text/selection 변경이 있었는지(=글자가 실제 입력됨)
-     * @param focusProbe 1차(저비용) 편집 포커스 조회 — 위 검사들 통과 후에만 호출(지연 평가)
-     * @param focusReProbe 1차가 없을 때만 호출하는 2차(전체 윈도우) 재확인(일시적 null 방어)
-     * @return 항상 false (이벤트 소비 금지)
+     * 디스패치 스레드에서 동기로 호출하는 **저비용** 1차 게이트.
+     * 키 이벤트 객체의 속성만 보고(노드 접근/IPC 없음) 이 키가 무거운 평가([handleCandidate]) 대상인지
+     * 판정한다. 모디파이어/반복/단축키/비문자 키는 여기서 걸러 백그라운드 작업조차 만들지 않는다.
+     *
+     * 기능 ON/OFF 는 일부러 보지 않는다(카운터 초기화 의미를 [handleCandidate] 가 일관되게 처리하도록).
+     *
+     * @return 백그라운드에서 포커스 평가가 필요한 "실제 문자 입력 키 누름"이면 true.
      */
-    fun onKeyEvent(
-        event: KeyEvent,
-        recentEditableActivity: () -> Boolean,
-        focusProbe: () -> Boolean,
-        focusReProbe: () -> Boolean
-    ): Boolean {
-        if (!enabledProvider()) {
-            noFocusKeyCount = 0
-            return false
-        }
+    fun isTypingCandidate(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return false
         if (event.repeatCount > 0) return false // 길게 눌러 반복되는 이벤트는 1회로만 취급
-        if (!isTypingKey(event)) return false
+        return isTypingKey(event)
+    }
 
-        // 1순위: 최근에 입력칸이 실제로 글자를 받았다면(편집 이벤트 발생) 포커스 있음으로 간주.
-        // 비용도 가장 싸고(타임스탬프 비교) 오경고를 근본적으로 막는다. 포커스 조회보다 먼저 본다.
-        if (recentEditableActivity()) {
+    /**
+     * 무거운 평가(백그라운드 스레드에서 호출). 포커스 조회/카운터/경고를 모두 여기서 처리한다.
+     *
+     * @param recentEditableActivity 최근에 편집칸의 text/selection 변경이 있었는지(=글자가 실제 입력됨).
+     *        디스패치 스레드에서 스냅샷한 값을 넘겨받는다(저비용).
+     * @param focusProbe 1차(저비용) 편집 포커스 조회 — 백그라운드에서 호출되므로 디스패치를 막지 않는다.
+     * @param focusReProbe 1차가 없을 때만 호출하는 2차(전체 윈도우) 재확인(일시적 null 방어).
+     */
+    fun handleCandidate(
+        recentEditableActivity: Boolean,
+        focusProbe: () -> Boolean,
+        focusReProbe: () -> Boolean
+    ) {
+        if (!enabledProvider()) {
             noFocusKeyCount = 0
-            return false
+            return
+        }
+        // 1순위: 최근에 입력칸이 실제로 글자를 받았다면(편집 이벤트 발생) 포커스 있음으로 간주.
+        // 비용도 가장 싸고(이미 계산된 불리언) 오경고를 근본적으로 막는다. 포커스 조회보다 먼저 본다.
+        if (recentEditableActivity) {
+            noFocusKeyCount = 0
+            return
         }
 
-        // 그 다음에만 "문자 입력 키"에 한해 포커스를 조회한다(저사양 최적화).
-        // 1차가 없을 때만 2차 재확인이 돌아 일시적 null 을 거른다(단락 평가).
+        // 그 다음에만 포커스를 조회한다. 1차가 없을 때만 2차 재확인이 돌아 일시적 null 을 거른다(단락 평가).
         val focused = focusProbe() || focusReProbe()
         if (focused) {
             noFocusKeyCount = 0
-            return false
+            return
         }
 
         noFocusKeyCount++
@@ -83,7 +103,6 @@ class KeyEventMonitor(
             }
             noFocusKeyCount = 0
         }
-        return false
     }
 
     /** 포커스 획득 등으로 카운터를 초기화. */

@@ -1,0 +1,17 @@
+version: 2
+
+updates:
+  # GitHub Actions — 워크플로에 쓰는 액션의 새 버전/보안 패치를 PR 로 제안.
+  # ci.yml 은 액션을 커밋 SHA 로 고정해 두었으므로(TeamPCP 류 태그 하이재킹 방어),
+  # 새 버전이 나오면 Dependabot 이 "새 SHA + 주석의 버전 태그"를 갱신하는 PR 을 올린다.
+  # 메이저 버전(예: v4 -> v7) 업그레이드도 PR 로만 제안되므로, 병합 전에 CI 통과를 직접 확인할 수 있다.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Gradle 의존성(androidx/kotlin 등) — 새 버전·알려진 취약점을 PR 로 제안.
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
