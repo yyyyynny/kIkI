@@ -252,6 +252,8 @@ class LangSenseAccessibilityService : AccessibilityService(),
             // 글자가 실제 편집칸에 들어갔다는 가장 직접적인 신호(포커스 경고 오발동 방지용).
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED ->
                 markEditableActivity(event)
+            // 그 외 이벤트 타입은 구독하지 않으므로 명시적으로 무시(SwitchIntDef 경고 해소).
+            else -> {}
         }
     }
 

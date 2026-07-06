@@ -1,6 +1,5 @@
 package com.langsense.app.util
 
-import android.os.Build
 import android.view.inputmethod.InputMethodSubtype
 
 /**
@@ -20,16 +19,15 @@ object ImeLocaleParser {
     const val ZH = "zh"
     const val UNKNOWN = "unknown"
 
-    /** InputMethodSubtype → 정규화된 언어 코드. */
+    /**
+     * InputMethodSubtype → 정규화된 언어 코드.
+     * minSdk 29 이므로 languageTag(API 24+)는 항상 사용 가능. 빈 값일 때만 deprecated 한
+     * subtype.locale 로 폴백한다(그 폴백 참조 때문에 @Suppress("DEPRECATION") 유지).
+     */
     @Suppress("DEPRECATION")
     fun parseLocale(subtype: InputMethodSubtype?): String {
         subtype ?: return UNKNOWN
-        val raw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            subtype.languageTag.ifEmpty { subtype.locale }
-        } else {
-            subtype.locale
-        }
-        return normalize(raw)
+        return normalize(subtype.languageTag.ifEmpty { subtype.locale })
     }
 
     /** 임의의 locale 문자열(ko_KR, en-US 등)을 2글자 코드로 정규화. */
