@@ -19,6 +19,8 @@
     <string name="btn_settings">앱 설정</string>
     <string name="status_granted">완료됨</string>
     <string name="status_needed">필요함</string>
+    <string name="summary_all_set">✓ 모든 설정이 완료되었습니다</string>
+    <string name="summary_incomplete">아래에서 남은 설정을 마쳐 주세요</string>
     <string name="privacy_note">이 앱은 키 입력 내용이나 화면 내용을 수집·저장·전송하지 않습니다. 모든 처리는 온디바이스(로컬)에서만 수행됩니다.</string>
 
     <!-- SettingsActivity -->

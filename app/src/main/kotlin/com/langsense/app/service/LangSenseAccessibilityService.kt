@@ -45,9 +45,11 @@ class LangSenseAccessibilityService : AccessibilityService(),
 
     /**
      * 편집칸에 글자가 실제로 들어간 마지막 시각(uptime). text/selection 변경 이벤트가 편집 노드에서
-     * 올 때 갱신한다. 포커스 없는 키 입력 경고의 오발동(입력은 되는데 경고가 뜨는 문제)을 막는 데 쓴다.
-     * onKeyEvent/onAccessibilityEvent 가 모두 메인 스레드에서 호출되므로 이 값은 메인 스레드에서만 접근한다.
+     * 올 때(메인 스레드) 갱신한다. 포커스 없는 키 입력 경고의 오발동(입력은 되는데 경고가 뜨는 문제)을
+     * 막는 데 쓴다. 갱신은 메인 스레드에서만 하지만, 경고 지연 검증이 키 평가(백그라운드) 스레드에서
+     * 이 값을 다시 읽으므로 64비트 torn read 방지를 위해 @Volatile 로 둔다.
      */
+    @Volatile
     private var lastEditableActivityAt = 0L
 
     /**
@@ -290,7 +292,13 @@ class LangSenseAccessibilityService : AccessibilityService(),
             keyMonitor.handleCandidate(
                 recentEditableActivity = recent,
                 focusProbe = { hasActiveEditableFocus() },
-                focusReProbe = { hasAnyEditableFocus() }
+                focusReProbe = { hasAnyEditableFocus() },
+                // 지연 검증은 같은 평가 스레드에서 예약(경고 발동 전 마지막 확인).
+                scheduleVerify = { action -> keyEvalHandler?.postDelayed(action, KeyEventMonitor.WARN_VERIFY_DELAY_MS) },
+                // 검증 시점에 lastEditableActivityAt 를 새로 읽어, 저사양에서 늦게 도착한 입력 실착을 반영.
+                recheckRecentEditableActivity = {
+                    SystemClock.uptimeMillis() - lastEditableActivityAt < RECENT_INPUT_MS
+                }
             )
         }
         return false

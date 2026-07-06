@@ -58,6 +58,13 @@ class ImeStateDetector(
     /** 마지막 발동 시각(불응기 계산용). 발동 직후 잔여 신호의 stale 재발동을 막는다. */
     private var lastEmitAt = 0L
 
+    /**
+     * 직전 발동에서 "벗어난" 언어(= 그 전의 lastState.locale). 안티-플랩 가드용.
+     * 한 번 전환한 직후 아주 짧은 시간 안에 다시 이 언어로 되돌아가는 emit 은 사람의 재전환이 아니라
+     * 지연된 stale 신호(삼성 팝업/서브타입 캐시 지연)의 메아리로 보고 무시한다(2회 깜박임 근본 차단).
+     */
+    private var prevLang: String? = null
+
     private val imeChangeReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, intent: Intent?) = requestRecheck()
     }
@@ -171,7 +178,14 @@ class ImeStateDetector(
 
     private fun emitIfChanged(lang: String) {
         if (lang == ImeLocaleParser.UNKNOWN) return
-        if (lang == lastState?.locale) return
+        val last = lastState?.locale
+        if (lang == last) return
+        // 안티-플랩: 방금 전환에서 벗어난 "직전 언어"로 [FLAP_GUARD_MS] 안에 되돌아가는 emit 은
+        // 지연된 stale 신호(팝업/서브타입 캐시 지연)의 메아리다. OverlayManager 의 에피소드 가드
+        // (700ms)를 넘겨 도착한 stale 재발동이 "다른 색 두 번째 깜박임"을 만들던 마지막 누수를 막는다.
+        // 사람이 한→영→한을 이보다 빠르게 되돌리는 일은 없으므로 정상 재전환은 놓치지 않는다.
+        if (lang == prevLang && SystemClock.uptimeMillis() - lastEmitAt < FLAP_GUARD_MS) return
+        prevLang = last
         lastState = ImeState(lang, currentSubtypeId(), System.currentTimeMillis())
         lastEmitAt = SystemClock.uptimeMillis()
         emitCount++
@@ -214,5 +228,12 @@ class ImeStateDetector(
          * 두 번 바꾸는 일은 없으므로 정상 전환을 놓치지 않는다.
          */
         private const val REFRACTORY_MS = 450L
+
+        /**
+         * 안티-플랩 창(ms). "직전 언어로 되돌아가는" emit 을 이 시간 안이면 stale 메아리로 보고 무시한다.
+         * OverlayManager 의 에피소드 가드(700ms)보다 넉넉히 크게 잡아, 그 창을 넘겨 도착하는 지연 신호까지
+         * 덮는다(가끔 남던 2회 깜박임의 마지막 경로 차단).
+         */
+        private const val FLAP_GUARD_MS = 1000L
     }
 }

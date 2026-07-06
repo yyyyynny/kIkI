@@ -15,4 +15,10 @@
 
     <!-- UI 강조색(섹션 헤더/타이틀) — 살짝 세련된 느낌의 공용 액센트 -->
     <color name="ui_accent">#2E7DD1</color>
+    <!-- 온보딩 구분선/보조 텍스트 (하드코딩 헥스 대신 공용 참조로 통일) -->
+    <color name="ui_divider">#33808080</color>
+    <color name="ui_muted">#888888</color>
+    <!-- 상태 배지 색 -->
+    <color name="status_ok">#2D8C4E</color>
+    <color name="status_need">#CC2D2D</color>
 </resources>
