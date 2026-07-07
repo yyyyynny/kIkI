@@ -14,7 +14,7 @@
 
 각 경로는 `InputMethodManager.getCurrentInputMethodSubtype()` 의 locale 을 읽어 직전과 다르면 발동.
 
-### ★ 2회 깜박임 방지 — 3중 방어
+### ★ 2회 깜박임 방지 — 다층 방어
 한 번의 전환이 위 경로에서 신호 다발(브로드캐스트 1 + 옵저버 2 + 윈도우 이벤트 n)을 만든다.
 1. **신호 합치기(coalesce)**: 모든 신호를 **단일 예약(`recheckRunnable`)** 으로 합쳐 신호가 멎고
    `COALESCE_MS`(150ms) 뒤에 **한 번만** 서브타입(또는 팝업 힌트)을 읽어 발동.
@@ -25,6 +25,11 @@
    여러 번 발동하므로, 재진입 시 이전 인스턴스를 `cleanup()` 후 재초기화.
 4. **렌더 단계 안전망**(`OverlayManager.FLASH_DEDUP_MS`=350ms): 같은 색 플래시가 아주 짧은 간격으로
    다시 오면 건너뜀(다른 언어는 색이 달라 정상 표시). 1~3이 근본 방어, 이건 마지막 시각 방어.
+5. **안티-플랩 가드(`FLAP_GUARD_MS`=1000ms)**: 불응기(450ms)와 렌더 에피소드 가드
+   (`OverlayManager.LANG_FLASH_MIN_INTERVAL_MS`=700ms) 사이 틈으로, 700ms 이후 도착한 지연 stale 신호가
+   서브타입 캐시 지연으로 "직전 언어"를 재발동해 다른 색 2번째 깜박임을 만들던 마지막 누수를 차단.
+   전환 직후 `FLAP_GUARD_MS` 안에 **직전 언어로 되돌아가는** `emitIfChanged` 는 stale 메아리로 보고
+   무시(사람이 그보다 빠르게 되돌리지 못하므로 정상 재전환은 유지).
 
 따라서 깜박임 횟수 1 지정 시 **정확히 1회**만 깜박이고, 신호마다 두 번씩 읽던 중복 작업도 사라진다
 (저사양 최적화). 전환당 `onLanguageChanged` 호출이 1회임은 `emitCount` + `Log.d` 로 실기기 확인 가능
@@ -110,9 +115,16 @@ WindowManager.LayoutParams:
    있음으로 간주하고 카운터 초기화. 포커스가 정말 없으면 이런 이벤트가 없으므로 진짜 경고는 유지.
 3. 포커스 조회(지연 평가): 1차 활성 윈도우 `findFocus(FOCUS_INPUT)?.isEditable`, 없을 때만
    2차 전체 윈도우 순회(일시적 null 방어).
-4. 그래도 포커스 없으면 카운터 증가. 임계값(기본 3) 도달 시 경고, 재경고 쿨다운 `WARN_COOLDOWN_MS`(2.5s).
+4. 그래도 포커스 없으면 카운터 증가. 임계값(기본 3) 도달 시 **바로 경고하지 않고** 아래 지연 검증을 거쳐
+   발동, 재경고 쿨다운 `WARN_COOLDOWN_MS`(2.5s).
+5. **발동 전 지연 검증(`WARN_VERIFY_DELAY_MS`=400ms)**: 저사양 기기는 글자가 실제 입력돼도 그 확인
+   이벤트(text/selection 변경)와 포커스 노드 갱신이 수백 ms 늦게 도착한다. 임계값 도달 즉시 경고하면
+   그 지연 확인이 오기 전에 오경고가 뜨므로, 이 시간만큼 미뤘다가 재확인한다. 그 사이 입력 실착이
+   확인되거나(`lastEditableActivityAt` 재조회) 포커스가 잡히면 경고를 **취소**, 진짜 포커스가 없으면
+   확인 이벤트가 오지 않아 정상 발동. → "입력은 되는데 저사양에서 가끔 경고가 뜨던" 잔여 오발동 해결.
 
 > 텍스트 '내용'은 절대 읽지 않는다(`source.isEditable` 여부만 확인). 카운터는 포커스 획득/입력 실착 시 초기화.
+> 지연 검증은 키 평가(백그라운드) 스레드에서 예약되므로 키 디스패치를 막지 않는다.
 
 ---
 
@@ -340,11 +352,9 @@ object ImeLocaleParser {
 
     fun parseLocale(subtype: InputMethodSubtype?): String {
         subtype ?: return "unknown"
-        val locale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            subtype.languageTag.ifEmpty { subtype.locale }
-        } else {
-            subtype.locale
-        }
+        // minSdk 29 이므로 languageTag(API 24+)는 항상 사용 가능. 빈 값일 때만 deprecated 한
+        // subtype.locale 로 폴백(그 참조 때문에 @Suppress("DEPRECATION") 유지).
+        val locale = subtype.languageTag.ifEmpty { subtype.locale }
         return when {
             locale.startsWith("ko") -> "ko"
             // [일본어 비활성화] locale.startsWith("ja") -> "ja"  (주석 보존)

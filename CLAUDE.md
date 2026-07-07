@@ -113,6 +113,11 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
 - **저사양 최적화**: 포커스 조회는 비싸므로 **기능 ON + ACTION_DOWN + 비반복 + 실제 문자 키 +
   최근 입력 실착 없음** 게이트를 통과한 뒤에만 지연 평가. 1차는 활성 윈도우만 보는 저비용 조회,
   없을 때만 2차로 전체 윈도우 순회(일시적 null 방어). 모디파이어/반복/단축키/기능 OFF 에선 노드 트리를 안 건드림.
+- **발동 전 지연 검증(`WARN_VERIFY_DELAY_MS`=400ms)**: 저사양 기기는 글자가 실제 입력돼도 그 확인
+  이벤트(text/selection 변경)와 포커스 노드 갱신이 수백 ms 늦게 온다. 임계값 도달 즉시 경고하면 그
+  지연된 확인이 오기 전에 오경고가 뜨므로, 바로 띄우지 않고 이 시간 뒤 재확인한다. 그 사이 입력 실착이
+  확인되거나 포커스가 잡히면 경고를 취소, 진짜 포커스가 없으면(확인 이벤트 안 옴) 정상 발동. →
+  "입력은 되는데 저사양에서 가끔 경고가 뜨는" 잔여 오발동 해결.
 - 표시: `선택되지 않음` 텍스트 오버레이 (Feature 1과 동일한 플래시 방식, 재경고 쿨다운 2.5s)
 - 카운터는 포커스 획득 시 초기화. `onKeyEvent` 는 항상 `false` 반환(이벤트 절대 미소비)
 - 텍스트 '내용'은 읽지 않음(`source.isEditable` 여부만 확인)
@@ -243,11 +248,12 @@ SettingsActivity
 5. **Accessibility 오용 방지**: 이 서비스는 키로깅, 화면 내용 수집, 외부 전송을 절대 수행하지 않음. 모든 처리는 로컬 온디바이스. `typeViewTextChanged` 도 구독하지만 텍스트 '내용'은 읽지 않고 `source.isEditable` 여부만 본다(포커스 경고 오발동 방지용). 디버그 로그는 언어 코드만 출력.
 6. **One UI 9.x 미지원**: 베타 상태로 AccessibilityEvent 동작 변경 가능성 있음. 별도 분기 작성 금지, 추후 별도 대응.
 7. **[일본어 비활성화]**: 일본어는 발음 입력 후 한자 변환 단계가 많아 한/영 감지 실효가 낮아 기능을 껐다. **삭제하지 않고 전부 주석 처리**(ImeLocaleParser 의 ja·日本語·日 감지, displayName/badgeLabel, Prefs 의 JA 분기/상수, 설정 체크박스·색상, strings/colors)하여 추후 재도입을 쉽게 함. 주석만 처리했으므로 일본어 IME 입력 시 전용 처리는 사라지고 **기타 언어와 동일한 일반 경로(회색 `#555555`, 라벨 "JA")** 로 흐른다(완전 억제는 아님).
-8. **IME 전환 2회 깜박임 — 3중 방어**: 한 전환이 Broadcast/Observer/윈도우 이벤트에서 여러 신호를 만들어 2회 이상 깜박이던 문제를 다음으로 해결.
+8. **IME 전환 2회 깜박임 — 다층 방어**: 한 전환이 Broadcast/Observer/윈도우 이벤트에서 여러 신호를 만들어 2회 이상 깜박이던 문제를 다음으로 해결.
    - (a) **신호 합치기**: 모든 신호를 단일 예약으로 합쳐 `COALESCE_MS`(150ms) 후 1회만 평가.
    - (b) **발동 후 불응기**(`REFRACTORY_MS`=450ms): 잔여 신호 + 지연된 `currentInputMethodSubtype` 캐시가 "직전 언어"를 다시 발동(다른 색 2번째 깜박임)하는 것을 차단.
    - (c) **`onServiceConnected` 멱등화**: 재연결 시 중복으로 BroadcastReceiver/ContentObserver 가 등록돼 detector 가 누적되면 한 전환에 여러 번 발동하므로, 재진입 시 `cleanup()` 후 재초기화.
    - (d) **렌더 단계 안전망**(`OverlayManager.FLASH_DEDUP_MS`=350ms): 같은 색 플래시가 아주 짧은 간격으로 다시 오면 건너뜀. 위 (a)~(c) 가 근본 방어이고 이건 마지막 시각 방어(원인 진단용 `emitCount` 로그는 그대로 유지).
+   - (e) **안티-플랩 가드**(`ImeStateDetector.FLAP_GUARD_MS`=1000ms): 불응기(450ms)와 렌더 에피소드 가드(`OverlayManager.LANG_FLASH_MIN_INTERVAL_MS`=700ms) 사이 틈으로, 700ms 이후 도착한 지연 stale 신호가 서브타입 캐시 지연으로 "직전 언어"를 재발동해 다른 색 2번째 깜박임을 만들던 마지막 누수를 차단. 전환 직후 `FLAP_GUARD_MS` 안에 **직전 언어로 되돌아가는** emit 은 stale 메아리로 보고 무시(사람이 그보다 빠르게 되돌리지 못하므로 정상 재전환은 유지).
    `onLanguageChanged` 는 전환당 1회만 호출되도록 했고 `emitCount`+`Log.d` 로 실기기 검증 가능(렌더 안전망이 가려도 로그로 실제 트리거 수 확인 가능). 키 입력 시 전체 윈도우 순회는 게이트 통과 후로 지연.
 9. **앱 표시 이름 = kIkI**: 사용자에게 보이는 문구만 kIkI. 패키지/applicationId(`com.langsense.app`), 클래스명(`LangSenseAccessibilityService`), 리소스 id(`Theme.LangSense`), Gradle `rootProject.name` 등 **식별자는 절대 변경 금지**.
 
