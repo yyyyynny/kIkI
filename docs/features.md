@@ -345,6 +345,32 @@ WindowManager flags:
 
 ---
 
+## 추가 기능 2: 터치 키보드 제외
+
+블루투스 등 외장 키보드로 입력할 때만 kIkI 기능(플래시/배지/포커스 경고/한영타 교체)이 동작하도록,
+**화면 터치 키보드가 떠 있는 동안엔 전부 끄는** 옵션(`SettingsActivity` → "터치 키보드 제외", 기본 OFF).
+
+### 판정 로직
+- **외장 키보드 연결 감지(`HardwareKeyboardDetector`)**: `InputManager`+`InputDevice` 로 "가상이 아닌
+  알파벳(QWERTY) 키보드"(`SOURCE_KEYBOARD` 비트 포함)가 있으면 연결로 판정. `InputDeviceListener` 로
+  실시간 연결/해제 통지(서비스의 `onConfigurationChanged` 가 도킹 등 일부 경로의 백스톱).
+- **활성/비활성 기준은 "연결 여부"가 아니라 "화면 터치 키보드 표시 여부"**
+  (`LangSenseAccessibilityService.computeSoftKeyboardVisible()`). 외장 키보드를 상시 연결해 두는
+  사용자는 연결 기준이면 터치 입력 시에도 계속 켜져 있어 옵션이 무의미해지기 때문에, "지금 어느
+  키보드로 입력 중인가"를 직접 반영하는 표시 여부를 쓴다.
+- **터치 키보드 표시 판정(면적 기준)**: 접근성 `windows` 중 `TYPE_INPUT_METHOD` 창의 **너비×높이가
+  화면 전체 면적의 `IME_KEYBOARD_MIN_SCREEN_AREA_FRACTION`(10%) 이상**이면 "표시 중"으로 본다.
+  외장 키보드의 클립보드/추천 툴바(전체 폭이지만 얇은 띠, 면적 비율 한 자릿수 %)와 실제 터치
+  키보드(플로팅/분리형처럼 작아도 가로·세로 모두 상당 부분 차지, 면적 비율 15%+)를 가른다.
+  (이전엔 높이만 봤으나 세로 폭이 좁은 플로팅/분리형 키보드를 "없음"으로 오판할 수 있어 면적 기준으로 전환.)
+- **적용 범위**: `featuresEnabled() = !excludeTouchKeyboard || !softKeyboardVisible` 를 언어 전환
+  플래시/배지, 포커스 없는 키 입력 경고, 한영타 교체 세 곳 모두에서 게이트로 사용.
+
+### 저사양 최적화
+옵션이 꺼져 있으면(기본값) `windows` 순회 자체를 하지 않아 일반 사용자에겐 부하가 없다.
+
+---
+
 ## ImeLocaleParser 유틸리티
 
 ```kotlin

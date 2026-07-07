@@ -44,6 +44,12 @@
   → HangulConverter.detectEnglishToKorean() 신뢰도 판정(mapRatio × composeRatio)
   → 신뢰도 ≥ 임계값(기본 70%) 시 ReplaceChipView.show(변환 미리보기)
   → 사용자 탭 → HangulConverter.convertEngToKor() → ACTION_SET_TEXT (실패 시 클립보드 fallback)
+
+[HardwareKeyboardDetector] ── 터치 키보드 제외 게이트(옵션, 기본 OFF) ──
+  InputManager.InputDeviceListener 로 외장 키보드 연결 실시간 감지
+  → computeSoftKeyboardVisible(): TYPE_INPUT_METHOD 창 면적 ≥ 화면의 10% 면 "터치 키보드 표시 중"
+  → featuresEnabled() = !excludeTouchKeyboard || !softKeyboardVisible
+  → 위 3개(플래시/배지, KeyEventMonitor, TextSelectionMonitor) 모두 이 게이트를 거쳐야 동작
 ```
 
 ---
