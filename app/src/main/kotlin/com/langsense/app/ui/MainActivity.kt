@@ -1,7 +1,9 @@
 package com.langsense.app.ui
 
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.os.Bundle
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.langsense.app.R
@@ -48,29 +50,34 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshStatus() {
-        val granted = getString(R.string.status_granted)
-        val needed = getString(R.string.status_needed)
-        val green = getColor(R.color.status_ok)
-        val red = getColor(R.color.status_need)
-
         val overlayOk = PermissionHelper.canDrawOverlays(this)
-        binding.tvOverlayStatus.text = if (overlayOk) granted else needed
-        binding.tvOverlayStatus.setTextColor(if (overlayOk) green else red)
+        applyStatusPill(binding.tvOverlayStatus, overlayOk)
 
         val accOk = PermissionHelper.isAccessibilityServiceEnabled(this) ||
             PermissionHelper.isAccessibilityEnabledViaSecure(this)
-        binding.tvAccStatus.text = if (accOk) granted else needed
-        binding.tvAccStatus.setTextColor(if (accOk) green else red)
+        applyStatusPill(binding.tvAccStatus, accOk)
 
         val batteryOk = PermissionHelper.isIgnoringBatteryOptimizations(this)
-        binding.tvBatteryStatus.text = if (batteryOk) granted else needed
-        binding.tvBatteryStatus.setTextColor(if (batteryOk) green else red)
+        applyStatusPill(binding.tvBatteryStatus, batteryOk)
 
         // 상단 요약 배너: 오버레이·접근성 두 필수 권한이 모두 켜지면 "완료". 배터리는 권장이라 제외.
         val allSet = overlayOk && accOk
         binding.tvSummary.text =
             getString(if (allSet) R.string.summary_all_set else R.string.summary_incomplete)
-        binding.tvSummary.setTextColor(if (allSet) green else red)
+        tintPill(binding.tvSummary, allSet)
+    }
+
+    /** 상태 필: 텍스트("완료됨"/"필요함") + 상태색 글씨/컨테이너 배경. */
+    private fun applyStatusPill(tv: TextView, ok: Boolean) {
+        tv.text = getString(if (ok) R.string.status_granted else R.string.status_needed)
+        tintPill(tv, ok)
+    }
+
+    private fun tintPill(tv: TextView, ok: Boolean) {
+        tv.setTextColor(getColor(if (ok) R.color.status_ok else R.color.status_need))
+        tv.backgroundTintList = ColorStateList.valueOf(
+            getColor(if (ok) R.color.status_ok_container else R.color.status_need_container)
+        )
     }
 
     private fun startActivitySafely(intent: Intent) {

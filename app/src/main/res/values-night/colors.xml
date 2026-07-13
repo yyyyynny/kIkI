@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 시맨틱 UI 팔레트 — 다크모드 값 (라이트 값은 values/colors.xml). -->
+    <color name="ui_bg">#0F1115</color>
+    <color name="ui_surface">#1A1D23</color>
+    <color name="ui_on_surface">#E6E8EC</color>
+    <color name="ui_on_surface_muted">#9CA3AF</color>
+    <color name="ui_accent">#5B9DF7</color>
+    <color name="ui_on_accent">#0B1220</color>
+    <color name="ui_accent_container">#1E3A5F</color>
+    <color name="ui_on_accent_container">#A8C7FA</color>
+    <color name="ui_divider">#2A2E36</color>
+    <color name="ui_muted">#9CA3AF</color>
+
+    <color name="status_ok">#4ADE80</color>
+    <color name="status_ok_container">#153524</color>
+    <color name="status_need">#F87171</color>
+    <color name="status_need_container">#3A1B1B</color>
+</resources>
