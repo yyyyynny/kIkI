@@ -35,6 +35,9 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     private var badgeParams: WindowManager.LayoutParams? = null
     private var chipView: ReplaceChipView? = null
     private var chipDismiss: Runnable? = null
+    // 칩이 들고 있는 동안 소유하는 노드. 탭으로 소비되든, 타임아웃/교체로 버려지든 removeChip() 에서
+    // 반드시 한 번 recycle() 한다(API 33 미만 노드 풀 누수 방지).
+    private var pendingNode: AccessibilityNodeInfo? = null
 
     private var quickMenuView: QuickMenuOverlayView? = null
     /** 간편 메뉴 항목(앱 열기/설정/토글 등). 서비스가 [setQuickMenuItems] 로 주입. */
@@ -205,11 +208,25 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         val bp = badgeParams ?: return@onMain
         if (quickMenuItems.isEmpty()) return@onMain
         bv.pulse()
-        val anchorX = bp.x + bv.width / 2
-        val anchorY = bp.y + bv.height / 2
+        // 배지가 사라지는 일은 없지만(사라지면 hideQuickMenuInternal 이 메뉴도 함께 닫음) 방어적으로
+        // 최초 좌표를 폴백으로 남겨둔다.
+        val initialAnchorX = bp.x + bv.width / 2
+        val initialAnchorY = bp.y + bv.height / 2
 
         val view = QuickMenuOverlayView(
-            context, anchorX, anchorY, quickMenuItems,
+            context,
+            anchorProvider = {
+                // 회전 등으로 다시 레이아웃될 때 배지의 "현재" 위치를 읽는다(Bug 6 — 고정 좌표로
+                // 열면 회전 후 예전 배지 위치를 중심으로 부채꼴이 펼쳐지는 문제 방지).
+                val curBv = badgeView
+                val curBp = badgeParams
+                if (curBv != null && curBp != null) {
+                    (curBp.x + curBv.width / 2) to (curBp.y + curBv.height / 2)
+                } else {
+                    initialAnchorX to initialAnchorY
+                }
+            },
+            items = quickMenuItems,
             reduceMotion = prefs.radialReduceMotion // 저사양 모드면 펼친 뒤 연속 애니메이션을 끈다
         ) {
             hideQuickMenu()
@@ -254,8 +271,9 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         selEnd: Int,
         converted: String
     ) = onMain {
-        if (released) return@onMain
-        removeChip()
+        if (released) { node.recycle(); return@onMain }
+        removeChip() // 이전 칩이 있었다면 그 노드까지 함께 회수
+        pendingNode = node
         val view = ReplaceChipView(context)
         view.bind(converted) {
             applyReplacement(node, fullText, selStart, selEnd, converted)
@@ -293,16 +311,28 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     ) {
         val s = selStart.coerceIn(0, fullText.length)
         val e = selEnd.coerceIn(s, fullText.length)
+        val original = fullText.substring(s, e)
 
         // 노드가 갱신되었을 수 있으므로 최신 텍스트를 우선 사용(없으면 캡처된 fullText).
         val liveText = node.text?.toString() ?: fullText
-        val base = if (e <= liveText.length) liveText else fullText
-        val es = s.coerceIn(0, base.length)
-        val ee = e.coerceIn(es, base.length)
-        val newText = base.substring(0, es) + converted + base.substring(ee)
+        val (es, ee) = resolveReplaceRange(liveText, s, e, original) ?: return
+        val newText = liveText.substring(0, es) + converted + liveText.substring(ee)
 
         if (trySetText(node, newText)) return
         pasteFallback(node, converted, es, ee)
+    }
+
+    /**
+     * "교체?" 칩이 떠 있는 최대 2초 동안 사용자가 앞쪽 텍스트를 편집하면 (s..e) 오프셋이 실제 대상과
+     * 어긋난다. 그 자리에 원래 선택했던 문자열([original])이 그대로 있을 때만 그 위치를 신뢰하고,
+     * 아니면 문서 안에서 같은 문자열을 다시 찾는다(첫 매치). 그마저 못 찾으면 엉뚱한 곳을 덮어쓰지
+     * 않도록 교체를 포기한다(null).
+     */
+    private fun resolveReplaceRange(liveText: String, s: Int, e: Int, original: String): Pair<Int, Int>? {
+        if (e <= liveText.length && liveText.substring(s, e) == original) return s to e
+        val idx = liveText.indexOf(original)
+        if (idx < 0) return null
+        return idx to (idx + original.length)
     }
 
     /** 1차: ACTION_SET_TEXT. editable 이 아니거나 false 반환 시 실패로 간주. */
@@ -357,6 +387,8 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         chipDismiss = null
         chipView?.let { runCatching { wm.removeView(it) } }
         chipView = null
+        pendingNode?.let { runCatching { it.recycle() } }
+        pendingNode = null
     }
 
     // ---------------------------------------------------------------------

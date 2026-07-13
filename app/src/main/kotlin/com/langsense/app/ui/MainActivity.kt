@@ -50,8 +50,8 @@ class MainActivity : AppCompatActivity() {
     private fun refreshStatus() {
         val granted = getString(R.string.status_granted)
         val needed = getString(R.string.status_needed)
-        val green = 0xFF2D8C4E.toInt()
-        val red = 0xFFCC2D2D.toInt()
+        val green = getColor(R.color.status_ok)
+        val red = getColor(R.color.status_need)
 
         val overlayOk = PermissionHelper.canDrawOverlays(this)
         binding.tvOverlayStatus.text = if (overlayOk) granted else needed
@@ -65,6 +65,12 @@ class MainActivity : AppCompatActivity() {
         val batteryOk = PermissionHelper.isIgnoringBatteryOptimizations(this)
         binding.tvBatteryStatus.text = if (batteryOk) granted else needed
         binding.tvBatteryStatus.setTextColor(if (batteryOk) green else red)
+
+        // 상단 요약 배너: 오버레이·접근성 두 필수 권한이 모두 켜지면 "완료". 배터리는 권장이라 제외.
+        val allSet = overlayOk && accOk
+        binding.tvSummary.text =
+            getString(if (allSet) R.string.summary_all_set else R.string.summary_incomplete)
+        binding.tvSummary.setTextColor(if (allSet) green else red)
     }
 
     private fun startActivitySafely(intent: Intent) {

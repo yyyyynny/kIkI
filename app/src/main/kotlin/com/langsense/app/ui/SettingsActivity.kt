@@ -240,7 +240,7 @@ class SettingsActivity : AppCompatActivity() {
             setPadding(0, dp(8), 0, 0)
         }
         val valueLabel = TextView(this).apply {
-            text = "$label: $value$suffix"
+            text = getString(R.string.slider_value_format, label, value, suffix)
             textSize = 14f
         }
         val steps = (max - min) / step
@@ -250,7 +250,7 @@ class SettingsActivity : AppCompatActivity() {
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
                     val v = min + p * step
-                    valueLabel.text = "$label: $v$suffix"
+                    valueLabel.text = getString(R.string.slider_value_format, label, v, suffix)
                 }
 
                 override fun onStartTrackingTouch(sb: SeekBar?) {}

@@ -23,6 +23,14 @@ class FlashOverlayView(context: Context) : FrameLayout(context) {
     /** 다음 깜박임 사이클 예약(보류) — 취소 시 정확히 제거하기 위해 참조를 보관한다. */
     private var pendingCycle: Runnable? = null
 
+    /**
+     * cancel() 이 진행 중임을 표시. ViewPropertyAnimator.cancel() 은 진행 중이던 withEndAction 을
+     * "정상 종료"와 동일하게 동기 호출하는 특성이 있어(취소인데도 실행됨), 이 플래그 없이는
+     * removeFlash() → cancel() → withEndAction → onEnd() → removeFlash() 가 같은 콜스택에서
+     * 재귀 호출된다(QuickMenuOverlayView.runAnimator 의 cancelled 플래그와 동일한 이유로 도입).
+     */
+    private var cancelled = false
+
     init {
         addView(
             label,
@@ -45,6 +53,7 @@ class FlashOverlayView(context: Context) : FrameLayout(context) {
      * @param onEnd 모든 깜박임 종료 후 콜백(오버레이 제거용)
      */
     fun play(colorArgb: Int, text: String, durationMs: Int, count: Int, onEnd: () -> Unit) {
+        cancelled = false
         setBackgroundColor(colorArgb)
         label.text = text
         playCycle(count.coerceAtLeast(1), durationMs.toLong(), onEnd)
@@ -52,12 +61,14 @@ class FlashOverlayView(context: Context) : FrameLayout(context) {
 
     /** 진행 중인 애니메이션/예약 콜백을 모두 취소한다(다른 플래시로 교체될 때 누수·오제거 방지). */
     fun cancel() {
+        cancelled = true
         animate().cancel()
         cancelPendingCycle()
     }
 
     override fun onDetachedFromWindow() {
         // 윈도우에서 제거되면 더 이상 콜백이 의미 없으므로 정리한다.
+        cancelled = true
         animate().cancel()
         cancelPendingCycle()
         super.onDetachedFromWindow()
@@ -81,8 +92,10 @@ class FlashOverlayView(context: Context) : FrameLayout(context) {
             .setStartDelay(durationMs / 2) // 잠깐 보이게 유지 후 페이드아웃
             .setDuration(durationMs)
             .withEndAction {
-                // 윈도우에서 이미 떨어졌다면(다른 플래시로 교체됨) 콜백을 무시한다.
-                if (!isAttachedToWindow) return@withEndAction
+                // cancel() 에 의한 호출(재진입)이거나 이미 윈도우에서 떨어졌다면(다른 플래시로 교체됨)
+                // 콜백을 무시한다 — 그렇지 않으면 cancel() 호출 도중 이 콜백이 다시 removeFlash() 를
+                // 유발해 재귀 호출된다.
+                if (cancelled || !isAttachedToWindow) return@withEndAction
                 if (remaining > 1) {
                     val next = Runnable { playCycle(remaining - 1, durationMs, onEnd) }
                     pendingCycle = next

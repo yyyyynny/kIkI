@@ -26,12 +26,22 @@
             android:text="@string/onboarding_desc"
             android:textSize="14sp" />
 
+        <!-- 진행 상태 요약 배너 (onResume 마다 갱신) -->
+        <TextView
+            android:id="@+id/tvSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:padding="12dp"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
         <!-- Step 1: 오버레이 권한 -->
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
             android:layout_marginTop="20dp"
-            android:background="#33888888" />
+            android:background="@color/ui_divider" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -69,7 +79,7 @@
             android:layout_width="match_parent"
             android:layout_height="1dp"
             android:layout_marginTop="16dp"
-            android:background="#33888888" />
+            android:background="@color/ui_divider" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -107,7 +117,7 @@
             android:layout_width="match_parent"
             android:layout_height="1dp"
             android:layout_marginTop="16dp"
-            android:background="#33888888" />
+            android:background="@color/ui_divider" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -145,7 +155,7 @@
             android:layout_width="match_parent"
             android:layout_height="1dp"
             android:layout_marginTop="20dp"
-            android:background="#33888888" />
+            android:background="@color/ui_divider" />
 
         <Button
             android:id="@+id/btnSettings"
@@ -160,7 +170,7 @@
             android:layout_marginTop="20dp"
             android:text="@string/privacy_note"
             android:textSize="12sp"
-            android:textColor="#888888" />
+            android:textColor="@color/ui_muted" />
 
     </LinearLayout>
 </ScrollView>

@@ -35,13 +35,21 @@ data class QuickMenuItem(val label: String, val onClick: () -> Unit)
 @SuppressLint("ViewConstructor")
 class QuickMenuOverlayView(
     context: Context,
-    private val anchorX: Int,
-    private val anchorY: Int,
+    /**
+     * 앵커(배지 중심) 좌표를 그때그때 다시 조회하는 콜백(Bug 6). 생성 시점 좌표를 고정값으로 들고
+     * 있으면, 메뉴가 열린 채로 화면이 회전해 배지 위치가 바뀌어도 예전 좌표를 중심으로 부채꼴이
+     * 펼쳐진다. onLayout(회전 시에도 호출됨)마다 이 콜백으로 최신 좌표를 다시 읽어 어긋남을 없앤다.
+     */
+    private val anchorProvider: () -> Pair<Int, Int>,
     items: List<QuickMenuItem>,
     /** 저사양(움직임 줄이기) 모드: 펼친 뒤 부유/빛 점 같은 연속 애니메이션을 끈다(펼침/수납은 유지). */
     private val reduceMotion: Boolean,
     private val onDismiss: () -> Unit
 ) : FrameLayout(context) {
+
+    /** 현재 앵커 좌표(픽셀). onLayout 마다 [anchorProvider] 로 갱신된다. */
+    private var anchorX: Float = 0f
+    private var anchorY: Float = 0f
 
     private val orbs = ArrayList<RadialOrbView>()
     /** 각 오브의 최종 중심 좌표(부채꼴 배치 결과). 별자리 선/애니메이션 보간에 사용. */
@@ -127,6 +135,10 @@ class QuickMenuOverlayView(
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
         super.onLayout(changed, l, t, r, b)
         if (orbs.isEmpty()) return
+        // 회전 등으로 다시 레이아웃될 때마다 배지의 현재 위치를 다시 읽는다(Bug 6).
+        val (ax, ay) = anchorProvider()
+        anchorX = ax.toFloat()
+        anchorY = ay.toFloat()
         computeFanPositions()
         // 오브의 스케일/이동 기준점을 "오브 중심"으로(라벨 제외) 맞춰 배지에서 자라나듯 보이게.
         orbs.forEach {
@@ -148,8 +160,8 @@ class QuickMenuOverlayView(
     private fun computeFanPositions() {
         val orbCenterY = orbs.first().orbCenterY
         val positions = RadialFanLayout.compute(
-            anchorX = anchorX.toFloat(),
-            anchorY = anchorY.toFloat(),
+            anchorX = anchorX,
+            anchorY = anchorY,
             screenW = width.toFloat(),
             screenH = height.toFloat(),
             count = orbs.size,
@@ -227,11 +239,11 @@ class QuickMenuOverlayView(
             val local = ((f - startFrac) / (endFrac - startFrac)).coerceIn(0f, 1f)
             val eased = overshoot.getInterpolation(local)
 
-            val fcx = finalCx.getOrElse(i) { anchorX.toFloat() }
-            val fcy = finalCy.getOrElse(i) { anchorY.toFloat() }
+            val fcx = finalCx.getOrElse(i) { anchorX }
+            val fcy = finalCy.getOrElse(i) { anchorY }
             // 오브 중심이 (앵커 → 최종) 로 이동하도록 translation 계산(피벗=오브 중심).
-            val curCx = lerp(anchorX.toFloat(), fcx, eased)
-            val curCy = lerp(anchorY.toFloat(), fcy, eased)
+            val curCx = lerp(anchorX, fcx, eased)
+            val curCy = lerp(anchorY, fcy, eased)
             orb.translationX = curCx - orb.width / 2f - orb.left
             orb.translationY = curCy - orb.orbCenterY - orb.top
             orb.scaleX = eased
@@ -328,8 +340,8 @@ class QuickMenuOverlayView(
             cy[i] = orb.translationY + orb.top + orb.orbCenterY
         }
 
-        val ax = anchorX.toFloat()
-        val ay = anchorY.toFloat()
+        val ax = anchorX
+        val ay = anchorY
         // 스포크: 배지 → 각 오브
         for (i in orbs.indices) {
             linePath.reset()

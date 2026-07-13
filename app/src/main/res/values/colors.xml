@@ -1,15 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 언어별 플래시 기본 색상 (docs/features.md 기준) -->
-    <color name="lang_korean">#CC2D2D</color>
+    <!--
+        플래시/배지의 실제 언어별 색상은 Prefs/OverlayManager 가 ARGB Int 로 직접 관리한다.
+        여기 lang_english 는 앱 테마(themes.xml)의 colorPrimary/colorAccent 로만 쓰인다.
+        (미사용이던 lang_korean/lang_default/badge_bg/badge_text/ui_divider 는 정리로 제거)
+    -->
     <color name="lang_english">#1A6EBD</color>
-    <!-- [일본어 비활성화] 일본어 기본 색상 주석 보존(추후 재도입 가능).
-    <color name="lang_japanese">#2D8C4E</color> -->
-    <color name="lang_default">#555555</color>
 
-    <!-- 배지 / 칩 -->
-    <color name="badge_bg">#CC000000</color>
-    <color name="badge_text">#FFFFFFFF</color>
+    <!-- 칩("교체?") 배경/글씨 (bg_chip.xml, ReplaceChipView 사용) -->
     <color name="chip_bg">#1C1C1E</color>
     <color name="chip_text">#FFFFFFFF</color>
 
@@ -17,5 +15,10 @@
 
     <!-- UI 강조색(섹션 헤더/타이틀) — 살짝 세련된 느낌의 공용 액센트 -->
     <color name="ui_accent">#2E7DD1</color>
-    <color name="ui_divider">#22808080</color>
+    <!-- 온보딩 구분선/보조 텍스트 (하드코딩 헥스 대신 공용 참조로 통일) -->
+    <color name="ui_divider">#33808080</color>
+    <color name="ui_muted">#888888</color>
+    <!-- 상태 배지 색 -->
+    <color name="status_ok">#2D8C4E</color>
+    <color name="status_need">#CC2D2D</color>
 </resources>

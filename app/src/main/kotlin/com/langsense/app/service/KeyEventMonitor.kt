@@ -36,6 +36,11 @@ import android.view.KeyEvent
  *  - **단축키 제외**: Ctrl/Alt/Meta 조합은 타이핑이 아니므로 무시.
  *  - **재확인(grace)**: 포커스가 없다고 나오면 [focusReProbe] 로 한 번 더 확인하여
  *    일시적 null 을 거른다. 한 번이라도 편집 포커스가 잡히면 카운터를 즉시 초기화.
+ *  - **발동 전 지연 검증(저사양 오경고 방지)**: 저사양 기기에서는 글자가 실제로 입력돼도 그 확인
+ *    이벤트(text/selection 변경)와 포커스 노드 갱신이 **수백 ms 늦게** 도착한다. 임계값 도달 즉시
+ *    경고하면 그 지연된 확인이 오기 전에 오경고가 뜬다. 그래서 임계값에 닿아도 바로 띄우지 않고
+ *    [scheduleVerify] 로 잠깐 미뤘다가, 그 사이 편집 활동이 확인되거나([recheckRecentEditableActivity])
+ *    포커스가 잡히면 경고를 취소한다. 진짜 포커스가 없으면 그 이벤트가 오지 않으므로 지연 후 정상 발동.
  *  - **경고 쿨다운**: 경고를 띄운 직후 [WARN_COOLDOWN_MS] 동안은 다시 띄우지 않아 도배 방지.
  *
  * onKeyEvent 는 절대 이벤트를 소비하지 않는다(항상 false).
@@ -47,6 +52,8 @@ class KeyEventMonitor(
 ) {
     private var noFocusKeyCount = 0
     private var lastWarnAt = 0L
+    /** 지연 검증이 예약되어 대기 중인지. 대기 중이면 추가 임계값 도달 시 중복 예약하지 않는다. */
+    private var verifyPending = false
 
     /**
      * 디스패치 스레드에서 동기로 호출하는 **저비용** 1차 게이트.
@@ -70,11 +77,17 @@ class KeyEventMonitor(
      *        디스패치 스레드에서 스냅샷한 값을 넘겨받는다(저비용).
      * @param focusProbe 1차(저비용) 편집 포커스 조회 — 백그라운드에서 호출되므로 디스패치를 막지 않는다.
      * @param focusReProbe 1차가 없을 때만 호출하는 2차(전체 윈도우) 재확인(일시적 null 방어).
+     * @param scheduleVerify 넘긴 작업을 이 평가 스레드에서 [WARN_VERIFY_DELAY_MS] 뒤에 실행하도록 예약.
+     *        지연 검증(저사양 오경고 방지)에 쓴다.
+     * @param recheckRecentEditableActivity 지연 검증 시점에 편집 활동을 **새로** 다시 읽는 콜백.
+     *        저사양에서 늦게 도착한 확인 이벤트를 반영해 경고를 취소하기 위한 것.
      */
     fun handleCandidate(
         recentEditableActivity: Boolean,
         focusProbe: () -> Boolean,
-        focusReProbe: () -> Boolean
+        focusReProbe: () -> Boolean,
+        scheduleVerify: (action: () -> Unit) -> Unit,
+        recheckRecentEditableActivity: () -> Boolean
     ) {
         if (!enabledProvider()) {
             noFocusKeyCount = 0
@@ -95,19 +108,28 @@ class KeyEventMonitor(
         }
 
         noFocusKeyCount++
-        if (noFocusKeyCount >= thresholdProvider()) {
-            val now = SystemClock.uptimeMillis()
-            if (now - lastWarnAt >= WARN_COOLDOWN_MS) {
-                onWarn()
-                lastWarnAt = now
-            }
-            noFocusKeyCount = 0
+        if (noFocusKeyCount < thresholdProvider()) return
+        noFocusKeyCount = 0
+
+        val now = SystemClock.uptimeMillis()
+        if (now - lastWarnAt < WARN_COOLDOWN_MS) return // 최근 경고 직후면 지연 검증조차 하지 않음
+        if (verifyPending) return                       // 이미 검증 대기 중이면 중복 예약 방지
+
+        // 임계값에 닿았지만 바로 띄우지 않는다. 저사양에서 늦게 도착하는 "입력 실착" 이벤트/포커스
+        // 갱신을 기다린 뒤, 그 사이 편집 활동이나 포커스가 확인되면 경고를 취소한다(오경고 방지).
+        verifyPending = true
+        scheduleVerify {
+            verifyPending = false
+            if (recheckRecentEditableActivity() || focusProbe() || focusReProbe()) return@scheduleVerify
+            onWarn()
+            lastWarnAt = SystemClock.uptimeMillis()
         }
     }
 
     /** 포커스 획득 등으로 카운터를 초기화. */
     fun reset() {
         noFocusKeyCount = 0
+        verifyPending = false
     }
 
     /**
@@ -126,5 +148,12 @@ class KeyEventMonitor(
     companion object {
         /** 경고 1회 후 재경고 억제 시간. */
         const val WARN_COOLDOWN_MS = 2500L
+
+        /**
+         * 임계값 도달 후 실제 경고까지의 지연 검증 시간(ms). 저사양 기기에서 늦게 도착하는 입력 실착
+         * 이벤트/포커스 갱신을 이 시간 동안 기다렸다가, 확인되면 경고를 취소한다. 진짜 포커스가 없으면
+         * 그 이벤트가 오지 않아 이 시간 뒤 경고가 정상 발동한다(사용자가 인지하기엔 여전히 충분히 빠름).
+         */
+        const val WARN_VERIFY_DELAY_MS = 400L
     }
 }

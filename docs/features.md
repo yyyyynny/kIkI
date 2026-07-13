@@ -14,7 +14,7 @@
 
 각 경로는 `InputMethodManager.getCurrentInputMethodSubtype()` 의 locale 을 읽어 직전과 다르면 발동.
 
-### ★ 2회 깜박임 방지 — 3중 방어
+### ★ 2회 깜박임 방지 — 다층 방어
 한 번의 전환이 위 경로에서 신호 다발(브로드캐스트 1 + 옵저버 2 + 윈도우 이벤트 n)을 만든다.
 1. **신호 합치기(coalesce)**: 모든 신호를 **단일 예약(`recheckRunnable`)** 으로 합쳐 신호가 멎고
    `COALESCE_MS`(150ms) 뒤에 **한 번만** 서브타입(또는 팝업 힌트)을 읽어 발동.
@@ -25,6 +25,11 @@
    여러 번 발동하므로, 재진입 시 이전 인스턴스를 `cleanup()` 후 재초기화.
 4. **렌더 단계 안전망**(`OverlayManager.FLASH_DEDUP_MS`=350ms): 같은 색 플래시가 아주 짧은 간격으로
    다시 오면 건너뜀(다른 언어는 색이 달라 정상 표시). 1~3이 근본 방어, 이건 마지막 시각 방어.
+5. **안티-플랩 가드(`FLAP_GUARD_MS`=1000ms)**: 불응기(450ms)와 렌더 에피소드 가드
+   (`OverlayManager.LANG_FLASH_MIN_INTERVAL_MS`=700ms) 사이 틈으로, 700ms 이후 도착한 지연 stale 신호가
+   서브타입 캐시 지연으로 "직전 언어"를 재발동해 다른 색 2번째 깜박임을 만들던 마지막 누수를 차단.
+   전환 직후 `FLAP_GUARD_MS` 안에 **직전 언어로 되돌아가는** `emitIfChanged` 는 stale 메아리로 보고
+   무시(사람이 그보다 빠르게 되돌리지 못하므로 정상 재전환은 유지).
 
 따라서 깜박임 횟수 1 지정 시 **정확히 1회**만 깜박이고, 신호마다 두 번씩 읽던 중복 작업도 사라진다
 (저사양 최적화). 전환당 `onLanguageChanged` 호출이 1회임은 `emitCount` + `Log.d` 로 실기기 확인 가능
@@ -110,9 +115,16 @@ WindowManager.LayoutParams:
    있음으로 간주하고 카운터 초기화. 포커스가 정말 없으면 이런 이벤트가 없으므로 진짜 경고는 유지.
 3. 포커스 조회(지연 평가): 1차 활성 윈도우 `findFocus(FOCUS_INPUT)?.isEditable`, 없을 때만
    2차 전체 윈도우 순회(일시적 null 방어).
-4. 그래도 포커스 없으면 카운터 증가. 임계값(기본 3) 도달 시 경고, 재경고 쿨다운 `WARN_COOLDOWN_MS`(2.5s).
+4. 그래도 포커스 없으면 카운터 증가. 임계값(기본 3) 도달 시 **바로 경고하지 않고** 아래 지연 검증을 거쳐
+   발동, 재경고 쿨다운 `WARN_COOLDOWN_MS`(2.5s).
+5. **발동 전 지연 검증(`WARN_VERIFY_DELAY_MS`=400ms)**: 저사양 기기는 글자가 실제 입력돼도 그 확인
+   이벤트(text/selection 변경)와 포커스 노드 갱신이 수백 ms 늦게 도착한다. 임계값 도달 즉시 경고하면
+   그 지연 확인이 오기 전에 오경고가 뜨므로, 이 시간만큼 미뤘다가 재확인한다. 그 사이 입력 실착이
+   확인되거나(`lastEditableActivityAt` 재조회) 포커스가 잡히면 경고를 **취소**, 진짜 포커스가 없으면
+   확인 이벤트가 오지 않아 정상 발동. → "입력은 되는데 저사양에서 가끔 경고가 뜨던" 잔여 오발동 해결.
 
 > 텍스트 '내용'은 절대 읽지 않는다(`source.isEditable` 여부만 확인). 카운터는 포커스 획득/입력 실착 시 초기화.
+> 지연 검증은 키 평가(백그라운드) 스레드에서 예약되므로 키 디스패치를 막지 않는다.
 
 ---
 
@@ -333,6 +345,32 @@ WindowManager flags:
 
 ---
 
+## 추가 기능 2: 터치 키보드 제외
+
+블루투스 등 외장 키보드로 입력할 때만 kIkI 기능(플래시/배지/포커스 경고/한영타 교체)이 동작하도록,
+**화면 터치 키보드가 떠 있는 동안엔 전부 끄는** 옵션(`SettingsActivity` → "터치 키보드 제외", 기본 OFF).
+
+### 판정 로직
+- **외장 키보드 연결 감지(`HardwareKeyboardDetector`)**: `InputManager`+`InputDevice` 로 "가상이 아닌
+  알파벳(QWERTY) 키보드"(`SOURCE_KEYBOARD` 비트 포함)가 있으면 연결로 판정. `InputDeviceListener` 로
+  실시간 연결/해제 통지(서비스의 `onConfigurationChanged` 가 도킹 등 일부 경로의 백스톱).
+- **활성/비활성 기준은 "연결 여부"가 아니라 "화면 터치 키보드 표시 여부"**
+  (`LangSenseAccessibilityService.computeSoftKeyboardVisible()`). 외장 키보드를 상시 연결해 두는
+  사용자는 연결 기준이면 터치 입력 시에도 계속 켜져 있어 옵션이 무의미해지기 때문에, "지금 어느
+  키보드로 입력 중인가"를 직접 반영하는 표시 여부를 쓴다.
+- **터치 키보드 표시 판정(면적 기준)**: 접근성 `windows` 중 `TYPE_INPUT_METHOD` 창의 **너비×높이가
+  화면 전체 면적의 `IME_KEYBOARD_MIN_SCREEN_AREA_FRACTION`(10%) 이상**이면 "표시 중"으로 본다.
+  외장 키보드의 클립보드/추천 툴바(전체 폭이지만 얇은 띠, 면적 비율 한 자릿수 %)와 실제 터치
+  키보드(플로팅/분리형처럼 작아도 가로·세로 모두 상당 부분 차지, 면적 비율 15%+)를 가른다.
+  (이전엔 높이만 봤으나 세로 폭이 좁은 플로팅/분리형 키보드를 "없음"으로 오판할 수 있어 면적 기준으로 전환.)
+- **적용 범위**: `featuresEnabled() = !excludeTouchKeyboard || !softKeyboardVisible` 를 언어 전환
+  플래시/배지, 포커스 없는 키 입력 경고, 한영타 교체 세 곳 모두에서 게이트로 사용.
+
+### 저사양 최적화
+옵션이 꺼져 있으면(기본값) `windows` 순회 자체를 하지 않아 일반 사용자에겐 부하가 없다.
+
+---
+
 ## ImeLocaleParser 유틸리티
 
 ```kotlin
@@ -340,11 +378,9 @@ object ImeLocaleParser {
 
     fun parseLocale(subtype: InputMethodSubtype?): String {
         subtype ?: return "unknown"
-        val locale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            subtype.languageTag.ifEmpty { subtype.locale }
-        } else {
-            subtype.locale
-        }
+        // minSdk 29 이므로 languageTag(API 24+)는 항상 사용 가능. 빈 값일 때만 deprecated 한
+        // subtype.locale 로 폴백(그 참조 때문에 @Suppress("DEPRECATION") 유지).
+        val locale = subtype.languageTag.ifEmpty { subtype.locale }
         return when {
             locale.startsWith("ko") -> "ko"
             // [일본어 비활성화] locale.startsWith("ja") -> "ja"  (주석 보존)

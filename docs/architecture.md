@@ -20,12 +20,14 @@
   └── onKeyEvent()                         # 게이트 → 최근 입력 실착 검사 → (그때만) 포커스 조회(지연 평가)
         최근 입력 실착 있으면 즉시 통과 / 없을 때만 1차 활성 윈도우 → 2차 전체 윈도우 → KeyEventMonitor
 
-[ImeStateDetector]  ── 언어 전환 감지(세 경로 병행) + 2회 깜박임 3중 방어 ──
+[ImeStateDetector]  ── 언어 전환 감지(세 경로 병행) + 2회 깜박임 다층 방어 ──
   ① BroadcastReceiver  ACTION_INPUT_METHOD_CHANGED
   ② ContentObserver    selected_input_method_subtype / default_input_method
   ③ 윈도우 이벤트 + Samsung 팝업 텍스트(ImeLocaleParser)
         │  (a) 모든 신호 → requestRecheck() 로 합침(coalesce, COALESCE_MS 150ms)
         │  (b) 발동 후 불응기(REFRACTORY_MS 450ms) — 잔여 신호·지연 캐시의 stale 재발동 차단
+        │  (c) 안티-플랩(FLAP_GUARD_MS 1000ms) — 700ms 이후 도착한 stale 신호가 "직전 언어"로
+        │      되돌아가 다른 색 2번째 깜박임을 만들던 마지막 누수 차단
         ▼  단 1회 emitIfChanged → onLanguageChanged
 [OverlayManager]
   ├── FlashOverlayView.show(lang)    → 전체화면 플래시 (windowAnimations=0)
@@ -34,13 +36,20 @@
   └── QuickMenuOverlayView           → WaterDropView 항목들(부채꼴 배치, 탭 시 동작 후 닫힘)
 
 [KeyEventMonitor]
-  포커스 없는 문자 키 N회(기본 3) → OverlayManager.showNoFocusWarning() (쿨다운 2.5s)
+  포커스 없는 문자 키 N회(기본 3) → 지연 검증(WARN_VERIFY_DELAY_MS 400ms; 그 사이 입력 실착/포커스
+  확인되면 취소, 저사양 오경고 방지) → OverlayManager.showNoFocusWarning() (쿨다운 2.5s)
 
 [TextSelectionMonitor]
   드래그 선택 감지
   → HangulConverter.detectEnglishToKorean() 신뢰도 판정(mapRatio × composeRatio)
   → 신뢰도 ≥ 임계값(기본 70%) 시 ReplaceChipView.show(변환 미리보기)
   → 사용자 탭 → HangulConverter.convertEngToKor() → ACTION_SET_TEXT (실패 시 클립보드 fallback)
+
+[HardwareKeyboardDetector] ── 터치 키보드 제외 게이트(옵션, 기본 OFF) ──
+  InputManager.InputDeviceListener 로 외장 키보드 연결 실시간 감지
+  → computeSoftKeyboardVisible(): TYPE_INPUT_METHOD 창 면적 ≥ 화면의 10% 면 "터치 키보드 표시 중"
+  → featuresEnabled() = !excludeTouchKeyboard || !softKeyboardVisible
+  → 위 3개(플래시/배지, KeyEventMonitor, TextSelectionMonitor) 모두 이 게이트를 거쳐야 동작
 ```
 
 ---
@@ -81,6 +90,7 @@ data class ImeState(
 // emitIfChanged: 이전 lastState.locale 과 다를 때만 발동(중복 제거 1차).
 // requestRecheck: 여러 감지 신호를 COALESCE_MS 동안 합침(2차) + 발동 후 REFRACTORY_MS 불응기(3차).
 // onServiceConnected 멱등화: 재연결 시 detector 중복 등록 방지(4차).
+// 안티-플랩(FLAP_GUARD_MS): 직전 언어로 되돌아가는 stale 재발동 차단(5차, 렌더 가드 700ms 뒤 누수 보완).
 // → 깜박임 횟수 1 지정 시 정확히 1회. emitCount + Log.d 로 실기기 검증 가능.
 ```
 

@@ -53,12 +53,15 @@
 |---|---|---|
 | JDK | **17** (Temurin) | AGP 8.x / Gradle 8.11.1 요구 |
 | Gradle | **8.11.1** | `gradle/wrapper/gradle-wrapper.properties` |
-| AGP | **8.7.3** | `gradle/libs.versions.toml` |
+| AGP | **8.7.3** | `gradle/libs.versions.toml` — ⚠️ **9.x 는 Gradle 9.1+ 요구**(하단 참조), 별도 작업으로 보류 |
 | compileSdk / targetSdk | **35** | minSdk 29 |
 | build-tools | **35.0.0** | CI 에서 `sdkmanager` 로 설치 |
 | Node.js | **24** | 프로젝트 표준(JS 기반 도구/스크립트 작성 시 24 기준) |
 
 - CI 사용법·실패 진단·브랜치 보호 설정은 `docs/CI_가이드.md` 참조.
+- **AGP 를 9.x 로 못 올리는 이유 + 그 때문에 `coreKtx`/`lifecycle` 도 상한선이 걸린 이유**는
+  `gradle/libs.versions.toml` 상단 주석에 상세 기록(2026-07, 실제 빌드로 검증됨). AGP 를 9.x 로
+  올리는 순간 그 두 제약도 함께 풀리니, 나중에 AGP 업그레이드 시 같이 처리할 것.
 
 ---
 
@@ -113,6 +116,11 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
 - **저사양 최적화**: 포커스 조회는 비싸므로 **기능 ON + ACTION_DOWN + 비반복 + 실제 문자 키 +
   최근 입력 실착 없음** 게이트를 통과한 뒤에만 지연 평가. 1차는 활성 윈도우만 보는 저비용 조회,
   없을 때만 2차로 전체 윈도우 순회(일시적 null 방어). 모디파이어/반복/단축키/기능 OFF 에선 노드 트리를 안 건드림.
+- **발동 전 지연 검증(`WARN_VERIFY_DELAY_MS`=400ms)**: 저사양 기기는 글자가 실제 입력돼도 그 확인
+  이벤트(text/selection 변경)와 포커스 노드 갱신이 수백 ms 늦게 온다. 임계값 도달 즉시 경고하면 그
+  지연된 확인이 오기 전에 오경고가 뜨므로, 바로 띄우지 않고 이 시간 뒤 재확인한다. 그 사이 입력 실착이
+  확인되거나 포커스가 잡히면 경고를 취소, 진짜 포커스가 없으면(확인 이벤트 안 옴) 정상 발동. →
+  "입력은 되는데 저사양에서 가끔 경고가 뜨는" 잔여 오발동 해결.
 - 표시: `선택되지 않음` 텍스트 오버레이 (Feature 1과 동일한 플래시 방식, 재경고 쿨다운 2.5s)
 - 카운터는 포커스 획득 시 초기화. `onKeyEvent` 는 항상 `false` 반환(이벤트 절대 미소비)
 - 텍스트 '내용'은 읽지 않음(`source.isEditable` 여부만 확인)
@@ -156,6 +164,21 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
 - 항목(서비스가 주입): **앱 열기 / 설정 / 플래시 토글 / 한영타 토글 / 배지 숨기기**.
   토글은 탭 시점에 `Prefs` 를 읽어 현재 상태를 뒤집고 토스트로 새 상태(켜짐/꺼짐)를 안내.
 - 배지가 사라지거나 서비스 정리 시 메뉴도 함께 제거.
+
+### 추가 기능 2: 터치 키보드 제외
+
+외장(블루투스 등) 키보드로 입력할 때만 kIkI 기능이 동작하도록, **화면 터치 키보드가 떠 있는 동안엔
+플래시·배지·포커스 경고·한영타 교체를 전부 끄는** 옵션(설정, 기본 OFF).
+
+- 판정 기준은 "외장 키보드 연결 여부"가 아니라 **"지금 화면 터치 키보드가 표시 중인가"**
+  (`LangSenseAccessibilityService.computeSoftKeyboardVisible()`). 외장 키보드를 상시 연결해 두는
+  사용자도 터치로 입력하는 순간엔 정확히 꺼지게 하기 위함.
+- 터치 키보드 표시 판정은 **면적 기준**: 접근성 `TYPE_INPUT_METHOD` 창의 너비×높이가 화면 전체
+  면적의 10%(`IME_KEYBOARD_MIN_SCREEN_AREA_FRACTION`) 이상이면 표시 중으로 본다. 외장 키보드의
+  클립보드/추천 툴바(얇은 띠)와 실제 터치 키보드(플로팅/분리형 포함)를 면적으로 가른다.
+- 외장 키보드 연결 자체는 `HardwareKeyboardDetector`(`InputManager`+`InputDevice`, 가상이 아닌
+  알파벳 키보드만 인정)가 실시간 감지하며, `onConfigurationChanged` 가 도킹 등 일부 경로의 백스톱.
+- 옵션이 꺼져 있으면(기본값) `windows` 순회를 하지 않아 일반 사용자에겐 부하가 없다.
 
 ---
 
@@ -243,11 +266,12 @@ SettingsActivity
 5. **Accessibility 오용 방지**: 이 서비스는 키로깅, 화면 내용 수집, 외부 전송을 절대 수행하지 않음. 모든 처리는 로컬 온디바이스. `typeViewTextChanged` 도 구독하지만 텍스트 '내용'은 읽지 않고 `source.isEditable` 여부만 본다(포커스 경고 오발동 방지용). 디버그 로그는 언어 코드만 출력.
 6. **One UI 9.x 미지원**: 베타 상태로 AccessibilityEvent 동작 변경 가능성 있음. 별도 분기 작성 금지, 추후 별도 대응.
 7. **[일본어 비활성화]**: 일본어는 발음 입력 후 한자 변환 단계가 많아 한/영 감지 실효가 낮아 기능을 껐다. **삭제하지 않고 전부 주석 처리**(ImeLocaleParser 의 ja·日本語·日 감지, displayName/badgeLabel, Prefs 의 JA 분기/상수, 설정 체크박스·색상, strings/colors)하여 추후 재도입을 쉽게 함. 주석만 처리했으므로 일본어 IME 입력 시 전용 처리는 사라지고 **기타 언어와 동일한 일반 경로(회색 `#555555`, 라벨 "JA")** 로 흐른다(완전 억제는 아님).
-8. **IME 전환 2회 깜박임 — 3중 방어**: 한 전환이 Broadcast/Observer/윈도우 이벤트에서 여러 신호를 만들어 2회 이상 깜박이던 문제를 다음으로 해결.
+8. **IME 전환 2회 깜박임 — 다층 방어**: 한 전환이 Broadcast/Observer/윈도우 이벤트에서 여러 신호를 만들어 2회 이상 깜박이던 문제를 다음으로 해결.
    - (a) **신호 합치기**: 모든 신호를 단일 예약으로 합쳐 `COALESCE_MS`(150ms) 후 1회만 평가.
    - (b) **발동 후 불응기**(`REFRACTORY_MS`=450ms): 잔여 신호 + 지연된 `currentInputMethodSubtype` 캐시가 "직전 언어"를 다시 발동(다른 색 2번째 깜박임)하는 것을 차단.
    - (c) **`onServiceConnected` 멱등화**: 재연결 시 중복으로 BroadcastReceiver/ContentObserver 가 등록돼 detector 가 누적되면 한 전환에 여러 번 발동하므로, 재진입 시 `cleanup()` 후 재초기화.
    - (d) **렌더 단계 안전망**(`OverlayManager.FLASH_DEDUP_MS`=350ms): 같은 색 플래시가 아주 짧은 간격으로 다시 오면 건너뜀. 위 (a)~(c) 가 근본 방어이고 이건 마지막 시각 방어(원인 진단용 `emitCount` 로그는 그대로 유지).
+   - (e) **안티-플랩 가드**(`ImeStateDetector.FLAP_GUARD_MS`=1000ms): 불응기(450ms)와 렌더 에피소드 가드(`OverlayManager.LANG_FLASH_MIN_INTERVAL_MS`=700ms) 사이 틈으로, 700ms 이후 도착한 지연 stale 신호가 서브타입 캐시 지연으로 "직전 언어"를 재발동해 다른 색 2번째 깜박임을 만들던 마지막 누수를 차단. 전환 직후 `FLAP_GUARD_MS` 안에 **직전 언어로 되돌아가는** emit 은 stale 메아리로 보고 무시(사람이 그보다 빠르게 되돌리지 못하므로 정상 재전환은 유지).
    `onLanguageChanged` 는 전환당 1회만 호출되도록 했고 `emitCount`+`Log.d` 로 실기기 검증 가능(렌더 안전망이 가려도 로그로 실제 트리거 수 확인 가능). 키 입력 시 전체 윈도우 순회는 게이트 통과 후로 지연.
 9. **앱 표시 이름 = kIkI**: 사용자에게 보이는 문구만 kIkI. 패키지/applicationId(`com.langsense.app`), 클래스명(`LangSenseAccessibilityService`), 리소스 id(`Theme.LangSense`), Gradle `rootProject.name` 등 **식별자는 절대 변경 금지**.
 

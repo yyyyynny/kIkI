@@ -45,9 +45,11 @@ class LangSenseAccessibilityService : AccessibilityService(),
 
     /**
      * 편집칸에 글자가 실제로 들어간 마지막 시각(uptime). text/selection 변경 이벤트가 편집 노드에서
-     * 올 때 갱신한다. 포커스 없는 키 입력 경고의 오발동(입력은 되는데 경고가 뜨는 문제)을 막는 데 쓴다.
-     * onKeyEvent/onAccessibilityEvent 가 모두 메인 스레드에서 호출되므로 이 값은 메인 스레드에서만 접근한다.
+     * 올 때(메인 스레드) 갱신한다. 포커스 없는 키 입력 경고의 오발동(입력은 되는데 경고가 뜨는 문제)을
+     * 막는 데 쓴다. 갱신은 메인 스레드에서만 하지만, 경고 지연 검증이 키 평가(백그라운드) 스레드에서
+     * 이 값을 다시 읽으므로 64비트 torn read 방지를 위해 @Volatile 로 둔다.
      */
+    @Volatile
     private var lastEditableActivityAt = 0L
 
     /**
@@ -132,19 +134,28 @@ class LangSenseAccessibilityService : AccessibilityService(),
      * strip)를 켜 두면, 이 **얇은 툴바도 TYPE_INPUT_METHOD 창**이라 존재만 보면 외장 키보드로
      * 입력 중인데도 "터치 키보드 켜짐"으로 오인해 기능 전체가 꺼졌다(사용자 보고 버그).
      *
-     * 그래서 IME 창의 **높이**로 구분한다: 실제 터치 키보드는 화면을 크게 가리지만(보통 30%+),
-     * HW 키보드 툴바는 얇은 띠(보통 한 자릿수 %)다. 화면 높이의
-     * [IME_KEYBOARD_MIN_SCREEN_FRACTION] 이상을 차지하는 IME 창이 하나라도 있을 때만
-     * '터치 키보드 표시'로 본다(툴바만 떠 있으면 외장 키보드 입력으로 보고 기능 유지).
+     * 그래서 IME 창의 **면적**(너비×높이, 화면 전체 면적 대비 비율)으로 구분한다. HW 키보드 툴바는
+     * 폭은 화면 전체를 쓰더라도 높이가 얇은 띠(면적 비율 한 자릿수 %)인 반면, 실제 터치 키보드는
+     * One UI 의 플로팅/분리형 키보드처럼 세로 폭이 좁아도(예전의 높이-only 기준으로는 22% 미만이라
+     * "없음"으로 오판되던 사례) 가로 폭까지 함께 차지해 면적 비율은 여전히 크다(순수 높이 비교보다
+     * 폭이 좁은 실제 키보드와 얇은 툴바를 더 안정적으로 가른다). [IME_KEYBOARD_MIN_SCREEN_AREA_FRACTION]
+     * 이상인 IME 창이 하나라도 있을 때만 '터치 키보드 표시'로 본다.
      */
     private fun computeSoftKeyboardVisible(): Boolean = runCatching {
         val screenH = resources.displayMetrics.heightPixels
-        if (screenH <= 0) return@runCatching false
-        val minKeyboardPx = screenH * IME_KEYBOARD_MIN_SCREEN_FRACTION
-        windows.any { w ->
-            if (w?.type != AccessibilityWindowInfo.TYPE_INPUT_METHOD) return@any false
-            w.getBoundsInScreen(imeBoundsBuf)
-            imeBoundsBuf.height() >= minKeyboardPx // 얇은 HW 키보드 툴바는 '키보드 표시'로 보지 않음
+        val screenW = resources.displayMetrics.widthPixels
+        if (screenH <= 0 || screenW <= 0) return@runCatching false
+        val minAreaPx = screenH.toLong() * screenW.toLong() * IME_KEYBOARD_MIN_SCREEN_AREA_FRACTION
+        val windowList = windows
+        try {
+            windowList.any { w ->
+                if (w?.type != AccessibilityWindowInfo.TYPE_INPUT_METHOD) return@any false
+                w.getBoundsInScreen(imeBoundsBuf)
+                imeBoundsBuf.width().toLong() * imeBoundsBuf.height().toLong() >= minAreaPx
+            }
+        } finally {
+            // AccessibilityWindowInfo 도 API 33 미만에서 recycle 대상(누수 방지).
+            windowList.forEach { it?.recycle() }
         }
     }.getOrDefault(false)
 
@@ -243,6 +254,8 @@ class LangSenseAccessibilityService : AccessibilityService(),
             // 글자가 실제 편집칸에 들어갔다는 가장 직접적인 신호(포커스 경고 오발동 방지용).
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED ->
                 markEditableActivity(event)
+            // 그 외 이벤트 타입은 구독하지 않으므로 명시적으로 무시(SwitchIntDef 경고 해소).
+            else -> {}
         }
     }
 
@@ -259,7 +272,9 @@ class LangSenseAccessibilityService : AccessibilityService(),
         if (!prefs.noFocusEnabled) return // 포커스 경고가 꺼져 있으면 노드 접근조차 하지 않음
         val now = SystemClock.uptimeMillis()
         if (now - lastEditableActivityAt < EDIT_RECHECK_MS) return // 이미 최근 확인됨 → IPC 생략
-        val editable = runCatching { event.source?.isEditable }.getOrNull()
+        val source = event.source ?: return
+        val editable = runCatching { source.isEditable }.getOrNull()
+        runCatching { source.recycle() } // API 33 미만 노드 풀 누수 방지
         if (editable == true) lastEditableActivityAt = now
     }
 
@@ -277,29 +292,57 @@ class LangSenseAccessibilityService : AccessibilityService(),
             keyMonitor.handleCandidate(
                 recentEditableActivity = recent,
                 focusProbe = { hasActiveEditableFocus() },
-                focusReProbe = { hasAnyEditableFocus() }
+                focusReProbe = { hasAnyEditableFocus() },
+                // 지연 검증은 같은 평가 스레드에서 예약(경고 발동 전 마지막 확인).
+                scheduleVerify = { action -> keyEvalHandler?.postDelayed(action, KeyEventMonitor.WARN_VERIFY_DELAY_MS) },
+                // 검증 시점에 lastEditableActivityAt 를 새로 읽어, 저사양에서 늦게 도착한 입력 실착을 반영.
+                recheckRecentEditableActivity = {
+                    SystemClock.uptimeMillis() - lastEditableActivityAt < RECENT_INPUT_MS
+                }
             )
         }
         return false
     }
 
     /** 1차(저비용): 활성 윈도우의 편집 가능한 입력 포커스만 확인. 키마다 호출되므로 가볍게 유지. */
-    private fun hasActiveEditableFocus(): Boolean =
-        runCatching { rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.isEditable }
-            .getOrNull() == true
+    private fun hasActiveEditableFocus(): Boolean {
+        val root = runCatching { rootInActiveWindow }.getOrNull() ?: return false
+        return try {
+            val focus = runCatching { root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull()
+            try {
+                focus?.isEditable == true
+            } finally {
+                focus?.recycle() // API 33 미만 노드 풀 누수 방지
+            }
+        } finally {
+            root.recycle()
+        }
+    }
 
     /**
      * 2차(백업): 전체 윈도우를 순회해 편집 포커스를 탐색(멀티윈도우/IME 분리 대응).
      * 활성 윈도우가 잠시 비어있을 때 일시적 null 오판을 막기 위한 것으로, 1차가 실패할 때만 호출된다.
+     * 조기 반환 시 아직 순회하지 않은 윈도우/노드가 recycle 되지 않는 누수를 막기 위해 끝까지
+     * 순회하며 각 윈도우/루트/포커스 노드를 그때그때 회수한다.
      */
     private fun hasAnyEditableFocus(): Boolean {
+        var found = false
         runCatching {
             for (w in windows) {
-                val node = w?.root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: continue
-                if (node.isEditable) return true
+                val win = w ?: continue
+                val root = win.root
+                if (root != null) {
+                    val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                    if (node != null) {
+                        if (!found && node.isEditable) found = true
+                        node.recycle()
+                    }
+                    root.recycle()
+                }
+                win.recycle()
             }
         }
-        return false
+        return found
     }
 
     override fun onInterrupt() { /* no-op */ }
@@ -368,11 +411,13 @@ class LangSenseAccessibilityService : AccessibilityService(),
         private const val EDIT_RECHECK_MS = 300L
 
         /**
-         * IME 창을 '실제 화면 터치 키보드'로 인정하는 최소 높이(화면 높이 대비 비율).
-         * 외장 키보드 툴바(클립보드/추천 strip, 보통 한 자릿수 %)와 실제 터치 키보드(보통 30%+)
-         * 사이에 넉넉한 여백이 있어, 0.22 면 기기/화면 방향이 달라도 안정적으로 둘을 가른다.
-         * (이 값 미만 높이의 IME 창은 툴바로 보고 기능을 끄지 않는다 — 외장 키보드 툴바 오인 버그 방지)
+         * IME 창을 '실제 화면 터치 키보드'로 인정하는 최소 면적(화면 전체 면적 대비 비율).
+         * 외장 키보드 툴바(전체 폭 × 얇은 높이, 면적 비율 한 자릿수 %)와 실제 터치 키보드(One UI
+         * 플로팅/분리형처럼 작아도 가로·세로 모두 상당 부분을 차지해 면적 비율은 15%+) 사이에
+         * 여백을 두어 가른다. 높이만 보던 이전 기준(0.22)은 플로팅/분리형 키보드처럼 세로 폭이 좁은
+         * 실제 키보드를 "없음"으로 오판할 수 있어 면적 기준으로 교체했다.
+         * (이 값 미만 면적의 IME 창은 툴바로 보고 기능을 끄지 않는다 — 외장 키보드 툴바 오인 버그 방지)
          */
-        private const val IME_KEYBOARD_MIN_SCREEN_FRACTION = 0.22f
+        private const val IME_KEYBOARD_MIN_SCREEN_AREA_FRACTION = 0.1f
     }
 }
