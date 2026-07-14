@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    적응형 아이콘 배경 — "전환의 섬광" 컨셉.
+    화면을 대각선으로 가르는 빨강(한국어 플래시 색 계열)/파랑(영어 플래시 색 계열) 듀오톤.
+    실제 앱 동작(언어 전환 시 색 플래시)을 그대로 형상화한다. 전경(ic_launcher_foreground)의
+    흰 번개가 이 경계(우상→좌하 대각)를 내리친다.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 좌상 삼각형: 한국어 빨강 -->
+    <path android:pathData="M0,0 L108,0 L0,108 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="8" android:startY="8"
+                android:endX="66" android:endY="66"
+                android:startColor="#F0524A"
+                android:endColor="#A31B1B" />
+        </aapt:attr>
+    </path>
+    <!-- 우하 삼각형: 영어 파랑 -->
+    <path android:pathData="M108,0 L108,108 L0,108 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="42" android:startY="42"
+                android:endX="100" android:endY="100"
+                android:startColor="#2F7FDC"
+                android:endColor="#0E2F63" />
+        </aapt:attr>
+    </path>
+</vector>

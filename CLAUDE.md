@@ -161,14 +161,21 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
 **⚠️ 핵심 구현체**: `HangulConverter.kt`
 두벌식(QWERTY) ↔ 한국어 변환 로직. 상세 스펙은 `docs/features.md` 참조.
 
-### Feature 5: 물방울 간편 메뉴 (배지 탭)
+### Feature 5: 비눗방울 래디얼 메뉴 (배지 탭)
 
-상시 배지를 **탭**(드래그 아님)하면 배지 주위로 **물방울(teardrop) 모양 버튼**들이 부채꼴로 퍼지는
+상시 배지를 **탭**(드래그 아님)하면 배지 주위로 **입체 비눗방울 오브**들이 부채꼴로 펼쳐지는
 간편 메뉴를 띄운다. 빈 곳/항목 탭 시 닫힘.
 
-- 구현: `QuickMenuOverlayView`(전체화면 반투명 스크림) + `WaterDropView`(Path 로 그린 물방울,
-  위→아래 파란 그라데이션 + 상단 광택, 라벨 중앙 — 별도 리소스 불필요). 등장은 오버슈트 스케일 애니메이션.
-- 배치: 앵커(배지 중심)에서 **화면 중앙 방향**으로 약 150° 부채꼴, 화면 밖으로 안 나가게 clamp.
+- **원본 디자인**: `claude/intelligent-edison-kwQHu` 브랜치의 `design/orb_mockup.html` **목업 v2**
+  (사용자 승인본). 오프셋 구체 그라데이션 + 안쪽 밝은 링/바깥 이중 링 + 우하단 림 라이트 +
+  가장자리 무지갯빛 sheen(정적) + 라벨은 방울 안 중앙.
+- 구현: `QuickMenuOverlayView`(전체화면 스크림 + 배지→오브 스포크 + 앵커 헤일로·4꼭지 별 스파클) +
+  `RadialOrbView`(비눗방울 렌더, 별도 리소스 불필요) + `RadialFanLayout`(부채꼴 배치) +
+  `RadialMenuStyle`(모든 색/치수/타이밍 상수 단일 진입점). 등장은 오버슈트 스케일 + 스태거.
+- **모션 원칙(불쾌한 골짜기 방지)**: 오브별 랜덤 주기/진폭 부유와 선 위를 흐르는 빛 점은 유기체처럼
+  보여 제거. 부유는 전 오브 동일 주기(4.4s)+인덱스 위상만의 잔잔한 물결. sheen 도 회전 없이 정적.
+  "저사양 모드(움직임 줄이기)" ON 이면 펼친 뒤 완전 정적.
+- 배치: 앵커(배지 중심)에서 **화면 중앙 방향**으로 부채꼴(140°, 최소 70°), 화면 밖으로 안 나가게 clamp.
 - 항목(서비스가 주입): **앱 열기 / 설정 / 플래시 토글 / 한영타 토글 / 배지 숨기기**.
   토글은 탭 시점에 `Prefs` 를 읽어 현재 상태를 뒤집고 토스트로 새 상태(켜짐/꺼짐)를 안내.
 - 배지가 사라지거나 서비스 정리 시 메뉴도 함께 제거.
@@ -217,7 +224,8 @@ OverlayManager (WindowManager 래퍼)
   ├── FlashOverlayView         — 전체화면 플래시 (Feature 1, 3) / windowAnimations=0
   ├── BadgeOverlayView         — 상시 언어 배지 (Feature 2) / 크기·색 applyStyle / 탭→간편 메뉴
   ├── ReplaceChipView          — "교체?" 미니 버튼 (Feature 4)
-  └── QuickMenuOverlayView     — 물방울 간편 메뉴 (Feature 5) / WaterDropView 항목
+  └── QuickMenuOverlayView     — 비눗방울 래디얼 메뉴 (Feature 5) / RadialOrbView 항목
+                                 (+ RadialFanLayout 배치, RadialMenuStyle 상수)
 
 util/
   ├── HangulConverter          — 두벌식↔QWERTY 변환 + 한영타 신뢰도 판정 (순수 Kotlin)

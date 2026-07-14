@@ -8,8 +8,6 @@
     <color name="chip_bg">#1C1C1E</color>
     <color name="chip_text">#FFFFFFFF</color>
 
-    <color name="ic_launcher_background">#1A6EBD</color>
-
     <!-- ── 시맨틱 UI 팔레트 (라이트) ─────────────────────────────────── -->
     <!-- 화면 배경 / 카드 표면 -->
     <color name="ui_bg">#F4F6FA</color>

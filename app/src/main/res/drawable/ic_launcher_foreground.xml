@@ -1,20 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 적응형 아이콘 전경: 한/A 두 언어를 상징하는 단순 도형 -->
+<!--
+    적응형 아이콘 전경 — "전환의 섬광": 빨강/파랑 경계를 내리치는 흰 번개(전환의 순간).
+    벡터에는 blur 가 없으므로 글로우는 같은 볼트 path 를 중심 기준으로 확대한 저알파 레이어
+    2겹으로 근사한다. 볼트는 적응형 세이프존(중심 66dp 원) 안에 들어온다.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 말풍선 형태 -->
+    <!-- 바깥 글로우(가장 크고 옅게) -->
+    <group android:scaleX="1.30" android:scaleY="1.18" android:pivotX="54" android:pivotY="54">
+        <path
+            android:fillColor="#26FFFFFF"
+            android:pathData="M61,24 L40,60 h12 l-5,24 22,-40 h-12 z" />
+    </group>
+    <!-- 안쪽 글로우 -->
+    <group android:scaleX="1.14" android:scaleY="1.08" android:pivotX="54" android:pivotY="54">
+        <path
+            android:fillColor="#45FFFFFF"
+            android:pathData="M61,24 L40,60 h12 l-5,24 22,-40 h-12 z" />
+    </group>
+    <!-- 번개 볼트 본체 -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M30,30 H78 A6,6 0 0 1 84,36 V66 A6,6 0 0 1 78,72 H50 L40,82 V72 H30 A6,6 0 0 1 24,66 V36 A6,6 0 0 1 30,30 Z" />
-    <!-- 한 -->
-    <path
-        android:fillColor="#1A6EBD"
-        android:pathData="M36,44 h12 v4 h-12 z M40,40 h4 v18 h-4 z M36,60 h12 v4 h-12 z" />
-    <!-- A -->
-    <path
-        android:fillColor="#CC2D2D"
-        android:pathData="M60,60 L66,42 L72,60 h-4 L66,50 L64,60 z M62,54 h8 v3 h-8 z" />
+        android:pathData="M61,24 L40,60 h12 l-5,24 22,-40 h-12 z" />
 </vector>
