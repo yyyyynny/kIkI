@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>Furina Fan Menu</title>
+<style>
+/* ── Reset ───────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  /* Deep navy — zero purple */
+  background: radial-gradient(ellipse 90% 90% at 50% 52%,
+    #0d2244 0%, #07162b 48%, #030c1a 100%);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* ── Scrim ───────────────────────────────────────────────── */
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.32s ease;
+  z-index: 1;
+}
+.scrim.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ── Menu (fan anchored at right) ────────────────────────── */
+.menu {
+  position: relative;
+  width: 460px;
+  height: 420px;
+  z-index: 2;
+}
+
+/* ── SVG line layer ──────────────────────────────────────── */
+.constellation {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.menu.open .constellation { opacity: 1; }
+
+.line-glow {
+  stroke: #4da8ff;
+  stroke-opacity: 0.30;
+  stroke-width: 4;
+  fill: none;
+  filter: url(#lineBlur);
+}
+.line-crisp {
+  stroke: #cdeeff;
+  stroke-opacity: 0.55;
+  stroke-width: 1.2;
+  fill: none;
+  transition: stroke-opacity 0.25s;
+}
+.line-crisp.lit { stroke-opacity: 0.95; stroke-width: 1.8; }
+
+.travel-dot { fill: #cdeeff; filter: url(#dotGlow); }
+
+/* ── Orb wrapper ─────────────────────────────────────────── */
+.orb-wrap {
+  position: absolute;
+  cursor: pointer;
+  outline: none;
+  opacity: 0;
+  /* collapsed: sit at badge, scaled to nothing */
+  transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(0);
+  transition:
+    transform 0.46s cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 0.30s ease;
+  will-change: transform, opacity;
+}
+.menu.open .orb-wrap {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+.menu.open .orb-wrap { animation: bob var(--bob-dur, 4.4s) ease-in-out var(--bob-del, 0s) infinite; }
+
+@keyframes bob {
+  0%, 100% { translate: 0 0; }
+  50%       { translate: 0 var(--bob-amp, -7px); }
+}
+
+/* ── Glass orb ───────────────────────────────────────────── */
+.orb {
+  width: 80px; height: 56px;
+  border-radius: 20px;
+  position: relative;
+
+  background: rgba(20, 60, 180, 0.12);
+  backdrop-filter: blur(10px) saturate(1.3);
+  -webkit-backdrop-filter: blur(10px) saturate(1.3);
+
+  /* same glass + cyan rim treatment as the badge */
+  border: 1.5px solid rgba(180,240,255,0.55);
+  box-shadow:
+    0 0 0 1.5px rgba(180,240,255,0.55),
+    0 0 20px  6px rgba(120,200,255,0.70),
+    0 0 50px 14px rgba(80,150,255,0.40),
+    inset 0 0 22px  6px rgba(127,210,255,0.12);
+
+  transition: box-shadow 0.28s ease, filter 0.28s ease;
+  /* organic breathing morph — offset per orb via inline --morph-del */
+  animation: orbMorph var(--morph-dur, 4s) ease-in-out var(--morph-del, 0s) infinite;
+}
+
+/* Fix 3 — living border-radius morph: 20 -> 28 -> 20 -> 16 -> 20 */
+@keyframes orbMorph {
+  0%   { border-radius: 20px; }
+  25%  { border-radius: 28px; }
+  50%  { border-radius: 20px; }
+  75%  { border-radius: 16px; }
+  100% { border-radius: 20px; }
+}
+
+/* specular gloss — bright white top-left highlight */
+.orb::before {
+  content: '';
+  position: absolute;
+  top: 8%; left: 12%;
+  width: 52%; height: 36%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 38% 32%,
+    rgba(255,255,255,0.72) 0%,
+    rgba(220,245,255,0.32) 45%,
+    transparent 100%);
+  pointer-events: none;
+}
+
+/* thin inner ring */
+.orb::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(127,210,255,0.20);
+  pointer-events: none;
+}
+
+/* spring bounce on tap */
+.orb.tapped { animation: orbTap 0.42s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes orbTap {
+  0%   { scale: 1;   }
+  35%  { scale: 0.9; }
+  70%  { scale: 1.1; }
+  100% { scale: 1;   }
+}
+
+/* ── Orb label ───────────────────────────────────────────── */
+.orb-label {
+  position: absolute;
+  bottom: -24px;
+  left: 50%; transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #cdeeff;
+  text-shadow:
+    0 0  6px rgba(127,210,255,0.95),
+    0 0 14px rgba(77,168,255,0.65),
+    0 0 26px rgba(77,168,255,0.30);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ── Hover / focus emphasis ──────────────────────────────── */
+.orb-wrap:hover .orb,
+.orb-wrap:focus-visible .orb {
+  box-shadow:
+    0 0 0 2px   rgba(180,240,255,1.00),
+    0 0 28px  9px rgba(120,200,255,0.90),
+    0 0 70px 22px rgba(80,150,255,0.55),
+    inset 0 0 30px  8px rgba(127,210,255,0.22);
+  filter: brightness(1.18);
+}
+
+/* ── Burst particles ─────────────────────────────────────── */
+.burst-particle {
+  position: absolute;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #7fd2ff;
+  box-shadow: 0 0 7px 2px rgba(127,210,255,0.9);
+  pointer-events: none;
+  opacity: 0;
+}
+@keyframes burst {
+  0%   { opacity: 0.95; transform: translate(-50%,-50%) translate(0,0) scale(1); }
+  100% { opacity: 0;    transform: translate(-50%,-50%) translate(var(--bx),var(--by)) scale(0.2); }
+}
+
+/* ── Badge (right anchor) ────────────────────────────────── */
+.badge {
+  position: absolute;
+  right: 18px; top: 50%;
+  width: 70px; height: 70px;
+  border-radius: 20px;
+  cursor: pointer;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 1px;
+
+  background: rgba(4, 11, 26, 0.90);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1.5px solid rgba(127,210,255,0.55);
+
+  box-shadow:
+    0 0 16px  4px rgba(77,168,255,0.35),
+    0 0 38px 11px rgba(77,168,255,0.16),
+    inset 0 0 14px 3px rgba(127,210,255,0.10);
+
+  transform: translateY(-50%) rotate(0deg);
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+  z-index: 5;
+  user-select: none;
+}
+.menu.open .badge {
+  transform: translateY(-50%) rotate(45deg);
+  border-color: rgba(180,240,255,0.9);
+}
+
+/* glow pulse fired on expand/collapse */
+.badge.pulse {
+  animation: badgePulse 0.6s ease-out;
+}
+@keyframes badgePulse {
+  0%   { box-shadow:
+    0 0 16px  4px rgba(77,168,255,0.35),
+    0 0 38px 11px rgba(77,168,255,0.16),
+    inset 0 0 14px 3px rgba(127,210,255,0.10); }
+  45%  { box-shadow:
+    0 0 30px 10px rgba(127,210,255,0.85),
+    0 0 70px 26px rgba(77,168,255,0.45),
+    inset 0 0 22px 6px rgba(127,210,255,0.25); }
+  100% { box-shadow:
+    0 0 16px  4px rgba(77,168,255,0.35),
+    0 0 38px 11px rgba(77,168,255,0.16),
+    inset 0 0 14px 3px rgba(127,210,255,0.10); }
+}
+
+.badge-lang {
+  font-size: 18px; font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #cdeeff;
+  text-shadow: 0 0 8px rgba(127,210,255,0.95), 0 0 20px rgba(77,168,255,0.6);
+  transition: opacity 0.16s, transform 0.16s;
+  /* keep text upright when badge rotates */
+}
+.menu.open .badge-lang { transform: rotate(-45deg); }
+.badge-lang.out { opacity: 0; }
+
+.badge-sub {
+  font-size: 8px; font-weight: 600;
+  letter-spacing: 0.16em;
+  color: rgba(127,210,255,0.6);
+  text-transform: uppercase;
+  transition: transform 0.4s ease;
+}
+.menu.open .badge-sub { transform: rotate(-45deg); }
+
+/* ── Sparkle stars ───────────────────────────────────────── */
+.star { position: absolute; pointer-events: none; }
+
+/* ── Dust particles ──────────────────────────────────────── */
+.dust {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle, #cdeeff 0%, transparent 70%);
+  animation: dustFloat var(--d-dur, 4s) ease-in-out var(--d-del, 0s) infinite;
+}
+@keyframes dustFloat {
+  0%, 100% { opacity: var(--d-lo, 0.20); transform: translate(0, 0); }
+  40%       { opacity: var(--d-hi, 0.50); transform: translate(var(--dx2,4px), var(--dy2,-8px)); }
+  70%       { opacity: var(--d-lo, 0.20); transform: translate(calc(var(--dx2)*0.5), calc(var(--dy2)*1.4)); }
+}
+</style>
+</head>
+<body>
+
+<div class="scrim" id="scrim"></div>
+
+<div class="menu" id="menu">
+
+  <!-- Constellation SVG lines (badge -> orbs + arc) -->
+  <svg class="constellation" viewBox="0 0 460 420" id="svgLines" aria-hidden="true">
+    <defs>
+      <filter id="lineBlur" x="-60%" y="-60%" width="220%" height="220%">
+        <feGaussianBlur stdDeviation="4" />
+      </filter>
+      <filter id="dotGlow" x="-200%" y="-200%" width="500%" height="500%">
+        <feGaussianBlur stdDeviation="2.8" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <g id="linesGlow"></g>
+    <g id="linesCrisp"></g>
+    <g id="travelDots"></g>
+    <g id="sparkleGroup"></g>
+  </svg>
+
+  <div id="orbContainer"></div>
+  <div id="dustContainer"></div>
+
+  <!-- Badge -->
+  <div class="badge" id="badge" role="button" tabindex="0"
+       aria-label="Open menu (long-press to toggle language)" aria-expanded="false">
+    <span class="badge-lang" id="badgeLang">EN</span>
+    <span class="badge-sub">menu</span>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  /* ── Fan geometry ─────────────────────────────────────── */
+  const BX = 400, BY = 210;   // badge center within 460x420 menu
+  const R  = 180;             // fan radius
+  const N  = 5;
+
+  /* 140° arc opening LEFT (centered on 180°): 110° … 250° */
+  const ARC_START = 110, ARC_END = 250;
+
+  /* exact labels, top -> bottom — do not change */
+  const LABELS = ['숨기기', '앱', '플래시', '설정', '한영타'];
+
+  /* build positions: index 0 = top, index 4 = bottom */
+  const positions = LABELS.map((_, i) => {
+    const deg = ARC_END - (ARC_END - ARC_START) * (i / (N - 1)); // 250 -> 110
+    const rad = deg * Math.PI / 180;
+    return {
+      x: BX + R * Math.cos(rad),
+      y: BY + R * Math.sin(rad),
+      size: (i === 0 || i === N - 1) ? 88 : 96   // ends 88px, middle 96px
+    };
+  });
+
+  /* ── SVG lines: spokes (badge->orb) + arc (orb->orb) ──── */
+  const linesGlow  = document.getElementById('linesGlow');
+  const linesCrisp = document.getElementById('linesCrisp');
+  const travelDots = document.getElementById('travelDots');
+  const crispPaths = [];
+
+  function addLine(p1, p2, idxA, idxB, trim1, trim2, ci) {
+    // trim endpoints inward so the line meets the orb/badge edge, not the center
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    const a = { x: p1.x + ux * trim1, y: p1.y + uy * trim1 };
+    const b = { x: p2.x - ux * trim2, y: p2.y - uy * trim2 };
+
+    // control point: midpoint pulled 20-30px toward the center badge -> gentle organic arc
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    let cdx = BX - mx, cdy = BY - my;
+    const cl = Math.hypot(cdx, cdy) || 1;
+    const pull = 24;
+    const cx = mx + (cdx / cl) * pull;
+    const cy = my + (cdy / cl) * pull;
+
+    const d = `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+
+    const glow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    glow.setAttribute('d', d); glow.setAttribute('class', 'line-glow');
+    linesGlow.appendChild(glow);
+
+    const crisp = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    crisp.setAttribute('d', d); crisp.setAttribute('class', 'line-crisp');
+    crisp.dataset.a = idxA; crisp.dataset.b = idxB;
+    linesCrisp.appendChild(crisp);
+    crispPaths.push(crisp);
+
+    /* travel dot */
+    const dur = (len / 95).toFixed(2), delay = (ci * 0.5).toFixed(2);
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    dot.setAttribute('class', 'travel-dot'); dot.setAttribute('r', '2.6');
+    const motion = document.createElementNS('http://www.w3.org/2000/svg', 'animateMotion');
+    motion.setAttribute('dur', `${dur}s`); motion.setAttribute('begin', `${delay}s`);
+    motion.setAttribute('repeatCount', 'indefinite'); motion.setAttribute('path', d);
+    dot.appendChild(motion);
+    const fade = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+    fade.setAttribute('attributeName', 'opacity');
+    fade.setAttribute('values', '0;0.85;0.85;0'); fade.setAttribute('keyTimes', '0;0.1;0.9;1');
+    fade.setAttribute('dur', `${dur}s`); fade.setAttribute('begin', `${delay}s`);
+    fade.setAttribute('repeatCount', 'indefinite');
+    dot.appendChild(fade);
+    travelDots.appendChild(dot);
+  }
+
+  let ci = 0;
+  /* spokes: trim from badge edge (~36px) to orb edge (~44px) */
+  positions.forEach((p, i) => addLine({x:BX,y:BY}, p, 'b', i, 36, 44, ci++));
+  /* arc between adjacent orbs: trim ~46px each side to reach orb edges */
+  for (let i = 0; i < N - 1; i++) addLine(positions[i], positions[i+1], i, i+1, 46, 46, ci++);
+
+  /* ── Orbs ─────────────────────────────────────────────── */
+  const orbContainer = document.getElementById('orbContainer');
+  const menu  = document.getElementById('menu');
+  const orbWraps = [];
+
+  positions.forEach((pos, i) => {
+    const bobAmp = 5 + Math.random() * 5;
+    const bobDur = 3.8 + Math.random() * 1.5;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'orb-wrap';
+    wrap.tabIndex = 0;
+    wrap.setAttribute('role', 'button');
+    wrap.setAttribute('aria-label', LABELS[i]);
+    wrap.style.cssText = `
+      left: ${pos.x}px; top: ${pos.y}px;
+      --dx: ${(BX - pos.x).toFixed(1)}px;
+      --dy: ${(BY - pos.y).toFixed(1)}px;
+      --bob-amp: -${bobAmp.toFixed(1)}px;
+      --bob-dur: ${bobDur.toFixed(2)}s;
+      --bob-del: ${(i * 0.42).toFixed(2)}s;
+    `;
+
+    const orb = document.createElement('div');
+    orb.className = 'orb';
+    // each orb morphs on its own offset cycle (3-5s) for a living, breathing feel
+    orb.style.setProperty('--morph-dur', (3 + Math.random() * 2).toFixed(2) + 's');
+    orb.style.setProperty('--morph-del', (-i * 0.7 - Math.random() * 0.6).toFixed(2) + 's');
+
+    const label = document.createElement('span');
+    label.className = 'orb-label';
+    label.textContent = LABELS[i];
+
+    wrap.appendChild(orb);
+    wrap.appendChild(label);
+    orbContainer.appendChild(wrap);
+    orbWraps.push(wrap);
+
+    wrap.addEventListener('mouseenter', () => highlightLines(i, true));
+    wrap.addEventListener('mouseleave', () => highlightLines(i, false));
+
+    /* tap an orb: ripple burst + spring bounce, then collapse */
+    function activate(ev) {
+      const rect = menu.getBoundingClientRect();
+      let px, py;
+      if (ev.clientX !== undefined && ev.clientX !== 0) {
+        px = ev.clientX - rect.left; py = ev.clientY - rect.top;
+      } else {
+        px = pos.x; py = pos.y;
+      }
+      rippleBurst(px, py);
+      orb.classList.remove('tapped'); void orb.offsetWidth; orb.classList.add('tapped');
+      setTimeout(() => setOpen(false), 240);
+    }
+    wrap.addEventListener('click', activate);
+    wrap.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(e); }
+    });
+  });
+
+  function highlightLines(idx, on) {
+    crispPaths.forEach(p => {
+      const a = p.dataset.a, b = p.dataset.b;
+      if (a === String(idx) || b === String(idx)) p.classList.toggle('lit', on);
+    });
+  }
+
+  /* ── Ripple burst at a point in the menu ─────────────── */
+  function rippleBurst(px, py) {
+    const count = 5 + Math.floor(Math.random() * 4); // 5-8
+    for (let k = 0; k < count; k++) {
+      const p = document.createElement('div');
+      p.className = 'burst-particle';
+      p.style.left = px + 'px';
+      p.style.top  = py + 'px';
+      const angle = (2 * Math.PI * k / count) + Math.random() * 0.5;
+      const dist  = 34 + Math.random() * 30;
+      p.style.setProperty('--bx', `${(Math.cos(angle) * dist).toFixed(1)}px`);
+      p.style.setProperty('--by', `${(Math.sin(angle) * dist).toFixed(1)}px`);
+      p.style.animation = `burst ${0.4}s ease-out forwards`;
+      menu.appendChild(p);
+      p.addEventListener('animationend', () => p.remove());
+    }
+  }
+
+  /* ── Open / collapse state ────────────────────────────── */
+  const badge     = document.getElementById('badge');
+  const badgeLang = document.getElementById('badgeLang');
+  const scrim     = document.getElementById('scrim');
+  let isOpen = false;
+
+  function pulseBadge() {
+    badge.classList.remove('pulse'); void badge.offsetWidth; badge.classList.add('pulse');
+  }
+
+  function setOpen(open) {
+    if (open === isOpen) return;
+    isOpen = open;
+    pulseBadge();
+    badge.setAttribute('aria-expanded', String(open));
+    if (open) {
+      // expand: staggered 60ms outward from badge
+      orbWraps.forEach((w, i) => w.style.transitionDelay = `${i * 60}ms`);
+      menu.classList.add('open');
+      scrim.classList.add('show');
+    } else {
+      // collapse: all retract simultaneously
+      orbWraps.forEach(w => w.style.transitionDelay = '0ms');
+      menu.classList.remove('open');
+      scrim.classList.remove('show');
+    }
+  }
+
+  /* ── Badge: tap = expand/collapse, long-press = language ─ */
+  let pressTimer = null, longPressed = false;
+  const LONG_MS = 500;
+
+  function startPress() {
+    longPressed = false;
+    pressTimer = setTimeout(() => {
+      longPressed = true;
+      toggleLang();
+      pulseBadge();
+    }, LONG_MS);
+  }
+  function endPress() {
+    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    if (!longPressed) setOpen(!isOpen);
+  }
+  function cancelPress() {
+    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+  }
+
+  badge.addEventListener('pointerdown', e => { e.preventDefault(); startPress(); });
+  badge.addEventListener('pointerup', endPress);
+  badge.addEventListener('pointerleave', cancelPress);
+  badge.addEventListener('pointercancel', cancelPress);
+  badge.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(!isOpen); }
+    if (e.key.toLowerCase() === 'l') toggleLang();
+  });
+
+  /* scrim tap collapses */
+  scrim.addEventListener('click', () => setOpen(false));
+
+  /* ── Language toggle (separate from expand) ───────────── */
+  let isKorean = false;
+  function toggleLang() {
+    isKorean = !isKorean;
+    badgeLang.classList.add('out');
+    setTimeout(() => {
+      badgeLang.textContent = isKorean ? '한' : 'EN';
+      badgeLang.classList.remove('out');
+    }, 160);
+  }
+
+  /* ── Sparkle stars ────────────────────────────────────── */
+  const sparkleGroup = document.getElementById('sparkleGroup');
+  const STARS = [
+    { x: 40,  y: 44,  s: 7 }, { x: 250, y: 26, s: 5 }, { x: 96, y: 360, s: 6 },
+    { x: 300, y: 388, s: 5 }, { x: 170, y: 120, s: 4 }, { x: 360, y: 150, s: 5 },
+    { x: 60,  y: 220, s: 6 }, { x: 210, y: 300, s: 4 },
+  ];
+  STARS.forEach(({ x, y, s }, i) => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const h = s, w = s * 0.22;
+    g.innerHTML = `
+      <rect x="${x-w}" y="${y-h}" width="${w*2}" height="${h*2}" rx="${w*0.6}" fill="#cdeeff" opacity="0">
+        <animate attributeName="opacity" values="0;0.85;0" dur="${2.2+i*0.32}s" begin="${i*0.48}s" repeatCount="indefinite"/>
+        <animateTransform attributeName="transform" type="rotate" values="0 ${x} ${y};15 ${x} ${y};0 ${x} ${y}" dur="${2.2+i*0.32}s" begin="${i*0.48}s" repeatCount="indefinite"/>
+      </rect>
+      <rect x="${x-h}" y="${y-w}" width="${h*2}" height="${w*2}" rx="${w*0.6}" fill="#cdeeff" opacity="0">
+        <animate attributeName="opacity" values="0;0.85;0" dur="${2.2+i*0.32}s" begin="${i*0.48}s" repeatCount="indefinite"/>
+        <animateTransform attributeName="transform" type="rotate" values="0 ${x} ${y};15 ${x} ${y};0 ${x} ${y}" dur="${2.2+i*0.32}s" begin="${i*0.48}s" repeatCount="indefinite"/>
+      </rect>`;
+    sparkleGroup.appendChild(g);
+  });
+
+  /* ── Dust ─────────────────────────────────────────────── */
+  const dustContainer = document.getElementById('dustContainer');
+  for (let i = 0; i < 22; i++) {
+    const el = document.createElement('div');
+    el.className = 'dust';
+    const sz = 1.5 + Math.random() * 3;
+    const lo = 0.12 + Math.random() * 0.15, hi = lo + 0.22;
+    el.style.cssText = `
+      width:${sz}px;height:${sz}px;
+      left:${20 + Math.random()*420}px; top:${20 + Math.random()*380}px;
+      --d-lo:${lo.toFixed(2)}; --d-hi:${hi.toFixed(2)};
+      --dx2:${((Math.random()-0.5)*16).toFixed(1)}px; --dy2:${(-4-Math.random()*10).toFixed(1)}px;
+      --d-dur:${(3.5+Math.random()*4).toFixed(1)}s; --d-del:${(Math.random()*5).toFixed(1)}s;`;
+    dustContainer.appendChild(el);
+  }
+})();
+</script>
+</body>
+</html>

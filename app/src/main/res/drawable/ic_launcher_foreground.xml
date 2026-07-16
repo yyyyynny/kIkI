@@ -1,28 +1,53 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    적응형 아이콘 전경 — "전환의 섬광": 빨강/파랑 경계를 내리치는 흰 번개(전환의 순간).
-    벡터에는 blur 가 없으므로 글로우는 같은 볼트 path 를 중심 기준으로 확대한 저알파 레이어
-    2겹으로 근사한다. 볼트는 적응형 세이프존(중심 66dp 원) 안에 들어온다.
+    적응형 아이콘 전경 — 발광 유리 칩(래디얼 메뉴 오브의 시그니처, design/reference 참고).
+    라운드 사각 유리 칩(80:56 비율) + 은은한 시안 림 + 안쪽 링 + 좌상단 광택 + 저알파 글로우 2겹.
+    글자/번개 없음. 적응형 세이프존(중심 66dp) 안에 배치. 벡터에 blur 가 없어 글로우는
+    칩보다 큰 라운드 사각 저알파 레이어로 근사한다.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 바깥 글로우(가장 크고 옅게) -->
-    <group android:scaleX="1.30" android:scaleY="1.18" android:pivotX="54" android:pivotY="54">
-        <path
-            android:fillColor="#26FFFFFF"
-            android:pathData="M61,24 L40,60 h12 l-5,24 22,-40 h-12 z" />
-    </group>
-    <!-- 안쪽 글로우 -->
-    <group android:scaleX="1.14" android:scaleY="1.08" android:pivotX="54" android:pivotY="54">
-        <path
-            android:fillColor="#45FFFFFF"
-            android:pathData="M61,24 L40,60 h12 l-5,24 22,-40 h-12 z" />
-    </group>
-    <!-- 번개 볼트 본체 -->
+    <!-- 먼 글로우 -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M61,24 L40,60 h12 l-5,24 22,-40 h-12 z" />
+        android:fillColor="#145096FF"
+        android:pathData="M41,31 h26 a15,15 0 0 1 15,15 v16 a15,15 0 0 1 -15,15 h-26 a15,15 0 0 1 -15,-15 v-16 a15,15 0 0 1 15,-15 z" />
+    <!-- 가까운 글로우 -->
+    <path
+        android:fillColor="#2478C8FF"
+        android:pathData="M42,34 h24 a13,13 0 0 1 13,13 v14 a13,13 0 0 1 -13,13 h-24 a13,13 0 0 1 -13,-13 v-14 a13,13 0 0 1 13,-13 z" />
+    <!-- 유리 칩 본체(위가 살짝 밝은 유리) + 시안 림 -->
+    <path
+        android:strokeColor="#8CB4F0FF"
+        android:strokeWidth="1.5"
+        android:pathData="M42,38 h24 a11,11 0 0 1 11,11 v10 a11,11 0 0 1 -11,11 h-24 a11,11 0 0 1 -11,-11 v-10 a11,11 0 0 1 11,-11 z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54" android:startY="38"
+                android:endX="54" android:endY="70"
+                android:startColor="#4E9CD4F2"
+                android:endColor="#26143CB4" />
+        </aapt:attr>
+    </path>
+    <!-- 안쪽 얇은 링 -->
+    <path
+        android:strokeColor="#337FD2FF"
+        android:strokeWidth="1"
+        android:fillColor="#00000000"
+        android:pathData="M43.5,41 h21 a8.5,8.5 0 0 1 8.5,8.5 v9 a8.5,8.5 0 0 1 -8.5,8.5 h-21 a8.5,8.5 0 0 1 -8.5,-8.5 v-9 a8.5,8.5 0 0 1 8.5,-8.5 z" />
+    <!-- 좌상단 광택 -->
+    <path android:pathData="M34,46 a9,5.5 0 1 0 18,0 a9,5.5 0 1 0 -18,0 z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="42" android:centerY="45"
+                android:gradientRadius="11"
+                android:startColor="#B0FFFFFF"
+                android:endColor="#00FFFFFF" />
+        </aapt:attr>
+    </path>
 </vector>

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    적응형 아이콘의 모노크롬(테마 아이콘) 레이어. Android 13+ "테마 아이콘" 설정을 켜면 시스템이
-    배경화면에서 뽑은 단일 색으로 이 실루엣을 다시 물들이므로, 원본 색상은 무의미하다(관례상 흰색
-    단색으로 통일). 패스 데이터는 ic_launcher_foreground.xml 의 번개 볼트와 동일하게 재사용.
+    적응형 아이콘의 모노크롬(테마 아이콘) 레이어. 시스템이 단일 색으로 다시 물들이므로
+    형태만 남는다 — 전경의 유리 칩을 **라운드 링 실루엣**(바깥 라운드 사각 − 안쪽 라운드
+    사각, evenOdd)으로 표현해 어떤 틴트에서도 칩의 윤곽이 또렷하다.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -11,5 +11,7 @@
     android:viewportHeight="108">
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M61,24 L40,60 h12 l-5,24 22,-40 h-12 z" />
+        android:fillType="evenOdd"
+        android:pathData="M42,38 h24 a11,11 0 0 1 11,11 v10 a11,11 0 0 1 -11,11 h-24 a11,11 0 0 1 -11,-11 v-10 a11,11 0 0 1 11,-11 z
+            M43.5,43 h21 a6.5,6.5 0 0 1 6.5,6.5 v9 a6.5,6.5 0 0 1 -6.5,6.5 h-21 a6.5,6.5 0 0 1 -6.5,-6.5 v-9 a6.5,6.5 0 0 1 6.5,-6.5 z" />
 </vector>

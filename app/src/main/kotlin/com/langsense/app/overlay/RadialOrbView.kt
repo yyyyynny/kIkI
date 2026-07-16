@@ -2,29 +2,30 @@ package com.langsense.app.overlay
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RadialGradient
+import android.graphics.RectF
 import android.graphics.Shader
-import android.graphics.SweepGradient
 import android.graphics.Typeface
 import android.util.TypedValue
 import android.view.View
 
 /**
- * 래디얼 메뉴의 입체 비눗방울 오브 버튼 한 개 (orb_mockup.html 목업 v2 `.orb` 이식).
+ * 래디얼 메뉴의 **살아있는 유리 칩** 버튼 한 개 (design/reference/radialmenu.html `.orb` 이식).
  *
- * 사용자 승인 목업의 레이어를 Canvas 로 재현한다(위에서부터 그리는 순서 역순):
- *  1. 외곽 다층 bloom(시안 RadialGradient)
- *  2. 구체 채움 — 중심이 좌상(36%, 30%)으로 치우친 오프셋 RadialGradient 5-stop(입체 구)
- *  3. 우하단 림 라이트(초승달 반사)
- *  4. 무지갯빛 sheen — 가장자리 밴드의 SweepGradient(**정적** — 회전 없음)
- *  5. 상단 광택(좌상단 소프트 흰 blob)
- *  6. 안쪽 밝은 링(비눗방울 막) + 바깥 흐린 이중 링
- *  7. 라벨 — **방울 안 중앙**, 흰색 bold + 시안 글로우(목업 text-shadow)
+ * 완전한 원이 아니라 라운드 사각 유리 칩이며, 코너 반경([cornerRadiusPx])을 부모가 매 프레임
+ * 갱신해 **끊임없이 형태가 미세하게 morph** 한다(참고 orbMorph). 그리는 순서:
+ *  1. 외곽 글로우 2겹(BlurMaskFilter — 가까운 시안 + 먼 블루)
+ *  2. 유리 채움(rgba(20,60,180,0.12))
+ *  3. 안쪽 글로우(inset, blur 스트로크)
+ *  4. 좌상단 광택 타원
+ *  5. 은은한 시안 림(1.5dp) + 안쪽 얇은 링(1dp, inset 4dp)
+ *  6. 라벨 — **칩 아래**, #cdeeff bold + 시안 글로우
  *
- * 모든 색상/치수는 [RadialMenuStyle] 에서 가져오며(하드코딩 금지), 별도 리소스가 필요 없다.
- * 위치 배치/펼침·수납 애니메이션은 [QuickMenuOverlayView] 가 담당하고, 여기선 외형만 그린다.
+ * BlurMaskFilter 는 소프트웨어 레이어가 필요해 [LAYER_TYPE_SOFTWARE] 로 그린다(칩이 작고
+ * 5개뿐이라 비용은 메뉴 표시 시간에 한정). 모든 색상/치수는 [RadialMenuStyle] 에서 가져온다.
  */
 @SuppressLint("ViewConstructor")
 class RadialOrbView(context: Context) : View(context) {
@@ -35,20 +36,40 @@ class RadialOrbView(context: Context) : View(context) {
             invalidate()
         }
 
-    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val spherePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val rimLightPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val sheenPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    /** 칩 코너 반경(px). 부모(QuickMenuOverlayView)가 morph 애니메이션으로 매 프레임 갱신. */
+    var cornerRadiusPx: Float = dp(RadialMenuStyle.ORB_CORNER_DP)
+        set(value) {
+            if (field != value) {
+                field = value
+                invalidate()
+            }
+        }
+
+    private val glowNearPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = RadialMenuStyle.ORB_GLOW_NEAR
+        maskFilter = BlurMaskFilter(dp(RadialMenuStyle.ORB_GLOW_NEAR_BLUR_DP), BlurMaskFilter.Blur.NORMAL)
+    }
+    private val glowFarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = RadialMenuStyle.ORB_GLOW_FAR
+        maskFilter = BlurMaskFilter(dp(RadialMenuStyle.ORB_GLOW_FAR_BLUR_DP), BlurMaskFilter.Blur.NORMAL)
+    }
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = RadialMenuStyle.ORB_FILL }
+    private val insetGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = RadialMenuStyle.ORB_INSET_GLOW
+        strokeWidth = dp(6f)
+        maskFilter = BlurMaskFilter(dp(RadialMenuStyle.ORB_INSET_GLOW_BLUR_DP), BlurMaskFilter.Blur.NORMAL)
+    }
     private val glossPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = RadialMenuStyle.ORB_RIM
+        strokeWidth = dp(RadialMenuStyle.ORB_RIM_WIDTH_DP)
+    }
     private val innerRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         color = RadialMenuStyle.ORB_INNER_RING
         strokeWidth = dp(RadialMenuStyle.ORB_INNER_RING_WIDTH_DP)
-    }
-    private val outerRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        color = RadialMenuStyle.ORB_OUTER_RING
-        strokeWidth = dp(RadialMenuStyle.ORB_OUTER_RING_WIDTH_DP)
     }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = RadialMenuStyle.LABEL_COLOR
@@ -58,103 +79,76 @@ class RadialOrbView(context: Context) : View(context) {
         setShadowLayer(dp(6f), 0f, 0f, RadialMenuStyle.LABEL_GLOW)
     }
 
-    /** 방울 반지름(px). 뷰는 정사각형(지름 + 좌우 bloom 여백)이다. */
-    private val orbRadius: Float get() = dp(RadialMenuStyle.ORB_DIAMETER_DP) / 2f
+    private val chipRect = RectF()
+    private val tmpRect = RectF()
 
     /**
-     * 뷰 안에서 오브 중심의 y 오프셋(px). 라벨이 방울 안으로 들어가 뷰가 정사각형이 됐으므로
-     * 중심은 정중앙이다. [QuickMenuOverlayView] 가 배치(앵커 정렬)와 스케일 피벗에 사용.
+     * 뷰 안에서 칩 중심의 y 오프셋(px). 칩 위에 글로우 여백, 아래에 라벨 영역이 있으므로
+     * 중심은 spread + 칩높이/2. [QuickMenuOverlayView] 가 배치(앵커 정렬)/피벗에 사용.
      */
-    val orbCenterY: Float get() = height / 2f
+    val orbCenterY: Float
+        get() = dp(RadialMenuStyle.ORB_GLOW_SPREAD_DP) + dp(RadialMenuStyle.ORB_H_DP) / 2f
+
+    init {
+        // BlurMaskFilter 는 SW 레이어에서만 동작. 칩 하나는 작아 비용은 무시 가능(메뉴 표시 중 한정).
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
+    }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        val cx = w / 2f
-        val cy = h / 2f
-        val r = orbRadius
+        val spread = dp(RadialMenuStyle.ORB_GLOW_SPREAD_DP)
+        val chipW = dp(RadialMenuStyle.ORB_W_DP)
+        val chipH = dp(RadialMenuStyle.ORB_H_DP)
+        val left = (w - chipW) / 2f
+        chipRect.set(left, spread, left + chipW, spread + chipH)
 
-        // 구체 채움: 목업 radial-gradient(circle at 36% 30%) — 중심을 좌상으로 오프셋한 5-stop.
-        // (36%,30%) 는 지름 기준이므로 중심에서 (-0.28r, -0.40r), 반경은 farthest-corner ≈ 1.9r.
-        spherePaint.shader = RadialGradient(
-            cx - r * 0.28f, cy - r * 0.40f, r * 1.9f,
-            intArrayOf(
-                RadialMenuStyle.ORB_SPHERE_0,
-                RadialMenuStyle.ORB_SPHERE_1,
-                RadialMenuStyle.ORB_SPHERE_2,
-                RadialMenuStyle.ORB_SPHERE_3,
-                RadialMenuStyle.ORB_SPHERE_4
-            ),
-            floatArrayOf(0f, 0.28f, 0.58f, 0.84f, 1f),
-            Shader.TileMode.CLAMP
-        )
-
-        // 림 라이트: 목업 .rim — circle at 70% 76%, 58%~76%~88% 밴드만 밝은 반사.
-        rimLightPaint.shader = RadialGradient(
-            cx + r * 0.40f, cy + r * 0.52f, r * 1.2f,
-            intArrayOf(0x00C3F2FF, 0x00C3F2FF, RadialMenuStyle.ORB_RIM_LIGHT, 0x00C3F2FF),
-            floatArrayOf(0f, 0.58f, 0.76f, 0.88f),
-            Shader.TileMode.CLAMP
-        )
-
-        // 무지갯빛 sheen: 목업 .iris conic-gradient(from 200deg) → SweepGradient(정적).
-        // conic 각도(0/45/110/200/270/360deg)를 비율(0~1)로 환산. 가장자리 밴드는 stroke 로 재현.
-        sheenPaint.shader = SweepGradient(
-            cx, cy,
-            intArrayOf(
-                0x0078FFF0, RadialMenuStyle.SHEEN_CYAN, 0x0096B4FF,
-                RadialMenuStyle.SHEEN_PINK, RadialMenuStyle.SHEEN_AMBER, 0x0078FFF0
-            ),
-            floatArrayOf(0f, 0.125f, 0.306f, 0.556f, 0.75f, 1f)
-        )
-        sheenPaint.strokeWidth = r * 0.34f
-
-        // 상단 광택: 목업 .spec — 좌상단(34%, 30%) 소프트 흰 blob.
+        // 좌상단 광택: 참고 .orb::before — ellipse at (38%, 32%) of the gloss box(top 8%, left 12%).
+        val gx = chipRect.left + chipRect.width() * 0.32f
+        val gy = chipRect.top + chipRect.height() * 0.26f
         glossPaint.shader = RadialGradient(
-            cx - r * 0.32f, cy - r * 0.40f, r * 0.55f,
-            intArrayOf(RadialMenuStyle.ORB_GLOSS, 0x00FFFFFF),
-            floatArrayOf(0f, 1f),
-            Shader.TileMode.CLAMP
-        )
-
-        // 외곽 다층 bloom: 방울 가장자리부터 바깥으로 옅어지는 시안 발광.
-        val glowR = r + dp(RadialMenuStyle.ORB_GLOW_SPREAD_DP)
-        glowPaint.shader = RadialGradient(
-            cx, cy, glowR,
-            intArrayOf(
-                RadialMenuStyle.ORB_GLOW_INNER,
-                RadialMenuStyle.ORB_GLOW_INNER,
-                RadialMenuStyle.ORB_GLOW_OUTER,
-                0x005096FF
-            ),
-            floatArrayOf(0f, r / glowR * 0.9f, r / glowR, 1f),
+            gx, gy, chipRect.width() * 0.34f,
+            intArrayOf(RadialMenuStyle.ORB_GLOSS_CORE, RadialMenuStyle.ORB_GLOSS_MID, 0x00FFFFFF),
+            floatArrayOf(0f, 0.45f, 1f),
             Shader.TileMode.CLAMP
         )
     }
 
     override fun onDraw(canvas: Canvas) {
         if (width == 0 || height == 0) return
-        val cx = width / 2f
-        val cy = height / 2f
-        val r = orbRadius
+        val r = cornerRadiusPx
 
-        // 1) 외곽 bloom
-        canvas.drawCircle(cx, cy, r + dp(RadialMenuStyle.ORB_GLOW_SPREAD_DP), glowPaint)
-        // 2) 구체 채움(입체 오프셋 그라데이션)
-        canvas.drawCircle(cx, cy, r, spherePaint)
-        // 3) 우하단 림 라이트
-        canvas.drawCircle(cx, cy, r, rimLightPaint)
-        // 4) 무지갯빛 sheen — 가장자리 밴드(스트로크 중심을 안쪽으로 넣어 원 안에 담는다)
-        canvas.drawCircle(cx, cy, r - sheenPaint.strokeWidth / 2f, sheenPaint)
-        // 5) 상단 광택
-        canvas.drawCircle(cx, cy, r, glossPaint)
-        // 6) 안쪽 밝은 링(비눗방울 막) + 바깥 흐린 이중 링
-        canvas.drawCircle(cx, cy, r - dp(RadialMenuStyle.ORB_INNER_RING_WIDTH_DP) / 2f, innerRingPaint)
-        canvas.drawCircle(cx, cy, r + dp(RadialMenuStyle.ORB_OUTER_RING_OFFSET_DP), outerRingPaint)
+        // 1) 외곽 글로우 2겹 — 칩보다 살짝 크게 그려 번짐이 자연스럽게 퍼진다.
+        tmpRect.set(chipRect); tmpRect.inset(-dp(5f), -dp(5f))
+        canvas.drawRoundRect(tmpRect, r + dp(4f), r + dp(4f), glowFarPaint)
+        tmpRect.set(chipRect); tmpRect.inset(-dp(1.5f), -dp(1.5f))
+        canvas.drawRoundRect(tmpRect, r + dp(1f), r + dp(1f), glowNearPaint)
 
-        // 7) 라벨 — 방울 안 중앙(목업)
+        // 2) 유리 채움
+        canvas.drawRoundRect(chipRect, r, r, fillPaint)
+
+        // 3) 안쪽 글로우(inset) — blur 스트로크를 칩 안쪽 경계에 두고 클립으로 밖 번짐을 차단.
+        canvas.save()
+        canvas.clipRect(chipRect)
+        tmpRect.set(chipRect); tmpRect.inset(dp(2f), dp(2f))
+        canvas.drawRoundRect(tmpRect, r - dp(2f), r - dp(2f), insetGlowPaint)
+        canvas.restore()
+
+        // 4) 좌상단 광택
+        canvas.drawRoundRect(chipRect, r, r, glossPaint)
+
+        // 5) 림 + 안쪽 링(참고: inset 4px, 코너는 그만큼 작게)
+        tmpRect.set(chipRect)
+        tmpRect.inset(rimPaint.strokeWidth / 2f, rimPaint.strokeWidth / 2f)
+        canvas.drawRoundRect(tmpRect, r, r, rimPaint)
+        val ringInset = dp(RadialMenuStyle.ORB_INNER_RING_INSET_DP)
+        tmpRect.set(chipRect); tmpRect.inset(ringInset, ringInset)
+        canvas.drawRoundRect(tmpRect, (r - ringInset).coerceAtLeast(dp(4f)), (r - ringInset).coerceAtLeast(dp(4f)), innerRingPaint)
+
+        // 6) 라벨 — 칩 아래 영역 중앙(참고 .orb-label)
         if (label.isNotEmpty()) {
-            val baseline = cy - (textPaint.descent() + textPaint.ascent()) / 2f
-            canvas.drawText(label, cx, baseline, textPaint)
+            val baseline = (chipRect.bottom + height) / 2f -
+                (textPaint.descent() + textPaint.ascent()) / 2f
+            canvas.drawText(label, width / 2f, baseline, textPaint)
         }
     }
 

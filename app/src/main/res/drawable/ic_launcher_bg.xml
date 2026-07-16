@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    적응형 아이콘 배경 — "전환의 섬광" 컨셉.
-    화면을 대각선으로 가르는 빨강(한국어 플래시 색 계열)/파랑(영어 플래시 색 계열) 듀오톤.
-    실제 앱 동작(언어 전환 시 색 플래시)을 그대로 형상화한다. 전경(ic_launcher_foreground)의
-    흰 번개가 이 경계(우상→좌하 대각)를 내리친다.
+    적응형 아이콘 배경 — 「심연 + 발광 유리 칩」(design/reference 참고).
+    딥 네이비 심연 위로 두 언어의 빛이 **화면 전체에 넓게** 스며든다:
+    좌하단 웜(저채도 코랄) + 우상단 쿨(저채도 블루). 진한 원색·경계선 없음 —
+    "전환은 한 점의 깜빡임이 아니라 화면 전체에 넓게 퍼진다"는 피드백 반영.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
@@ -11,26 +11,28 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 좌상 삼각형: 한국어 빨강 -->
-    <path android:pathData="M0,0 L108,0 L0,108 Z">
+    <!-- 심연 네이비 베이스 -->
+    <path android:pathData="M0,0 H108 V108 H0 Z" android:fillColor="#0A182D" />
+    <!-- 우상단에서 넓게 스미는 쿨(영어) 빛 -->
+    <path android:pathData="M0,0 H108 V108 H0 Z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:type="linear"
-                android:startX="8" android:startY="8"
-                android:endX="66" android:endY="66"
-                android:startColor="#F0524A"
-                android:endColor="#A31B1B" />
+                android:type="radial"
+                android:centerX="86" android:centerY="18"
+                android:gradientRadius="104"
+                android:startColor="#8C5C88C0"
+                android:endColor="#005C88C0" />
         </aapt:attr>
     </path>
-    <!-- 우하 삼각형: 영어 파랑 -->
-    <path android:pathData="M108,0 L108,108 L0,108 Z">
+    <!-- 좌하단에서 넓게 스미는 웜(한국어) 빛 -->
+    <path android:pathData="M0,0 H108 V108 H0 Z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:type="linear"
-                android:startX="42" android:startY="42"
-                android:endX="100" android:endY="100"
-                android:startColor="#2F7FDC"
-                android:endColor="#0E2F63" />
+                android:type="radial"
+                android:centerX="20" android:centerY="92"
+                android:gradientRadius="102"
+                android:startColor="#80C08072"
+                android:endColor="#00C08072" />
         </aapt:attr>
     </path>
 </vector>
