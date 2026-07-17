@@ -11,7 +11,7 @@
 # → agp 를 9.x 로 올리면 이 두 제약이 한꺼번에 풀린다. 그때 coreKtx/lifecycle 도 최신으로 같이 올릴 것.
 [versions]
 agp = "8.7.3"
-kotlin = "2.0.21"
+kotlin = "2.4.10"
 coreKtx = "1.16.0"
 appcompat = "1.7.1"
 lifecycle = "2.8.7"
