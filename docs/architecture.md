@@ -34,9 +34,9 @@
 [OverlayManager]
   ├── FlashOverlayView.show(lang)    → 전체화면 플래시 (windowAnimations=0)
   ├── BadgeOverlayView.update(lang)  → 상시 배지 갱신(크기/색 applyStyle)
-  │     └─ 배지 탭(드래그 아님) → QuickMenuOverlayView (비눗방울 래디얼 메뉴: 앱/설정/토글)
-  └── QuickMenuOverlayView           → RadialOrbView 항목들(RadialFanLayout 부채꼴 배치,
-                                       배지→오브 스포크 + 앵커 스파클, 탭 시 동작 후 닫힘)
+  │     └─ 배지 탭(드래그 아님) → QuickMenuOverlayView (래디얼 메뉴: 앱/설정/토글)
+  └── QuickMenuOverlayView           → 사용자 원본 assets/radialmenu.html 을 WebView 로 렌더
+                                       (JS↔네이티브 브리지: KikiInit/onItemTap/onDismiss/KikiCollapse)
 
 [KeyEventMonitor]
   포커스 없는 문자 키 N회(기본 3) → 지연 검증(WARN_VERIFY_DELAY_MS 400ms; 그 사이 입력 실착/포커스

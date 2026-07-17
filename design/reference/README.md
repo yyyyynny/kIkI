@@ -28,8 +28,21 @@
 ⚠️ 사진은 채팅 붙여넣기로만 전달되어 파일이 없다 — 파일로 받으면 이 폴더에
 `furina_orb_menu.png` 로 추가할 것.
 
-## 이식 대상
+## 앱에서의 사용 (WebView 렌더 — 이 파일이 곧 배포본)
 
-`app/src/main/kotlin/com/langsense/app/overlay/` 의 `RadialOrbView`(칩 렌더),
-`QuickMenuOverlayView`(선·빛 점·별·먼지·버스트·부유), `RadialMenuStyle`(모든 상수).
-"저사양 모드(움직임 줄이기)" ON 이면 연속 애니메이션(모프/부유/빛 점/별/먼지)을 끈다.
+과거의 네이티브(Canvas) 재이식은 원본과 미세하게 달라 폐기했다. 이제 앱은 이 HTML 을
+**그대로 WebView 로 렌더**한다. 이 파일은 `app/src/main/assets/radialmenu.html` 과 동일하며,
+그쪽이 실제 배포본이다(둘을 항상 동일하게 유지).
+
+**원본에서 바꾼 것은 단 두 가지(사용자 요청)**:
+1. 선 위를 이동하던 빛 점(travel dot) 제거.
+2. 대신 선이 약하게 움직이도록 `#lineSway`(선 glow+crisp 그룹)에 느린 translate sway 추가.
+
+**앱 통합용 배선(보이는 디자인 불변)**: `window.KikiNative` 존재를 감지하면 앱 모드로 —
+자체 배지 숨김(네이티브 상시 배지와 중복 방지), 자동 오픈, `KikiInit({anchorX,anchorY(dp),
+reduceMotion, labels})` 로 위치·라벨·저사양 반영. 오브 탭→`KikiNative.onItemTap(i)`,
+스크림 탭→`KikiNative.onDismiss()`, 배지 재탭→`KikiCollapse()`. 브라우저에서 그냥 열면
+원본 데모(배지 탭으로 열기) 그대로 동작한다. "저사양 모드" ON 이면 연속 애니메이션(오브
+morph/부유/별/먼지/선 sway) 정지.
+
+호스트: `app/src/main/kotlin/com/langsense/app/overlay/QuickMenuOverlayView.kt`(WebView 호스트).

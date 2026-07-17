@@ -323,28 +323,28 @@ WindowManager flags:
 
 ---
 
-## Feature 5: 살아있는 유리 칩 래디얼 메뉴 (배지 탭)
+## Feature 5: 래디얼 메뉴 (배지 탭) — 사용자 원본 HTML 을 WebView 로 렌더
 
 상시 배지를 **탭**하면(드래그와 구분) 배지 주위로 살아 숨쉬는 유리 칩이 부채꼴로 펼쳐지는 간편 메뉴.
-**권위 원본은 `design/reference/radialmenu.html`**(사용자 직접 제공 — 요점은 `design/reference/README.md`).
+**외형·모션의 진실은 HTML 파일**: `app/src/main/assets/radialmenu.html`(= 사용자 원본,
+`design/reference/radialmenu.html` 과 동일). 과거 네이티브(Canvas) 재이식은 원본과 미세하게 달라
+폐기했고, 이제 `QuickMenuOverlayView` 가 이 HTML 을 **WebView 로 그대로 렌더**한다(메뉴 외형을
+바꾸려면 Kotlin 이 아니라 HTML 을 고친다).
 
 ### 구성
-- `RadialOrbView`: 라운드 사각 유리 칩(80×56dp, 완전한 원 금지) — 코너 반경이 칩별 랜덤 주기
-  (3~5s)로 morph(±8dp). 채움 rgba(20,60,180,0.12) + 은은한 시안 림 1.5dp + 안쪽 링 +
-  좌상단 광택 + BlurMaskFilter 글로우 2겹(칩 뷰만 SW 레이어). 라벨은 **칩 아래**(#cdeeff bold
-  + 시안 글로우). 외부 리소스/이미지 없이 순수 드로잉. 상수는 전부 `RadialMenuStyle`.
-- `QuickMenuOverlayView`: **곡선** 스포크 5 + 인접 호 4(2차 베지어, 중점을 배지 쪽 24dp 당김,
-  양끝 트리밍) + **빛 점**(곡선 따라 95dp/s, 선별 0.5s 스태거, 양끝 페이드) + 칩 터치 중 연결선
-  하이라이트 + 탭 버스트 입자(5~8개, 0.4s) + 트윙클 별 8개 + 부유 먼지 ~16개.
-- **부유(bob)**: 진폭 5~10dp·주기 3.8~5.3s 칩별 랜덤, 지연 i×0.42s (참고 파일 그대로).
-- "저사양 모드" ON: 모프/부유/빛 점/먼지 정지(별은 낮은 고정 알파), 펼침/수납/버스트만 유지.
-- `QuickMenuOverlayView`: 전체화면 반투명 스크림(`#66000000`) 오버레이.
-  - 윈도우 플래그: `TYPE_APPLICATION_OVERLAY | FLAG_NOT_FOCUSABLE | FLAG_LAYOUT_IN_SCREEN`
-    (터치는 받되 키 포커스는 안 가져감), `windowAnimations=0`.
-  - 배치: 앵커(배지 중심)에서 화면 중앙을 향하는 각도를 기준으로 약 150° 부채꼴, 반경 ≈118dp,
-    각 버튼은 화면 밖으로 안 나가게 clamp.
-  - 등장: 스크림 페이드 + 버튼별 오버슈트 스케일(스태거)로 "톡톡" 퍼지는 연출.
-  - 닫힘: 빈 곳(스크림) 탭 또는 항목 탭. 배지가 사라지거나 서비스 정리 시 함께 제거.
+- `QuickMenuOverlayView`: 투명 배경 WebView 호스트. `file:///android_asset/radialmenu.html` 로드 +
+  JS↔네이티브 브리지(`KikiNative`). 외부 의존성 없음(android.webkit).
+- `assets/radialmenu.html`: 렌더 대상. 오브(유리 칩 80×56dp, 코너 morph)·곡선 선·별·먼지·부유·
+  버스트 등 모든 연출은 이 파일 안에 있다.
+- **원본에서 앱이 바꾼 것은 단 두 가지(사용자 요청)**: ① 선 위 빛 점(travel dot) 제거,
+  ② 대신 선이 약하게 움직이도록(`#lineSway` translate sway) 변경. 그 외는 원본 그대로.
+- **앱 통합용 배선(디자인 불변)**: `window.KikiNative` 감지 시 앱 모드 — 자체 배지 숨김(네이티브
+  상시 배지와 중복 방지), 자동 오픈, `KikiInit({anchorX,anchorY(dp), reduceMotion, labels})` 로
+  배지 위치·라벨·저사양 반영. 오브 탭→`onItemTap(i)`, 스크림 탭→`onDismiss()`, 배지 재탭→`KikiCollapse()`.
+- 윈도우: `TYPE_APPLICATION_OVERLAY | FLAG_NOT_FOCUSABLE | FLAG_LAYOUT_IN_SCREEN`(터치는 받되 키
+  포커스 안 가져감), `windowAnimations=0`. 스크림 딤은 HTML 내부(.scrim rgba(0,0,0,0.25)).
+- "저사양 모드" ON: 원본의 연속 애니메이션(오브 morph/부유/별/먼지/선 sway) 정지.
+- 닫힘: 빈 곳(스크림) 탭 또는 항목 탭. 배지가 사라지거나 서비스 정리 시 WebView 창도 함께 제거.
 
 ### 항목 (서비스가 주입: `OverlayManager.setQuickMenuItems`)
 | 라벨 | 동작 |

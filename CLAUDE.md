@@ -161,28 +161,28 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
 **⚠️ 핵심 구현체**: `HangulConverter.kt`
 두벌식(QWERTY) ↔ 한국어 변환 로직. 상세 스펙은 `docs/features.md` 참조.
 
-### Feature 5: 살아있는 유리 칩 래디얼 메뉴 (배지 탭)
+### Feature 5: 래디얼 메뉴 (배지 탭) — 사용자 원본 HTML 을 WebView 로 렌더
 
-상시 배지를 **탭**(드래그 아님)하면 배지 주위로 **살아 숨쉬는 유리 칩**들이 부채꼴로 펼쳐지는
+상시 배지를 **탭**(드래그 아님)하면 배지 주위로 살아 숨쉬는 유리 칩들이 부채꼴로 펼쳐지는
 간편 메뉴를 띄운다. 빈 곳/항목 탭 시 닫힘.
 
-- **권위 원본**: `design/reference/radialmenu.html` (사용자 직접 제공 참고 구현 — 원신 푸리나
-  오브 링 무드). 외형·모션은 이 파일이 진실이며 `design/reference/README.md` 에 요점 정리.
-- **오브 = 유리 칩(완전한 원 금지)**: 80×56dp 라운드 사각, 코너 반경이 칩별 랜덤 주기(3~5s)로
-  **끊임없이 morph**(±8dp). 채움 rgba(20,60,180,0.12) + 은은한 시안 림 1.5dp(강조 테두리 금지) +
-  안쪽 링 + 좌상단 광택 + 글로우 2겹(BlurMaskFilter, 칩 뷰만 SW 레이어). 라벨은 **칩 아래**.
-- **선은 곡선**: 배지→칩 스포크 5 + 인접 칩 호 4 — 중점을 배지 쪽으로 24dp 당긴 2차 베지어,
-  양끝 트리밍. **빛 점(travel dot)** 이 각 곡선을 따라 흐름(95dp/s, 선별 0.5s 스태거).
-  칩 터치 중엔 연결선 하이라이트.
-- **입자**: 탭 시 버스트 입자 5~8개(0.4s), 트윙클 별 8개 + 부유 먼지 ~16개가 메뉴 영역에 명멸.
-- **부유(bob)**: 진폭 5~10dp·주기 3.8~5.3s **칩별 랜덤**, 지연 i×0.42s (참고 파일 그대로).
-- "저사양 모드(움직임 줄이기)" ON: 모프/부유/빛 점/먼지 정지(별은 낮은 고정 알파), 펼침/수납/버스트만.
-- 구현: `QuickMenuOverlayView`(스크림+선+입자) + `RadialOrbView`(칩 렌더) +
-  `RadialFanLayout`(부채꼴 배치) + `RadialMenuStyle`(모든 색/치수/타이밍 상수 단일 진입점).
-- 배치: 앵커(배지 중심)에서 **화면 중앙 방향**으로 부채꼴(140°, 최소 70°), 화면 밖으로 안 나가게 clamp.
+- **외형·모션의 진실은 HTML 파일**: `app/src/main/assets/radialmenu.html`(= 사용자가 직접 제공한
+  원본, `design/reference/radialmenu.html` 과 동일). 과거 네이티브(Canvas) 재해석은 원본과 미세하게
+  달라 폐기했고, 이제 `QuickMenuOverlayView` 가 이 HTML 을 **WebView 로 그대로 렌더**한다.
+  ⚠️ 메뉴 외형을 바꾸려면 Kotlin 이 아니라 이 HTML 을 고친다.
+- **원본에서 앱이 바꾼 것은 단 두 가지(사용자 요청)**: ① 선 위를 이동하던 빛 점(travel dot) 제거,
+  ② 대신 선이 약하게 움직이도록(`#lineSway` 의 느린 translate) 변경. 그 외(오브 morph·부유·별·
+  먼지·버스트·색·치수)는 원본 그대로.
+- **앱 통합용 배선(보이는 디자인 불변)**: HTML 은 `window.KikiNative` 존재를 감지해 앱 모드로
+  동작 — 자체 배지 숨김(네이티브 상시 배지와 중복 방지), 자동 오픈, `KikiInit({anchorX,anchorY(dp),
+  reduceMotion, labels})` 로 배지 위치·라벨·저사양 반영. 오브 탭→`KikiNative.onItemTap(i)`,
+  스크림 탭→`KikiNative.onDismiss()`, 배지 재탭→`KikiCollapse()`.
 - 항목(서비스가 주입): **앱 열기 / 설정 / 플래시 토글 / 한영타 토글 / 배지 숨기기**.
   토글은 탭 시점에 `Prefs` 를 읽어 현재 상태를 뒤집고 토스트로 새 상태(켜짐/꺼짐)를 안내.
-- 배지가 사라지거나 서비스 정리 시 메뉴도 함께 제거.
+- "저사양 모드(움직임 줄이기)" ON: 원본의 연속 애니메이션(오브 morph/부유/별/먼지/선 sway) 정지.
+- 배지가 사라지거나 서비스 정리 시 메뉴(WebView 창)도 함께 제거.
+- 구현: `QuickMenuOverlayView`(WebView 호스트 + JS↔네이티브 브리지, 외부 의존성 없음) +
+  `assets/radialmenu.html`(원본 렌더 대상).
 
 ### 추가 기능 2: 터치 키보드 제외
 
@@ -228,8 +228,8 @@ OverlayManager (WindowManager 래퍼)
   ├── FlashOverlayView         — 전체화면 플래시 (Feature 1, 3) / windowAnimations=0
   ├── BadgeOverlayView         — 상시 언어 배지 (Feature 2) / 크기·색 applyStyle / 탭→간편 메뉴
   ├── ReplaceChipView          — "교체?" 미니 버튼 (Feature 4)
-  └── QuickMenuOverlayView     — 비눗방울 래디얼 메뉴 (Feature 5) / RadialOrbView 항목
-                                 (+ RadialFanLayout 배치, RadialMenuStyle 상수)
+  └── QuickMenuOverlayView     — 래디얼 메뉴 (Feature 5) / 사용자 원본 assets/radialmenu.html 을
+                                 WebView 로 렌더 + JS↔네이티브 브리지(KikiInit/onItemTap/onDismiss)
 
 util/
   ├── HangulConverter          — 두벌식↔QWERTY 변환 + 한영타 신뢰도 판정 (순수 Kotlin)
