@@ -49,10 +49,17 @@ html, body {
   inset: 0;
   overflow: visible;
   pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.4s ease;
+  /* 순수 컨테이너 — 개별 표시는 안의 요소(선/별)가 각자 담당(아래 참조). */
 }
-.menu.open .constellation { opacity: 1; }
+
+/* 선(스포크/호)은 각자 개별로 나타난다 — 오브의 스태거(transitionDelay, i*STAGGER_MS)와
+   같은 지속시간(0.46s)으로 동기화해, 오브가 하나씩 피어날 때 그 오브로 향하는 선(과 앞
+   오브와의 호)이 같은 타이밍에 함께 나타난다(JS 의 addLine/setOpen 참조). */
+.line-glow, .line-crisp {
+  opacity: 0;
+  transition: opacity 0.46s ease;
+}
+.menu.open .line-glow, .menu.open .line-crisp { opacity: 1; }
 
 .line-glow {
   stroke: #4da8ff;
@@ -69,6 +76,13 @@ html, body {
   transition: stroke-opacity 0.25s;
 }
 .line-crisp.lit { stroke-opacity: 0.95; stroke-width: 1.8; }
+
+/* 별(트윙클)은 오브 스태거 대상이 아니라 기존처럼 한 덩어리로 페이드(옛 .constellation 규칙 이식). */
+.stars-fade {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.menu.open .stars-fade { opacity: 1; }
 
 /* ── Orb wrapper ─────────────────────────────────────────── */
 .orb-wrap {
@@ -317,7 +331,9 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
     </defs>
     <g id="linesGlow"></g>
     <g id="linesCrisp"></g>
-    <g id="sparkleGroup"></g>
+    <g class="stars-fade" id="starsFade">
+      <g id="sparkleGroup"></g>
+    </g>
   </svg>
 
   <div id="orbContainer"></div>
@@ -338,6 +354,9 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
   const BX = 400, BY = 210;   // badge center within 460x420 menu
   const R  = 180;             // fan radius
   const N  = 5;
+  /* 펼침 스태거 간격(ms) — 오브(orb-wrap)와 선(line-glow/crisp) 이 공유하는 단일 값.
+     오브가 하나씩 피어나는 리듬에 선도 정확히 맞춰 함께 나타나게 한다. */
+  const STAGGER_MS = 60;
 
   /* 140° arc opening LEFT (centered on 180°): 110° … 250° */
   const ARC_START = 110, ARC_END = 250;
@@ -366,6 +385,9 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
   /* 곡선 호흡 애니메이션 재료(끝점 고정, 제어점만 출렁임) — start(reduce) 시점에 조립한다. */
   const lineBreathers = [];
   let lineAnimIndex = 0;
+  /* 펼침 스태거 배선용: {el, delayMs}. setOpen() 이 오브(orbWraps)와 똑같은 방식으로
+     열 때는 delayMs 를, 닫을 때는 0 을 각 요소의 transitionDelay 에 적용한다. */
+  const lineElems = [];
 
   function addLine(p1, p2, idxA, idxB, trim1, trim2) {
     // trim endpoints inward so the line meets the orb/badge edge, not the center
@@ -396,6 +418,13 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
     crisp.dataset.a = idxA; crisp.dataset.b = idxB;
     linesCrisp.appendChild(crisp);
     crispPaths.push(crisp);
+
+    // 펼침 스태거 지연: 스포크(배지→오브 idxB)는 그 오브와 동일한 지연(i*STAGGER_MS).
+    // 인접 호(오브 idxA↔idxB)는 두 오브 중 더 늦게 도착하는 쪽(큰 인덱스) 기준 — 두 오브가
+    // 어느 정도 자리 잡을 때쯤 그 사이 호가 이어지도록.
+    const delayIdx = idxA === 'b' ? idxB : Math.max(idxA, idxB);
+    const delayMs = delayIdx * STAGGER_MS;
+    lineElems.push({ el: glow, delayMs }, { el: crisp, delayMs });
 
     // 곡선 호흡용 위/아래 변형: 끝점(a,b)은 그대로, 제어점만 선분에 수직으로 살짝 밀어낸다
     // (= 곡선의 배가 위아래로 우아하게 휘고, 오브/배지에 붙는 지점은 흔들리지 않는다).
@@ -545,13 +574,16 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
     pulseBadge();
     badge.setAttribute('aria-expanded', String(open));
     if (open) {
-      // expand: staggered 60ms outward from badge
-      orbWraps.forEach((w, i) => w.style.transitionDelay = `${i * 60}ms`);
+      // expand: 오브가 STAGGER_MS 간격으로 순서대로 튀어나오고, 그 오브로 향하는 선(과 앞
+      // 오브와의 호)도 같은 지연으로 함께 나타난다(자연스럽게 동기화 — addLine 참조).
+      orbWraps.forEach((w, i) => w.style.transitionDelay = `${i * STAGGER_MS}ms`);
+      lineElems.forEach(({ el, delayMs }) => el.style.transitionDelay = `${delayMs}ms`);
       menu.classList.add('open');
       scrim.classList.add('show');
     } else {
-      // collapse: all retract simultaneously
+      // collapse: 오브와 선 모두 동시에(지연 없이) 일제히 사라진다.
       orbWraps.forEach(w => w.style.transitionDelay = '0ms');
+      lineElems.forEach(({ el }) => el.style.transitionDelay = '0ms');
       menu.classList.remove('open');
       scrim.classList.remove('show');
     }
