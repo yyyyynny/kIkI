@@ -338,6 +338,9 @@ WindowManager flags:
   버스트 등 모든 연출은 이 파일 안에 있다.
 - **원본에서 앱이 바꾼 것은 단 두 가지(사용자 요청)**: ① 선 위 빛 점(travel dot) 제거,
   ② 대신 선이 약하게 움직이도록(`#lineSway` translate sway) 변경. 그 외는 원본 그대로.
+- **선의 움직임(`applyLineBreath`)**: 끝점(배지/오브)은 고정, 2차 베지어 제어점만 선분에
+  수직으로 ±3.5px 오가며 곡률만 우아하게 출렁인다(선마다 5.5~6.5s 랜덤 + 0.3s 스태거,
+  glow/crisp 동일 `d` 시퀀스 공유). reduce-motion 이면 정적.
 - **앱 통합용 배선(디자인 불변)**: `window.KikiNative` 감지 시 앱 모드 — 자체 배지 숨김(네이티브
   상시 배지와 중복 방지), 자동 오픈, `KikiInit({anchorX,anchorY(dp), reduceMotion, labels})` 로
   배지 위치·라벨·저사양 반영. 오브 탭→`onItemTap(i)`, 스크림 탭→`onDismiss()`, 배지 재탭→`KikiCollapse()`.

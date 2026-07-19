@@ -173,6 +173,10 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
 - **원본에서 앱이 바꾼 것은 단 두 가지(사용자 요청)**: ① 선 위를 이동하던 빛 점(travel dot) 제거,
   ② 대신 선이 약하게 움직이도록(`#lineSway` 의 느린 translate) 변경. 그 외(오브 morph·부유·별·
   먼지·버스트·색·치수)는 원본 그대로.
+- **선의 움직임 방식(`applyLineBreath`)**: 배지/오브에 붙는 끝점은 고정한 채, 2차 베지어
+  제어점만 선분에 수직으로 미세하게(±3.5px) 오가며 곡률(배)만 우아하게 출렁인다
+  (d0↔d1↔d0↔d2↔d0, 선마다 5.5~6.5s 랜덤 주기 + 0.3s 스태거, `calcMode=spline`). glow/crisp
+  두 겹은 항상 같은 `d` 시퀀스를 공유해 정렬이 어긋나지 않는다. reduce-motion 이면 정적 곡선.
 - **앱 통합용 배선(보이는 디자인 불변)**: HTML 은 `window.KikiNative` 존재를 감지해 앱 모드로
   동작 — 자체 배지 숨김(네이티브 상시 배지와 중복 방지), 자동 오픈, `KikiInit({anchorX,anchorY(dp),
   reduceMotion, labels})` 로 배지 위치·라벨·저사양 반영. 오브 탭→`KikiNative.onItemTap(i)`,
