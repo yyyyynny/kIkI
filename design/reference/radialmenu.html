@@ -53,11 +53,13 @@ html, body {
 }
 
 /* 선(스포크/호)은 각자 개별로 나타난다 — 오브의 스태거(transitionDelay, i*STAGGER_MS)와
-   같은 지속시간(0.46s)으로 동기화해, 오브가 하나씩 피어날 때 그 오브로 향하는 선(과 앞
-   오브와의 호)이 같은 타이밍에 함께 나타난다(JS 의 addLine/setOpen 참조). */
+   같은 지속시간으로 동기화해, 오브가 하나씩 피어날 때 그 오브로 향하는 선(과 앞 오브와의
+   호)이 같은 속도로 함께 나타난다(JS 의 addLine/setOpen 참조). 0.30s 는 오브(.orb-wrap)가
+   실제로 "보이는" 속도(opacity 0.30s ease) — 오브의 transform 0.46s 는 다 보인 뒤 위치로
+   통통 튀어 들어가는 잔여 움직임이라 등장 속도 기준은 그쪽이 아니라 이 opacity 값이다. */
 .line-glow, .line-crisp {
   opacity: 0;
-  transition: opacity 0.46s ease;
+  transition: opacity 0.30s ease;
 }
 .menu.open .line-glow, .menu.open .line-crisp { opacity: 1; }
 
