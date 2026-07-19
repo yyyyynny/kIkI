@@ -12,27 +12,33 @@
    변경 (한/영 토글 시 시스템 설정이 즉시 바뀌므로 화면 변화 없이도 감지)
 3. **`TYPE_WINDOW_STATE_CHANGED`** + Samsung One UI 팝업 텍스트 (백스톱 / 삼성 내부 토글)
 
-각 경로는 `InputMethodManager.getCurrentInputMethodSubtype()` 의 locale 을 읽어 직전과 다르면 발동.
+현재 언어는 **권위 소스**에서 읽는다: 옵저버가 감시하는 설정값 그 자체
+(`selected_input_method_subtype` 해시 + `default_input_method`)를 직접 읽어 해당 IME 의 활성
+서브타입 목록과 매핑(`readAuthoritative`, IME id 기준 목록 캐시). 신호가 도착한 시점엔 설정값이
+이미 갱신돼 있어 **stale 이 없다**. 매핑 불가 기기만 `imm.currentInputMethodSubtype` 폴백(비권위).
 
-### ★ 2회 깜박임 방지 — 다층 방어
-한 번의 전환이 위 경로에서 신호 다발(브로드캐스트 1 + 옵저버 2 + 윈도우 이벤트 n)을 만든다.
-1. **신호 합치기(coalesce)**: 모든 신호를 **단일 예약(`recheckRunnable`)** 으로 합쳐 신호가 멎고
-   `COALESCE_MS`(150ms) 뒤에 **한 번만** 서브타입(또는 팝업 힌트)을 읽어 발동.
-2. **발동 후 불응기(`REFRACTORY_MS`=450ms)**: 발동 직후 들어오는 잔여 신호 + 지연된
-   `currentInputMethodSubtype` 캐시가 "직전 언어"를 새 전환처럼 다시 발동(→ 다른 색 2번째 깜박임)하는
-   것을 차단. 불응기 동안엔 재평가를 미뤘다가 캐시 안정 후 1회만 확인.
-3. **`onServiceConnected` 멱등화**: 재연결 시 detector(Receiver/Observer)가 중복 등록되면 한 전환에
-   여러 번 발동하므로, 재진입 시 이전 인스턴스를 `cleanup()` 후 재초기화.
-4. **렌더 단계 안전망**(`OverlayManager.FLASH_DEDUP_MS`=350ms): 같은 색 플래시가 아주 짧은 간격으로
-   다시 오면 건너뜀(다른 언어는 색이 달라 정상 표시). 1~3이 근본 방어, 이건 마지막 시각 방어.
-5. **안티-플랩 가드(`FLAP_GUARD_MS`=1000ms)**: 불응기(450ms)와 렌더 에피소드 가드
-   (`OverlayManager.LANG_FLASH_MIN_INTERVAL_MS`=700ms) 사이 틈으로, 700ms 이후 도착한 지연 stale 신호가
-   서브타입 캐시 지연으로 "직전 언어"를 재발동해 다른 색 2번째 깜박임을 만들던 마지막 누수를 차단.
-   전환 직후 `FLAP_GUARD_MS` 안에 **직전 언어로 되돌아가는** `emitIfChanged` 는 stale 메아리로 보고
-   무시(사람이 그보다 빠르게 되돌리지 못하므로 정상 재전환은 유지).
+### ★ 2회 깜박임 / 반응 씹힘 방지 — 권위 소스 기반 방어(2026-07 재설계)
+과거의 시간 가드 다층 방어(불응기 450ms/플랩 1000ms/에피소드 700ms)는 stale 캐시 증상을 덮는
+방식이라 가끔 2회 깜박임이 남고, 1초 내 정상 재전환(한→영→한)까지 차단해 반응이 씹혔다. 현재:
+1. **권위 소스 읽기(근본 방어)**: 권위 값은 **관측 키("IME id:서브타입 해시")가 실제로 바뀌었을
+   때만** 발동 근거(`lastAuthKey`). 전환의 잔여 신호는 "키 불변"으로 자연히 no-op → 시간 가드 없이
+   중복 차단, 빠른 정상 재전환은 그대로 발동(씹힘 해소).
+2. **신호 합치기(coalesce)**: 모든 신호를 단일 예약(`recheckRunnable`)으로 합쳐 신호가 멎고
+   `COALESCE_MS`(150ms) 뒤 한 번만 평가. 신호가 끝없이 이어져도 첫 신호 후
+   `COALESCE_MAX_WAIT_MS`(400ms)에 강제 평가(굶주림 방지). 평가가 "변경 없음"이면 강한 신호
+   (브로드캐스트/옵저버/팝업)에 한해 +200/+400ms 백오프로 최대 2회 재확인 — 저사양 기기의 늦은
+   설정 전파로 전환이 조용히 유실되는 것을 방지.
+3. **비권위 값 메아리 가드(`ECHO_GUARD_MS`=1000ms)**: 팝업 힌트/IMM 폴백처럼 stale 가능한 값이
+   "직전 언어"로 되돌아가는 경우만 무시. 권위 값에는 미적용(씹힘 방지). 팝업 힌트는 권위 키가
+   그대로일 때만 발동 근거(삼성 내부 토글 — 권위 키가 바뀌면 힌트는 stale 로 폐기).
+4. **`onServiceConnected` 멱등화 + 등록 개별 추적**: 재진입 시 `cleanup()` 후 재초기화.
+   리시버/옵저버 등록 성공을 개별 플래그로 추적하고 `stop()` 은 무조건 해제를 시도 — 부분 등록
+   실패 시 리시버가 살아남아 detector 가 중복되던 누수 차단.
+5. **렌더 단계 안전망**: 같은 색 `FLASH_DEDUP_MS`(350ms) + 색 무관 에피소드 최소 간격
+   `LANG_FLASH_MIN_INTERVAL_MS`(300ms — 과거 700ms 는 정상 연속 전환 플래시까지 삼킴).
 
-따라서 깜박임 횟수 1 지정 시 **정확히 1회**만 깜박이고, 신호마다 두 번씩 읽던 중복 작업도 사라진다
-(저사양 최적화). 전환당 `onLanguageChanged` 호출이 1회임은 `emitCount` + `Log.d` 로 실기기 확인 가능
+따라서 깜박임 횟수 1 지정 시 **정확히 1회**만 깜박이고, 빠른 정상 재전환도 씹히지 않는다.
+전환당 `onLanguageChanged` 호출이 1회임은 `emitCount` + `Log.d` 로 실기기 확인 가능
 (렌더 안전망이 시각적으로 가려도 로그로 실제 트리거 수는 확인 가능).
 
 ### Samsung One UI 팝업 보조 감지 (fallback)
@@ -317,20 +323,31 @@ WindowManager flags:
 
 ---
 
-## Feature 5: 물방울 간편 메뉴 (배지 탭)
+## Feature 5: 래디얼 메뉴 (배지 탭) — 사용자 원본 HTML 을 WebView 로 렌더
 
-상시 배지를 **탭**하면(드래그와 구분) 배지 주위로 물방울 버튼이 부채꼴로 퍼지는 간편 메뉴.
+상시 배지를 **탭**하면(드래그와 구분) 배지 주위로 살아 숨쉬는 유리 칩이 부채꼴로 펼쳐지는 간편 메뉴.
+**외형·모션의 진실은 HTML 파일**: `app/src/main/assets/radialmenu.html`(= 사용자 원본,
+`design/reference/radialmenu.html` 과 동일). 과거 네이티브(Canvas) 재이식은 원본과 미세하게 달라
+폐기했고, 이제 `QuickMenuOverlayView` 가 이 HTML 을 **WebView 로 그대로 렌더**한다(메뉴 외형을
+바꾸려면 Kotlin 이 아니라 HTML 을 고친다).
 
 ### 구성
-- `WaterDropView`: `Path` 로 그린 물방울(위 뾰족 + 아래 둥근 bulb). 위→아래 파란 `LinearGradient`
-  + 상단 광택 타원 + 중앙 라벨(흰 글씨). 외부 리소스/이미지 없이 순수 드로잉.
-- `QuickMenuOverlayView`: 전체화면 반투명 스크림(`#66000000`) 오버레이.
-  - 윈도우 플래그: `TYPE_APPLICATION_OVERLAY | FLAG_NOT_FOCUSABLE | FLAG_LAYOUT_IN_SCREEN`
-    (터치는 받되 키 포커스는 안 가져감), `windowAnimations=0`.
-  - 배치: 앵커(배지 중심)에서 화면 중앙을 향하는 각도를 기준으로 약 150° 부채꼴, 반경 ≈118dp,
-    각 버튼은 화면 밖으로 안 나가게 clamp.
-  - 등장: 스크림 페이드 + 버튼별 오버슈트 스케일(스태거)로 "톡톡" 퍼지는 연출.
-  - 닫힘: 빈 곳(스크림) 탭 또는 항목 탭. 배지가 사라지거나 서비스 정리 시 함께 제거.
+- `QuickMenuOverlayView`: 투명 배경 WebView 호스트. `file:///android_asset/radialmenu.html` 로드 +
+  JS↔네이티브 브리지(`KikiNative`). 외부 의존성 없음(android.webkit).
+- `assets/radialmenu.html`: 렌더 대상. 오브(유리 칩 80×56dp, 코너 morph)·곡선 선·별·먼지·부유·
+  버스트 등 모든 연출은 이 파일 안에 있다.
+- **원본에서 앱이 바꾼 것은 단 두 가지(사용자 요청)**: ① 선 위 빛 점(travel dot) 제거,
+  ② 대신 선이 약하게 움직이도록(`#lineSway` translate sway) 변경. 그 외는 원본 그대로.
+- **선의 움직임(`applyLineBreath`)**: 끝점(배지/오브)은 고정, 2차 베지어 제어점만 선분에
+  수직으로 ±3.5px 오가며 곡률만 우아하게 출렁인다(선마다 5.5~6.5s 랜덤 + 0.3s 스태거,
+  glow/crisp 동일 `d` 시퀀스 공유). reduce-motion 이면 정적.
+- **앱 통합용 배선(디자인 불변)**: `window.KikiNative` 감지 시 앱 모드 — 자체 배지 숨김(네이티브
+  상시 배지와 중복 방지), 자동 오픈, `KikiInit({anchorX,anchorY(dp), reduceMotion, labels})` 로
+  배지 위치·라벨·저사양 반영. 오브 탭→`onItemTap(i)`, 스크림 탭→`onDismiss()`, 배지 재탭→`KikiCollapse()`.
+- 윈도우: `TYPE_APPLICATION_OVERLAY | FLAG_NOT_FOCUSABLE | FLAG_LAYOUT_IN_SCREEN`(터치는 받되 키
+  포커스 안 가져감), `windowAnimations=0`. 스크림 딤은 HTML 내부(.scrim rgba(0,0,0,0.25)).
+- "저사양 모드" ON: 원본의 연속 애니메이션(오브 morph/부유/별/먼지/선 sway) 정지.
+- 닫힘: 빈 곳(스크림) 탭 또는 항목 탭. 배지가 사라지거나 서비스 정리 시 WebView 창도 함께 제거.
 
 ### 항목 (서비스가 주입: `OverlayManager.setQuickMenuItems`)
 | 라벨 | 동작 |

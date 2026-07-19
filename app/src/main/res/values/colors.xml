@@ -2,23 +2,32 @@
 <resources>
     <!--
         플래시/배지의 실제 언어별 색상은 Prefs/OverlayManager 가 ARGB Int 로 직접 관리한다.
-        여기 lang_english 는 앱 테마(themes.xml)의 colorPrimary/colorAccent 로만 쓰인다.
-        (미사용이던 lang_korean/lang_default/badge_bg/badge_text/ui_divider 는 정리로 제거)
+        여기는 앱 화면(온보딩/설정) UI 의 시맨틱 팔레트 — 다크모드 값은 values-night/colors.xml.
     -->
-    <color name="lang_english">#1A6EBD</color>
-
     <!-- 칩("교체?") 배경/글씨 (bg_chip.xml, ReplaceChipView 사용) -->
     <color name="chip_bg">#1C1C1E</color>
     <color name="chip_text">#FFFFFFFF</color>
 
-    <color name="ic_launcher_background">#1A6EBD</color>
+    <!-- ── 시맨틱 UI 팔레트 (라이트) ─────────────────────────────────── -->
+    <!-- 화면 배경 / 카드 표면 -->
+    <color name="ui_bg">#F4F6FA</color>
+    <color name="ui_surface">#FFFFFF</color>
+    <!-- 본문/보조 텍스트 -->
+    <color name="ui_on_surface">#1A1C20</color>
+    <color name="ui_on_surface_muted">#6B7280</color>
+    <!-- 강조색(버튼/헤더/위젯 tint)과 그 위 텍스트 -->
+    <color name="ui_accent">#2563EB</color>
+    <color name="ui_on_accent">#FFFFFF</color>
+    <!-- 강조 컨테이너(톤 버튼/스텝 칩 배경)와 그 위 텍스트 -->
+    <color name="ui_accent_container">#E3ECFD</color>
+    <color name="ui_on_accent_container">#1D4ED8</color>
+    <!-- 구분선 / 보조(muted) 텍스트 별칭 -->
+    <color name="ui_divider">#E5E7EB</color>
+    <color name="ui_muted">#6B7280</color>
 
-    <!-- UI 강조색(섹션 헤더/타이틀) — 살짝 세련된 느낌의 공용 액센트 -->
-    <color name="ui_accent">#2E7DD1</color>
-    <!-- 온보딩 구분선/보조 텍스트 (하드코딩 헥스 대신 공용 참조로 통일) -->
-    <color name="ui_divider">#33808080</color>
-    <color name="ui_muted">#888888</color>
-    <!-- 상태 배지 색 -->
-    <color name="status_ok">#2D8C4E</color>
-    <color name="status_need">#CC2D2D</color>
+    <!-- 상태 색(완료/필요) + 필(pill) 컨테이너 -->
+    <color name="status_ok">#16A34A</color>
+    <color name="status_ok_container">#E4F5EA</color>
+    <color name="status_need">#DC2626</color>
+    <color name="status_need_container">#FCEAEA</color>
 </resources>

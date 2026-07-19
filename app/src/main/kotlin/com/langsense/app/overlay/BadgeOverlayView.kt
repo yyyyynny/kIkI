@@ -3,6 +3,7 @@ package com.langsense.app.overlay
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -62,23 +63,58 @@ class BadgeOverlayView(
 
     /**
      * 크기 단계(0=소, 1=중, 2=대)와 배경/글씨 ARGB 를 적용한다(Feature 2 커스터마이즈).
-     * 중(1) + 기본 색은 기존 외형(14sp / 패딩 8·4dp / minWidth 40dp / #CC000000·흰색)과 동일하다.
-     * 둥근 모서리(6dp)는 기존 bg_badge 드로어블과 동일하게 코드로 그린다.
+     *
+     * 발광 스타일(orb_mockup.html 의 `.badge` 이식): 본체(사용자 배경색, 코너 8dp) 둘레에
+     * 글씨색에서 파생한 **halo 2겹**(box-shadow 글로우 근사)과 **안쪽 1dp 링**(inset ring),
+     * 글자에는 글씨색 글로우([setShadowLayer])를 준다. 색을 바꾸면 발광도 그 색을 따라가므로
+     * 사용자 커스터마이즈(배경/글씨색·크기 3단계)는 그대로 보존된다.
      */
     fun applyStyle(sizeLevel: Int, bgArgb: Int, textArgb: Int) {
         val spec = sizeSpec(sizeLevel)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, spec.textSp)
         setTextColor(textArgb)
-        val padH = dp(spec.padHDp)
-        val padV = dp(spec.padVDp)
+        // 글자 발광 — 목업 배지 글자의 글로우. 글씨색 기반이라 어떤 커스텀 색에도 어울린다.
+        setShadowLayer(dp(4f).toFloat(), 0f, 0f, withAlpha(textArgb, GLOW_TEXT_ALPHA))
+
+        // halo 두께만큼 패딩/최소폭을 늘려 본체 크기(시각적 배지 크기)는 기존과 동일하게 유지.
+        val halo = dp(HALO_THICKNESS_DP)
+        val padH = dp(spec.padHDp) + halo
+        val padV = dp(spec.padVDp) + halo
         setPadding(padH, padV, padH, padV)
-        minWidth = dp(spec.minWDp)
-        background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(6f).toFloat()
-            setColor(bgArgb)
+        minWidth = dp(spec.minWDp) + halo * 2
+
+        // halo 는 채움이 아니라 **테두리 링** 2겹 — 사용자 배경이 반투명(기본 80% 검정)이어도
+        // 본체 뒤로 halo 가 비쳐 배경색이 탁해지지 않는다(글로우는 본체 바깥에만 번짐).
+        val mid = (halo / 2).coerceAtLeast(1)
+        val outerHalo = ringRect(withAlpha(textArgb, HALO_OUTER_ALPHA), 12f, mid)
+        val innerHalo = ringRect(withAlpha(textArgb, HALO_INNER_ALPHA), 10f, mid)
+        val body = roundRect(bgArgb, 8f).apply {
+            setStroke(dp(1f), withAlpha(textArgb, RING_ALPHA))
+        }
+        background = LayerDrawable(arrayOf(outerHalo, innerHalo, body)).apply {
+            setLayerInset(1, mid, mid, mid, mid)
+            setLayerInset(2, halo, halo, halo, halo)
         }
     }
+
+    private fun roundRect(argb: Int, radiusDp: Float): GradientDrawable = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        cornerRadius = dp(radiusDp).toFloat()
+        setColor(argb)
+    }
+
+    /** 투명 채움 + 지정 굵기 테두리만 있는 라운드 사각(halo 링용). */
+    private fun ringRect(argb: Int, radiusDp: Float, strokeWidthPx: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(radiusDp).toFloat()
+            setColor(android.graphics.Color.TRANSPARENT)
+            setStroke(strokeWidthPx, argb)
+        }
+
+    /** [argb] 의 RGB 는 유지하고 알파만 [alpha](0~1)로 바꾼다. */
+    private fun withAlpha(argb: Int, alpha: Float): Int =
+        (argb and 0x00FFFFFF) or (((alpha * 255).toInt().coerceIn(0, 255)) shl 24)
 
     private data class SizeSpec(val textSp: Float, val padHDp: Float, val padVDp: Float, val minWDp: Float)
 
@@ -147,6 +183,13 @@ class BadgeOverlayView(
         /** 탭 펄스: 최대 배율과 반(half) 지속 시간(ms). */
         private const val PULSE_SCALE = 1.12f
         private const val PULSE_HALF_MS = 130L
+
+        /** 발광 halo 두께(dp)와 각 레이어 알파(글씨색 기반 — 목업 box-shadow/inset ring 근사). */
+        private const val HALO_THICKNESS_DP = 4f
+        private const val HALO_OUTER_ALPHA = 0.15f
+        private const val HALO_INNER_ALPHA = 0.28f
+        private const val RING_ALPHA = 0.40f
+        private const val GLOW_TEXT_ALPHA = 0.55f
 
         /** init 기본값(=기존 외형). OverlayManager 가 곧바로 prefs 값으로 applyStyle 재호출한다. */
         private const val DEFAULT_BG_ARGB = 0xCC000000.toInt()

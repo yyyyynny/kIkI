@@ -2,175 +2,288 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true">
+    android:fillViewport="true"
+    android:scrollbars="none">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="24dp"
+        android:paddingBottom="28dp">
 
+        <!-- 헤더 -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/onboarding_title"
-            android:textColor="@color/ui_accent"
-            android:textSize="24sp"
+            android:textColor="@color/ui_on_surface"
+            android:textSize="28sp"
             android:letterSpacing="0.01"
             android:textStyle="bold" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="6dp"
             android:text="@string/onboarding_desc"
-            android:textSize="14sp" />
+            android:textColor="@color/ui_on_surface_muted"
+            android:textSize="14sp"
+            android:lineSpacingExtra="2dp" />
 
-        <!-- 진행 상태 요약 배너 (onResume 마다 갱신) -->
+        <!-- 진행 상태 요약 필 배너 (onResume 마다 갱신) -->
         <TextView
             android:id="@+id/tvSummary"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:padding="12dp"
-            android:textSize="15sp"
+            android:layout_marginTop="20dp"
+            android:background="@drawable/bg_pill"
+            android:gravity="center"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingTop="13dp"
+            android:paddingBottom="13dp"
+            android:textSize="14sp"
             android:textStyle="bold" />
 
         <!-- Step 1: 오버레이 권한 -->
-        <View
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginTop="20dp"
-            android:background="@color/ui_divider" />
-
-        <TextView
-            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="@string/step_overlay"
-            android:textColor="@color/ui_accent"
-            android:textSize="17sp"
-            android:textStyle="bold" />
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="20dp">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/step_overlay_desc"
-            android:textSize="13sp" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/tvOverlayStatus"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+                <TextView
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:background="@drawable/bg_step_chip"
+                    android:gravity="center"
+                    android:text="@string/step_no_1"
+                    android:textColor="@color/ui_on_accent_container"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/btnOverlay"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/btn_grant_overlay" />
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:text="@string/step_overlay"
+                    android:textColor="@color/ui_on_surface"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvOverlayStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_pill"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:paddingTop="5dp"
+                    android:paddingBottom="5dp"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/step_overlay_desc"
+                android:textColor="@color/ui_on_surface_muted"
+                android:textSize="13sp"
+                android:lineSpacingExtra="2dp" />
+
+            <Button
+                android:id="@+id/btnOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_button_primary"
+                android:minHeight="48dp"
+                android:stateListAnimator="@null"
+                android:text="@string/btn_grant_overlay"
+                android:textColor="@color/ui_on_accent"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
         <!-- Step 2: 접근성 서비스 -->
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginTop="16dp"
-            android:background="@color/ui_divider" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="@string/step_accessibility"
-            android:textColor="@color/ui_accent"
-            android:textSize="17sp"
-            android:textStyle="bold" />
-
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/step_accessibility_desc"
-            android:textSize="13sp" />
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="20dp">
 
-        <TextView
-            android:id="@+id/tvAccStatus"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-        <Button
-            android:id="@+id/btnAccessibility"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/btn_open_accessibility" />
+                <TextView
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:background="@drawable/bg_step_chip"
+                    android:gravity="center"
+                    android:text="@string/step_no_2"
+                    android:textColor="@color/ui_on_accent_container"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
 
-        <!-- Step 3: 배터리 최적화 예외 -->
-        <View
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:text="@string/step_accessibility"
+                    android:textColor="@color/ui_on_surface"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvAccStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_pill"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:paddingTop="5dp"
+                    android:paddingBottom="5dp"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/step_accessibility_desc"
+                android:textColor="@color/ui_on_surface_muted"
+                android:textSize="13sp"
+                android:lineSpacingExtra="2dp" />
+
+            <Button
+                android:id="@+id/btnAccessibility"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_button_primary"
+                android:minHeight="48dp"
+                android:stateListAnimator="@null"
+                android:text="@string/btn_open_accessibility"
+                android:textColor="@color/ui_on_accent"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Step 3: 배터리 최적화 예외 (권장) -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginTop="16dp"
-            android:background="@color/ui_divider" />
-
-        <TextView
-            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="@string/step_battery"
-            android:textColor="@color/ui_accent"
-            android:textSize="17sp"
-            android:textStyle="bold" />
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="20dp">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/step_battery_desc"
-            android:textSize="13sp" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/tvBatteryStatus"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+                <TextView
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:background="@drawable/bg_step_chip"
+                    android:gravity="center"
+                    android:text="@string/step_no_3"
+                    android:textColor="@color/ui_on_accent_container"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/btnBattery"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/btn_battery" />
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:text="@string/step_battery"
+                    android:textColor="@color/ui_on_surface"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
 
-        <!-- 설정 -->
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginTop="20dp"
-            android:background="@color/ui_divider" />
+                <TextView
+                    android:id="@+id/tvBatteryStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_pill"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:paddingTop="5dp"
+                    android:paddingBottom="5dp"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
 
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/step_battery_desc"
+                android:textColor="@color/ui_on_surface_muted"
+                android:textSize="13sp"
+                android:lineSpacingExtra="2dp" />
+
+            <Button
+                android:id="@+id/btnBattery"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_button_tonal"
+                android:minHeight="48dp"
+                android:stateListAnimator="@null"
+                android:text="@string/btn_battery"
+                android:textColor="@color/ui_on_accent_container"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 앱 설정 -->
         <Button
             android:id="@+id/btnSettings"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="@string/btn_settings" />
+            android:layout_marginTop="20dp"
+            android:background="@drawable/bg_button_tonal"
+            android:minHeight="52dp"
+            android:stateListAnimator="@null"
+            android:text="@string/btn_settings"
+            android:textColor="@color/ui_on_accent_container"
+            android:textSize="15sp"
+            android:textStyle="bold" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
+            android:gravity="center"
             android:text="@string/privacy_note"
+            android:textColor="@color/ui_muted"
             android:textSize="12sp"
-            android:textColor="@color/ui_muted" />
+            android:lineSpacingExtra="2dp" />
 
     </LinearLayout>
 </ScrollView>

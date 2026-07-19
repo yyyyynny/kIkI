@@ -78,8 +78,16 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
   2. `ContentObserver` — `selected_input_method_subtype` / `default_input_method` 변경
      (한/영 토글 시 시스템 설정이 즉시 바뀌므로 화면 변화 없이도 감지)
   3. `TYPE_WINDOW_STATE_CHANGED` + Samsung One UI 팝업 텍스트(백스톱 / 삼성 내부 토글)
+- **권위 소스 읽기**: 현재 언어는 `imm.currentInputMethodSubtype`(전환 직후 stale 가능)가 아니라
+  **옵저버가 감시하는 설정값 그 자체**(`selected_input_method_subtype` 해시 + `default_input_method`)를
+  직접 읽어 서브타입 목록과 매핑(`readAuthoritative`, IME id 기준 목록 캐시). 권위 값은 **관측 키가
+  실제로 바뀌었을 때만** 발동 근거가 되고, 매핑 불가 기기만 IMM 폴백(비권위, `ECHO_GUARD_MS`=1000ms
+  메아리 가드 적용)으로 흐른다. → stale 재발동(2회 깜박임)과 과잉 가드(반응 씹힘)를 동시에 해소.
 - **중복 발화 합치기(debounce/coalesce)**: 한 번의 전환이 위 경로에서 여러 신호를 만들기 때문에,
-  모든 신호를 단일 예약으로 합쳐 마지막 신호 후 `COALESCE_MS`(150ms) 시점에 **한 번만** 발동.
+  모든 신호를 단일 예약으로 합쳐 마지막 신호 후 `COALESCE_MS`(150ms) 시점에 **한 번만** 평가
+  (신호가 끝없이 이어져도 첫 신호 후 `COALESCE_MAX_WAIT_MS`=400ms 에 강제 평가 — 굶주림 방지).
+  평가가 "변경 없음"이면 강한 신호(브로드캐스트/옵저버/팝업)에 한해 +200/+400ms 백오프로 최대
+  2회 재확인해 저사양 기기의 늦은 설정 전파로 전환이 조용히 유실되지 않게 한다.
   덕분에 깜박임 횟수 1 지정 시 정확히 1회만 깜박인다(이전엔 신호 중복으로 2회 이상 깜박임).
 - 플래시 지속 시간: **100~500ms 설정 가능(기본 200ms)**, 깜박임 횟수 1~5(기본 1)
 - 오버레이 추가 시 **윈도우 enter/exit 애니메이션 제거**(`windowAnimations=0`)로 색이 좌→우로
@@ -153,17 +161,32 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
 **⚠️ 핵심 구현체**: `HangulConverter.kt`
 두벌식(QWERTY) ↔ 한국어 변환 로직. 상세 스펙은 `docs/features.md` 참조.
 
-### Feature 5: 물방울 간편 메뉴 (배지 탭)
+### Feature 5: 래디얼 메뉴 (배지 탭) — 사용자 원본 HTML 을 WebView 로 렌더
 
-상시 배지를 **탭**(드래그 아님)하면 배지 주위로 **물방울(teardrop) 모양 버튼**들이 부채꼴로 퍼지는
+상시 배지를 **탭**(드래그 아님)하면 배지 주위로 살아 숨쉬는 유리 칩들이 부채꼴로 펼쳐지는
 간편 메뉴를 띄운다. 빈 곳/항목 탭 시 닫힘.
 
-- 구현: `QuickMenuOverlayView`(전체화면 반투명 스크림) + `WaterDropView`(Path 로 그린 물방울,
-  위→아래 파란 그라데이션 + 상단 광택, 라벨 중앙 — 별도 리소스 불필요). 등장은 오버슈트 스케일 애니메이션.
-- 배치: 앵커(배지 중심)에서 **화면 중앙 방향**으로 약 150° 부채꼴, 화면 밖으로 안 나가게 clamp.
+- **외형·모션의 진실은 HTML 파일**: `app/src/main/assets/radialmenu.html`(= 사용자가 직접 제공한
+  원본, `design/reference/radialmenu.html` 과 동일). 과거 네이티브(Canvas) 재해석은 원본과 미세하게
+  달라 폐기했고, 이제 `QuickMenuOverlayView` 가 이 HTML 을 **WebView 로 그대로 렌더**한다.
+  ⚠️ 메뉴 외형을 바꾸려면 Kotlin 이 아니라 이 HTML 을 고친다.
+- **원본에서 앱이 바꾼 것은 단 두 가지(사용자 요청)**: ① 선 위를 이동하던 빛 점(travel dot) 제거,
+  ② 대신 선이 약하게 움직이도록(`#lineSway` 의 느린 translate) 변경. 그 외(오브 morph·부유·별·
+  먼지·버스트·색·치수)는 원본 그대로.
+- **선의 움직임 방식(`applyLineBreath`)**: 배지/오브에 붙는 끝점은 고정한 채, 2차 베지어
+  제어점만 선분에 수직으로 미세하게(±3.5px) 오가며 곡률(배)만 우아하게 출렁인다
+  (d0↔d1↔d0↔d2↔d0, 선마다 5.5~6.5s 랜덤 주기 + 0.3s 스태거, `calcMode=spline`). glow/crisp
+  두 겹은 항상 같은 `d` 시퀀스를 공유해 정렬이 어긋나지 않는다. reduce-motion 이면 정적 곡선.
+- **앱 통합용 배선(보이는 디자인 불변)**: HTML 은 `window.KikiNative` 존재를 감지해 앱 모드로
+  동작 — 자체 배지 숨김(네이티브 상시 배지와 중복 방지), 자동 오픈, `KikiInit({anchorX,anchorY(dp),
+  reduceMotion, labels})` 로 배지 위치·라벨·저사양 반영. 오브 탭→`KikiNative.onItemTap(i)`,
+  스크림 탭→`KikiNative.onDismiss()`, 배지 재탭→`KikiCollapse()`.
 - 항목(서비스가 주입): **앱 열기 / 설정 / 플래시 토글 / 한영타 토글 / 배지 숨기기**.
   토글은 탭 시점에 `Prefs` 를 읽어 현재 상태를 뒤집고 토스트로 새 상태(켜짐/꺼짐)를 안내.
-- 배지가 사라지거나 서비스 정리 시 메뉴도 함께 제거.
+- "저사양 모드(움직임 줄이기)" ON: 원본의 연속 애니메이션(오브 morph/부유/별/먼지/선 sway) 정지.
+- 배지가 사라지거나 서비스 정리 시 메뉴(WebView 창)도 함께 제거.
+- 구현: `QuickMenuOverlayView`(WebView 호스트 + JS↔네이티브 브리지, 외부 의존성 없음) +
+  `assets/radialmenu.html`(원본 렌더 대상).
 
 ### 추가 기능 2: 터치 키보드 제외
 
@@ -200,7 +223,8 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
 
 ```
 LangSenseAccessibilityService (AccessibilityService)   # 클래스명은 식별자(불변)
-  ├── ImeStateDetector         — IME 언어 전환 감지(Broadcast+ContentObserver+윈도우팝업, 중복 합치기)
+  ├── ImeStateDetector         — IME 언어 전환 감지(Broadcast+ContentObserver+윈도우팝업,
+  │                              권위 소스(설정값) 읽기 + 중복 합치기 + no-op 백오프 재확인)
   ├── KeyEventMonitor          — 포커스 없는 문자키 입력 카운트(게이트 후 지연 포커스 조회)
   └── TextSelectionMonitor     — 드래그 선택 + 한영타 판정
 
@@ -208,7 +232,8 @@ OverlayManager (WindowManager 래퍼)
   ├── FlashOverlayView         — 전체화면 플래시 (Feature 1, 3) / windowAnimations=0
   ├── BadgeOverlayView         — 상시 언어 배지 (Feature 2) / 크기·색 applyStyle / 탭→간편 메뉴
   ├── ReplaceChipView          — "교체?" 미니 버튼 (Feature 4)
-  └── QuickMenuOverlayView     — 물방울 간편 메뉴 (Feature 5) / WaterDropView 항목
+  └── QuickMenuOverlayView     — 래디얼 메뉴 (Feature 5) / 사용자 원본 assets/radialmenu.html 을
+                                 WebView 로 렌더 + JS↔네이티브 브리지(KikiInit/onItemTap/onDismiss)
 
 util/
   ├── HangulConverter          — 두벌식↔QWERTY 변환 + 한영타 신뢰도 판정 (순수 Kotlin)
@@ -219,6 +244,8 @@ util/
 SettingsActivity
   └── 지원 언어 토글, 플래시 색/속도/횟수, 배지(ON·크기·배경색·글씨색),
       포커스 경고/한영타(설명 문구 포함) — 공용 colorPickerRow 로 색 UI 공유
+      (온보딩/설정 모두 카드형 모던 UI: Theme.AppCompat.DayNight.NoActionBar 기반,
+       values-night 다크모드 지원, SwitchCompat 토글 — 의존성 추가 없음)
 ```
 
 ---
@@ -266,13 +293,25 @@ SettingsActivity
 5. **Accessibility 오용 방지**: 이 서비스는 키로깅, 화면 내용 수집, 외부 전송을 절대 수행하지 않음. 모든 처리는 로컬 온디바이스. `typeViewTextChanged` 도 구독하지만 텍스트 '내용'은 읽지 않고 `source.isEditable` 여부만 본다(포커스 경고 오발동 방지용). 디버그 로그는 언어 코드만 출력.
 6. **One UI 9.x 미지원**: 베타 상태로 AccessibilityEvent 동작 변경 가능성 있음. 별도 분기 작성 금지, 추후 별도 대응.
 7. **[일본어 비활성화]**: 일본어는 발음 입력 후 한자 변환 단계가 많아 한/영 감지 실효가 낮아 기능을 껐다. **삭제하지 않고 전부 주석 처리**(ImeLocaleParser 의 ja·日本語·日 감지, displayName/badgeLabel, Prefs 의 JA 분기/상수, 설정 체크박스·색상, strings/colors)하여 추후 재도입을 쉽게 함. 주석만 처리했으므로 일본어 IME 입력 시 전용 처리는 사라지고 **기타 언어와 동일한 일반 경로(회색 `#555555`, 라벨 "JA")** 로 흐른다(완전 억제는 아님).
-8. **IME 전환 2회 깜박임 — 다층 방어**: 한 전환이 Broadcast/Observer/윈도우 이벤트에서 여러 신호를 만들어 2회 이상 깜박이던 문제를 다음으로 해결.
-   - (a) **신호 합치기**: 모든 신호를 단일 예약으로 합쳐 `COALESCE_MS`(150ms) 후 1회만 평가.
-   - (b) **발동 후 불응기**(`REFRACTORY_MS`=450ms): 잔여 신호 + 지연된 `currentInputMethodSubtype` 캐시가 "직전 언어"를 다시 발동(다른 색 2번째 깜박임)하는 것을 차단.
-   - (c) **`onServiceConnected` 멱등화**: 재연결 시 중복으로 BroadcastReceiver/ContentObserver 가 등록돼 detector 가 누적되면 한 전환에 여러 번 발동하므로, 재진입 시 `cleanup()` 후 재초기화.
-   - (d) **렌더 단계 안전망**(`OverlayManager.FLASH_DEDUP_MS`=350ms): 같은 색 플래시가 아주 짧은 간격으로 다시 오면 건너뜀. 위 (a)~(c) 가 근본 방어이고 이건 마지막 시각 방어(원인 진단용 `emitCount` 로그는 그대로 유지).
-   - (e) **안티-플랩 가드**(`ImeStateDetector.FLAP_GUARD_MS`=1000ms): 불응기(450ms)와 렌더 에피소드 가드(`OverlayManager.LANG_FLASH_MIN_INTERVAL_MS`=700ms) 사이 틈으로, 700ms 이후 도착한 지연 stale 신호가 서브타입 캐시 지연으로 "직전 언어"를 재발동해 다른 색 2번째 깜박임을 만들던 마지막 누수를 차단. 전환 직후 `FLAP_GUARD_MS` 안에 **직전 언어로 되돌아가는** emit 은 stale 메아리로 보고 무시(사람이 그보다 빠르게 되돌리지 못하므로 정상 재전환은 유지).
-   `onLanguageChanged` 는 전환당 1회만 호출되도록 했고 `emitCount`+`Log.d` 로 실기기 검증 가능(렌더 안전망이 가려도 로그로 실제 트리거 수 확인 가능). 키 입력 시 전체 윈도우 순회는 게이트 통과 후로 지연.
+8. **IME 전환 2회 깜박임 / 반응 씹힘 — 권위 소스 기반 방어(2026-07 재설계)**: 과거의 시간 가드
+   다층 방어(불응기 450ms / 플랩 1000ms / 에피소드 700ms)는 stale `currentInputMethodSubtype`
+   캐시 증상을 덮는 방식이라, 가끔 2회 깜박임이 남고 **정상 빠른 재전환(1초 내 한→영→한)까지
+   차단해 "반응이 씹히는"** 부작용이 있었다. 현재 구조:
+   - (a) **권위 소스 읽기**(근본 방어): 옵저버가 감시하는 설정값(`selected_input_method_subtype`
+     해시 + IME id)을 직접 읽어 매핑하고, **관측 키가 실제로 바뀌었을 때만** 발동. 잔여 신호는
+     "키 불변"으로 자연히 no-op → 시간 가드 없이 중복 차단, 빠른 정상 재전환은 그대로 발동.
+   - (b) **신호 합치기**: `COALESCE_MS`(150ms) + 굶주림 방지 강제 평가(`COALESCE_MAX_WAIT_MS`=400ms).
+     "변경 없음"이면 강한 신호에 한해 +200/+400ms 백오프 재확인 2회(늦은 설정 전파로 인한 유실 방지).
+   - (c) **비권위 값 메아리 가드**(`ECHO_GUARD_MS`=1000ms): 팝업 힌트/IMM 폴백처럼 stale 가능한
+     값이 "직전 언어"로 되돌아가는 경우만 무시. 권위 값에는 미적용(씹힘 방지). 팝업 힌트는 권위
+     키가 그대로일 때만 발동 근거(삼성 내부 토글 대응 — 권위 키가 바뀌면 힌트는 stale 로 폐기).
+   - (d) **`onServiceConnected` 멱등화 + 등록 개별 추적**: 재진입 시 `cleanup()` 후 재초기화.
+     리시버/옵저버 등록 성공 여부를 개별 플래그로 추적하고 `stop()` 은 **무조건** 해제를 시도해,
+     부분 등록 실패 시 리시버가 살아남아 detector 가 중복되던 누수를 차단.
+   - (e) **렌더 단계 안전망**: 같은 색 `FLASH_DEDUP_MS`(350ms) + 색 무관 에피소드 최소 간격
+     `LANG_FLASH_MIN_INTERVAL_MS`(**300ms** — 과거 700ms 는 정상 연속 전환 플래시까지 삼킴).
+   `onLanguageChanged` 는 전환당 1회만 호출되도록 했고 `emitCount`+`Log.d` 로 실기기 검증 가능
+   (렌더 안전망이 가려도 로그로 실제 트리거 수 확인 가능). 키 입력 시 전체 윈도우 순회는 게이트 통과 후로 지연.
 9. **앱 표시 이름 = kIkI**: 사용자에게 보이는 문구만 kIkI. 패키지/applicationId(`com.langsense.app`), 클래스명(`LangSenseAccessibilityService`), 리소스 id(`Theme.LangSense`), Gradle `rootProject.name` 등 **식별자는 절대 변경 금지**.
 
 ---

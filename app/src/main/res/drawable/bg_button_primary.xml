@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 주요 동작 버튼: 강조색 라운드 + 리플. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#33FFFFFF">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/ui_accent" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+</ripple>

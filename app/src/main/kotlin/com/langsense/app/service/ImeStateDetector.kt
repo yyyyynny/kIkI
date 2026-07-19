@@ -12,6 +12,7 @@ import android.provider.Settings
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.inputmethod.InputMethodManager
+import android.view.inputmethod.InputMethodSubtype
 import androidx.core.content.ContextCompat
 import com.langsense.app.model.ImeState
 import com.langsense.app.util.ImeLocaleParser
@@ -25,13 +26,28 @@ import com.langsense.app.util.ImeLocaleParser
  *     (한/영 토글 시 시스템 설정이 즉시 바뀌므로, 화면 변화 없이 가만히 있어도 감지됨 → Bug 4)
  *  3) `TYPE_WINDOW_STATE_CHANGED` + Samsung One UI 팝업 텍스트 (백스톱 / 삼성 내부 토글 대응)
  *
- * ### 중복 발화 합치기 (Bug 6) + 저사양 최적화 (Bug 1)
- * 위 세 경로는 한 번의 한/영 전환에서 거의 동시에 여러 신호를 쏟아낸다(브로드캐스트 1 + 옵저버 2 +
- * 윈도우 이벤트 n). 과거에는 각 신호가 "즉시 + 150ms 후" 두 번씩 서브타입을 다시 읽어 발동시켜
- * 같은 전환이 여러 번 트리거됐고(→ 1회 지정에도 2회 이상 깜박임), 매 신호마다 중복된 조회/콜백이
- * 돌아 저사양 기기에 부담이 됐다. 이제 모든 신호는 [requestRecheck] 로 모여 [COALESCE_MS] 동안
- * **하나로 합쳐지고**, 마지막 신호 직후 단 한 번만 [runRecheck] → [emitIfChanged] 한다.
- * 결과적으로 한 전환당 [onLanguageChanged] 는 정확히 1회만 호출되고 불필요한 반복 조회가 사라진다.
+ * ### 권위 소스 읽기 — "2회 깜박임 / 반응 씹힘" 근본 수정
+ * 과거에는 현재 언어를 `imm.currentInputMethodSubtype` 로만 읽었는데, 이 값은 전환 직후 한동안
+ * **이전 언어로 캐시 지연(stale)** 될 수 있다. 그 stale 읽기가 "직전 언어로의 새 전환"으로 오인돼
+ * 다른 색 2번째 깜박임을 만들었고, 이를 막으려 쌓은 시간 가드(불응기 450ms/플랩 1000ms/에피소드
+ * 700ms)가 이번엔 1초 안의 **정상 빠른 재전환까지 차단**해 "반응이 씹히는" 부작용을 낳았다.
+ *
+ * 이제 현재 언어는 [readAuthoritative] 가 **ContentObserver 가 감시하는 바로 그 설정값**
+ * (`selected_input_method_subtype` 해시 + `default_input_method`)에서 직접 읽어 서브타입 목록과
+ * 매핑한다 — 신호가 도착한 시점엔 설정값이 이미 갱신돼 있으므로 캐시 지연이 없다(stale 원천 제거).
+ * 권위 값은 **관측 키가 실제로 바뀌었을 때만** 발동 근거가 된다([lastAuthKey] 참조). 덕분에:
+ *  - 전환의 잔여 신호는 "권위 키 불변"으로 자연스럽게 no-op → 시간 가드 없이 중복 차단.
+ *  - 불응기/플랩 가드를 제거해 1초 안의 정상 한→영→한 재전환도 그대로 발동(씹힘 해소).
+ * 매핑이 불가능한 기기/IME 에서만 기존 `imm.currentInputMethodSubtype` 로 폴백하며([immFallbackLang]),
+ * 폴백/팝업 값은 비권위(stale 가능)로 표시되어 [emitIfChanged] 의 메아리 가드([ECHO_GUARD_MS])를
+ * 적용받는다(폴백 기기는 이전과 동일한 보호 유지 — 회귀 없음).
+ *
+ * ### 중복 발화 합치기 + no-op 재시도
+ * 세 경로는 한 번의 한/영 전환에서 거의 동시에 여러 신호를 쏟아낸다. 모든 신호는 [requestRecheck]
+ * 로 모여 [COALESCE_MS] 동안 하나로 합쳐지고(굶주림 방지 상한 [COALESCE_MAX_WAIT_MS]),
+ * 마지막 신호 직후 한 번만 [runRecheck] → [emitIfChanged] 한다. 평가 시점에 설정값 전파가 아직
+ * 안 끝난 저사양 기기를 위해, 강한 신호(브로드캐스트/옵저버/팝업)였는데 "변경 없음"이면
+ * [RETRY_BACKOFF_MS] 백오프로 최대 2회 재확인해 전환이 조용히 유실되지 않게 한다(씹힘 해소).
  *
  * 어느 경로든 결과는 [emitIfChanged] 로 모이며, 이전 언어와 다를 때만 [onLanguageChanged] 호출.
  */
@@ -44,7 +60,14 @@ class ImeStateDetector(
     private val handler = Handler(Looper.getMainLooper())
 
     private var lastState: ImeState? = null
-    private var registered = false
+
+    /**
+     * 등록 성공 여부를 리시버/옵저버 **개별로** 추적한다. 과거처럼 둘을 AND 한 단일 플래그면,
+     * 한쪽만 실패했을 때 stop() 이 성공한 쪽을 해제하지 못해(리시버 누수) 재연결 시 detector 가
+     * 중복 등록되고 한 전환에 여러 번 발동하는(=2회 깜박임) 원인이 됐다.
+     */
+    private var receiverRegistered = false
+    private var observerRegistered = false
 
     /** 합치는 구간 동안 들어온 윈도우 팝업 텍스트 힌트(삼성 내부 토글 대응). 매 [runRecheck] 후 비운다. */
     private var pendingPopupHint: String? = null
@@ -52,34 +75,54 @@ class ImeStateDetector(
     /** 합쳐진 단 하나의 재확인 작업. 신호가 올 때마다 취소 후 재예약된다. */
     private val recheckRunnable = Runnable { runRecheck() }
 
+    /** 현재 합치기 배치의 첫 신호 시각(uptime). 0 이면 보류 중 배치 없음. 굶주림 방지 상한 계산용. */
+    private var pendingSince = 0L
+
+    /** "변경 없음"으로 끝난 평가를 백오프 재확인할 남은 횟수. 강한 신호가 올 때마다 충전된다. */
+    private var retriesLeft = 0
+
     /** 발동 횟수(전환 1회당 1 증가). 한 전환에 정확히 1회만 늘어야 함을 로그로 검증하기 위함. */
     private var emitCount = 0
 
-    /** 마지막 발동 시각(불응기 계산용). 발동 직후 잔여 신호의 stale 재발동을 막는다. */
+    /** 마지막 발동 시각(비권위 값 메아리 가드 계산용). */
     private var lastEmitAt = 0L
 
     /**
-     * 직전 발동에서 "벗어난" 언어(= 그 전의 lastState.locale). 안티-플랩 가드용.
-     * 한 번 전환한 직후 아주 짧은 시간 안에 다시 이 언어로 되돌아가는 emit 은 사람의 재전환이 아니라
-     * 지연된 stale 신호(삼성 팝업/서브타입 캐시 지연)의 메아리로 보고 무시한다(2회 깜박임 근본 차단).
+     * 직전 발동에서 "벗어난" 언어(= 그 전의 lastState.locale). 비권위 소스(팝업 힌트/IMM 폴백)가
+     * [ECHO_GUARD_MS] 안에 이 언어로 되돌아가는 값을 내면 stale 메아리로 보고 무시한다.
+     * 권위 소스(설정값 직접 읽기)에는 적용하지 않으므로 정상 빠른 재전환은 놓치지 않는다.
      */
     private var prevLang: String? = null
 
+    /**
+     * 마지막으로 관측한 권위 소스 키("IME id:서브타입 해시"). 권위 값은 **이 키가 실제로 바뀌었을
+     * 때만** 발동 근거가 된다 — lastState 와 다르다는 이유만으로 발동하면, 서브타입이 안 바뀌는
+     * 삼성 내부 토글 기기에서 힌트로 발동한 언어를 (변하지 않은) 설정값이 도로 뒤집는 새 중복
+     * 깜박임이 생기기 때문. "설정값의 변화"만 전환 증거로 취급한다.
+     */
+    private var lastAuthKey: String? = null
+
+    /** 현재 IME id 기준 서브타입 목록 캐시(권위 소스 매핑용 — IME 가 바뀔 때만 재조회해 IPC 최소화). */
+    private var cachedImeId: String? = null
+    private var cachedSubtypes: List<InputMethodSubtype> = emptyList()
+
+    /** 캐시 갱신으로도 매핑에 실패한 해시. 같은 해시로 반복 재조회(IPC)하지 않기 위한 기억. */
+    private var lastUnresolvedHash = 0
+
     private val imeChangeReceiver = object : BroadcastReceiver() {
-        override fun onReceive(c: Context?, intent: Intent?) = requestRecheck()
+        override fun onReceive(c: Context?, intent: Intent?) = requestRecheck(strong = true)
     }
 
     private val subtypeObserver = object : ContentObserver(handler) {
-        override fun onChange(selfChange: Boolean) = requestRecheck()
+        override fun onChange(selfChange: Boolean) = requestRecheck(strong = true)
     }
 
     /** 서비스 시작 시 호출: 리스너 등록 + 현재 언어 캐시(플래시 없이). 현재 언어 코드 반환. */
     fun start(): String {
-        if (!registered) {
-            // (Bug 4) 등록이 실제로 실패해도 무조건 registered=true 로 기록하면, 주 감지 경로
-            // (Broadcast/Observer)가 조용히 죽은 채로 다시는 재등록을 시도하지 않는다. 각 등록의
-            // 성공 여부를 그대로 반영해, 실패 시 다음 start() 호출에서 재시도할 수 있게 한다.
-            val receiverOk = runCatching {
+        // 등록이 실제로 실패했을 때 무조건 성공으로 기록하면 주 감지 경로가 조용히 죽은 채 재등록도
+        // 안 된다. 개별 플래그로 성공 여부를 반영해, 부분 실패 시 다음 start() 에서 실패한 쪽만 재시도.
+        if (!receiverRegistered) {
+            receiverRegistered = runCatching {
                 ContextCompat.registerReceiver(
                     appContext,
                     imeChangeReceiver,
@@ -87,7 +130,9 @@ class ImeStateDetector(
                     ContextCompat.RECEIVER_NOT_EXPORTED
                 )
             }.isSuccess
-            val observerOk = runCatching {
+        }
+        if (!observerRegistered) {
+            observerRegistered = runCatching {
                 val cr = appContext.contentResolver
                 // Settings.Secure 의 일부 IME 키 상수는 @hide 이므로 안정적인 문자열 키를 직접 사용한다.
                 cr.registerContentObserver(
@@ -99,26 +144,33 @@ class ImeStateDetector(
                     false, subtypeObserver
                 )
             }.isSuccess
-            registered = receiverOk && observerOk
-            if (!registered) {
-                Log.w(TAG, "listener registration incomplete (receiver=$receiverOk, observer=$observerOk)")
-            }
         }
-        val lang = currentSubtypeLang()
+        if (!receiverRegistered || !observerRegistered) {
+            Log.w(TAG, "listener registration incomplete (receiver=$receiverRegistered, observer=$observerRegistered)")
+        }
+        val auth = readAuthoritative()
+        if (auth != null) lastAuthKey = auth.key
+        val lang = auth?.lang ?: immFallbackLang()
         if (lang != ImeLocaleParser.UNKNOWN) {
             lastState = ImeState(lang, currentSubtypeId(), System.currentTimeMillis())
         }
         return lang
     }
 
-    /** 서비스 종료 시 호출: 리스너 해제 + 예약된 재확인 콜백 정리. */
+    /**
+     * 서비스 종료 시 호출: 리스너 해제 + 예약된 재확인 콜백 정리.
+     * 해제는 등록 성공 여부와 무관하게 **무조건** 시도한다(runCatching) — 부분 등록 실패 상태에서
+     * 성공했던 쪽이 해제되지 않고 살아남는 누수(→ 재연결 시 중복 발동)를 막는다.
+     */
     fun stop() {
         handler.removeCallbacksAndMessages(null)
         pendingPopupHint = null
-        if (!registered) return
+        pendingSince = 0L
+        retriesLeft = 0
         runCatching { appContext.unregisterReceiver(imeChangeReceiver) }
         runCatching { appContext.contentResolver.unregisterContentObserver(subtypeObserver) }
-        registered = false
+        receiverRegistered = false
+        observerRegistered = false
     }
 
     /** 접근성 윈도우 이벤트 경로(백스톱 + Samsung 팝업 텍스트 fallback). */
@@ -126,76 +178,152 @@ class ImeStateDetector(
         val popupLang = if (isSystemPopupSource(event)) {
             ImeLocaleParser.parseFromSystemPopupText(eventText(event))
         } else null
-        requestRecheck(popupLang)
+        // 팝업 텍스트가 실제로 잡힌 경우만 "강한 신호"(재시도 충전). 그 외 일반 윈도우 이벤트는
+        // 백스톱 재확인만 하고 재시도 예산은 건드리지 않는다(시스템 전체 윈도우 변화마다 오기 때문).
+        requestRecheck(popupLang, strong = popupLang != null)
     }
 
     /**
-     * 모든 감지 경로(Broadcast/Observer/윈도우 이벤트)의 신호를 [COALESCE_MS] 동안 하나로 합친다(Bug 6).
+     * 모든 감지 경로(Broadcast/Observer/윈도우 이벤트)의 신호를 [COALESCE_MS] 동안 하나로 합친다.
      *
      * 신호가 올 때마다 기존 예약을 취소하고 다시 예약하므로, 한 번의 전환에서 쏟아지는 여러 신호는
-     * 마지막 신호 직후 **단 한 번의** [runRecheck] 로 수렴한다. 덕분에 1회 지정 시 플래시가 정확히
-     * 1회만 발동하고(중복 제거), 신호마다 즉시+지연으로 두 번씩 서브타입을 읽던 반복 작업도 사라진다(Bug 1).
+     * 마지막 신호 직후 **단 한 번의** [runRecheck] 로 수렴한다. 단, 신호가 [COALESCE_MS] 이내 간격으로
+     * 끝없이 이어지면 평가가 영원히 미뤄질 수 있으므로(굶주림), 첫 신호 후 [COALESCE_MAX_WAIT_MS] 가
+     * 지나면 강제로 즉시 평가한다.
      *
      * @param popupHint 윈도우 이벤트에서 파싱한 팝업 언어(있으면 서브타입보다 우선 — 삼성 내부 토글 대응).
+     * @param strong 브로드캐스트/옵저버/팝업처럼 "전환이 실제로 있었다"고 볼 신호인지. 강한 신호만
+     *   no-op 재시도 예산([retriesLeft])을 충전한다.
      */
-    private fun requestRecheck(popupHint: String? = null) {
-        // (Bug 2) 발동 직후 불응기 동안 들어오는 팝업 힌트는 "방금 처리한 전환의 잔향(메아리)"이다.
-        // 삼성 One UI 는 한/영 전환 시 팝업 윈도우 이벤트를 여러 번 내보내는데, 그중 직전 언어
-        // 텍스트가 불응기 안에 잡혀 pendingPopupHint 에 저장되면 불응기 경계에서 권위 있는 subtype
-        // 대신 그 stale 힌트로 "다른 색 두 번째 플래시"가 발동했다(횟수 1 → 2). 그래서 불응기 동안엔
-        // 힌트를 저장하지 않아 경계 재확인이 subtype(권위 소스)만 읽도록 한다.
-        // 새 토글의 팝업은 불응기(450ms)가 지난 뒤 들어오므로(사람이 그보다 빨리 못 바꿈) 정상 반영된다.
-        val inRefractory = SystemClock.uptimeMillis() - lastEmitAt < REFRACTORY_MS
-        if (popupHint != null && popupHint != ImeLocaleParser.UNKNOWN && !inRefractory) {
-            pendingPopupHint = popupHint
+    private fun requestRecheck(popupHint: String? = null, strong: Boolean = false) {
+        val now = SystemClock.uptimeMillis()
+        if (popupHint != null && popupHint != ImeLocaleParser.UNKNOWN) {
+            // 팝업 힌트는 비권위 소스: ① 현재 언어와 같으면 새 정보가 없고(폐기),
+            // ② 방금 벗어난 언어로 곧장 되돌아가는 값이면 삼성 팝업의 지연된 메아리(폐기).
+            // 그 외에는 저장 — 서브타입이 안 바뀌는 삼성 내부 토글의 연속 전환도 놓치지 않는다.
+            val noNews = popupHint == lastState?.locale
+            val echo = popupHint == prevLang && now - lastEmitAt < ECHO_GUARD_MS
+            if (!noNews && !echo) pendingPopupHint = popupHint
         }
+        if (strong) retriesLeft = MAX_NOOP_RETRIES
+        if (pendingSince == 0L) pendingSince = now
         handler.removeCallbacks(recheckRunnable)
-        handler.postDelayed(recheckRunnable, COALESCE_MS)
+        val delay = if (now - pendingSince >= COALESCE_MAX_WAIT_MS) 0L else COALESCE_MS
+        handler.postDelayed(recheckRunnable, delay)
     }
 
     /**
-     * 합쳐진 단일 재확인. 팝업 힌트가 있으면 우선(삼성 내부 한/영 토글은 서브타입이 안 바뀔 수 있음),
-     * 없으면 서브타입을 직접 조회한다.
+     * 합쳐진 단일 재확인.
      *
-     * ### 불응기(refractory) — Bug 6 의 진짜 원인 방어
-     * 한 번 발동한 직후에도 같은 전환의 잔여 신호(브로드캐스트/옵저버)가 [COALESCE_MS] 밖에서 들어오는데,
-     * 이때 `currentInputMethodSubtype` 가 아직 **이전 언어로 캐시 지연**되어 있으면 "직전 언어"를 새 전환처럼
-     * 다시 발동해 **다른 색으로 두 번째 깜박임**이 생긴다. 그래서 발동 후 [REFRACTORY_MS] 동안은 재평가를
-     * 미뤘다가(서브타입 캐시가 안정된 뒤) 단 한 번만 확인한다. 그 사이 새 힌트가 오면 보존된다.
+     * 1) 권위 소스(설정값)를 먼저 평가하되, **관측 키가 실제로 바뀌었을 때만** 발동 근거로 삼는다.
+     *    (키 불변 = 설정값에 새 정보 없음. lastState 와 다르다는 이유로 발동하면 삼성 내부 토글
+     *    기기에서 힌트 발동을 도로 뒤집는 중복 깜박임이 생긴다.)
+     * 2) 권위 키가 그대로면 팝업 힌트가 유일한 신호(삼성 내부 토글: 서브타입 불변, 팝업만 변경).
+     *    권위 키가 바뀌었는데 힌트가 그와 다르면 힌트는 stale 이므로 버려진다.
+     * 3) 권위 소스 매핑이 불가한 기기는 기존 폴백(힌트 우선 → IMM 캐시, 모두 비권위)으로 흐른다.
+     *
+     * 어느 경로로도 발동하지 못했으면 — 설정값 전파가 아직 안 끝난 저사양 기기일 수 있으므로 —
+     * 강한 신호가 있었던 경우에 한해 [RETRY_BACKOFF_MS] 백오프로 최대 [MAX_NOOP_RETRIES] 회
+     * 재확인한다(전환의 조용한 유실 방지).
      */
     private fun runRecheck() {
-        val sinceEmit = SystemClock.uptimeMillis() - lastEmitAt
-        if (sinceEmit < REFRACTORY_MS) {
-            // 불응기 종료 시점으로 한 번만 미룬다(잔여 신호 무시, pendingPopupHint 는 보존).
-            handler.removeCallbacks(recheckRunnable)
-            handler.postDelayed(recheckRunnable, REFRACTORY_MS - sinceEmit)
-            return
-        }
+        pendingSince = 0L
         val hint = pendingPopupHint
         pendingPopupHint = null
-        emitIfChanged(hint ?: currentSubtypeLang())
+
+        val auth = readAuthoritative()
+        if (auth != null) {
+            val changed = auth.key != lastAuthKey
+            lastAuthKey = auth.key
+            if (changed && emitIfChanged(auth.lang, authoritative = true)) return
+            if (!changed && hint != null && emitIfChanged(hint, authoritative = false)) return
+        } else {
+            if (hint != null && emitIfChanged(hint, authoritative = false)) return
+            if (emitIfChanged(immFallbackLang(), authoritative = false)) return
+        }
+        if (retriesLeft > 0) {
+            val attempt = MAX_NOOP_RETRIES - retriesLeft
+            retriesLeft--
+            handler.postDelayed(recheckRunnable, RETRY_BACKOFF_MS[attempt])
+        }
     }
 
-    private fun emitIfChanged(lang: String) {
-        if (lang == ImeLocaleParser.UNKNOWN) return
+    /**
+     * 언어가 실제로 바뀌었을 때만 발동. 발동했으면 true.
+     *
+     * 비권위 값(팝업 힌트/IMM 폴백)에만 좁은 메아리 가드를 적용한다: 방금 벗어난 언어([prevLang])로
+     * [ECHO_GUARD_MS] 안에 되돌아가는 값은 stale 메아리로 무시. 권위 값(설정 직접 읽기)은 정의상
+     * stale 이 없으므로 가드 없이 신뢰한다 → 1초 안의 정상 한→영→한 재전환도 그대로 발동(씹힘 해소).
+     */
+    private fun emitIfChanged(lang: String, authoritative: Boolean): Boolean {
+        if (lang == ImeLocaleParser.UNKNOWN) return false
         val last = lastState?.locale
-        if (lang == last) return
-        // 안티-플랩: 방금 전환에서 벗어난 "직전 언어"로 [FLAP_GUARD_MS] 안에 되돌아가는 emit 은
-        // 지연된 stale 신호(팝업/서브타입 캐시 지연)의 메아리다. OverlayManager 의 에피소드 가드
-        // (700ms)를 넘겨 도착한 stale 재발동이 "다른 색 두 번째 깜박임"을 만들던 마지막 누수를 막는다.
-        // 사람이 한→영→한을 이보다 빠르게 되돌리는 일은 없으므로 정상 재전환은 놓치지 않는다.
-        if (lang == prevLang && SystemClock.uptimeMillis() - lastEmitAt < FLAP_GUARD_MS) return
+        if (lang == last) return false
+        if (!authoritative && lang == prevLang &&
+            SystemClock.uptimeMillis() - lastEmitAt < ECHO_GUARD_MS
+        ) return false
         prevLang = last
         lastState = ImeState(lang, currentSubtypeId(), System.currentTimeMillis())
         lastEmitAt = SystemClock.uptimeMillis()
+        retriesLeft = 0 // 발동했으면 이 배치의 재시도는 끝
         emitCount++
-        // 한 전환당 정확히 1회만 찍혀야 한다(Bug 6 실기기 검증용 로그).
-        Log.d(TAG, "language change emitted: $lang (emit #$emitCount)")
+        // 한 전환당 정확히 1회만 찍혀야 한다(실기기 검증용 로그).
+        Log.d(TAG, "language change emitted: $lang (emit #$emitCount, authoritative=$authoritative)")
         onLanguageChanged(lang)
+        return true
     }
 
-    private fun currentSubtypeLang(): String =
+    /** 권위 소스 읽기 결과: 관측 키("IME id:서브타입 해시") + 파싱된 언어. */
+    private data class AuthReading(val key: String, val lang: String)
+
+    /**
+     * 권위 소스 읽기 — `selected_input_method_subtype`(서브타입 hashCode) + `default_input_method`
+     * (IME id) 를 Settings 에서 직접 읽고, 해당 IME 의 활성 서브타입 목록에서 hashCode 가 일치하는
+     * 서브타입의 locale 을 파싱한다. ContentObserver 가 감시하는 값 그 자체라 신호 시점에 이미
+     * 갱신돼 있다(캐시 지연 없음). 매핑 실패(값 없음/목록에 없음/locale 파싱 실패) 시 null —
+     * 호출부가 [immFallbackLang] 폴백 경로로 흐른다.
+     */
+    private fun readAuthoritative(): AuthReading? {
+        val cr = appContext.contentResolver
+        val hash = runCatching { Settings.Secure.getInt(cr, KEY_SELECTED_SUBTYPE, INVALID_HASH) }
+            .getOrDefault(INVALID_HASH)
+        if (hash == INVALID_HASH) return null
+        val imeId = runCatching {
+            Settings.Secure.getString(cr, Settings.Secure.DEFAULT_INPUT_METHOD)
+        }.getOrNull()
+        if (imeId.isNullOrEmpty()) return null
+        val lang = ImeLocaleParser.parseLocale(subtypeForHash(imeId, hash))
+        if (lang == ImeLocaleParser.UNKNOWN) return null
+        return AuthReading("$imeId:$hash", lang)
+    }
+
+    /** 폴백: 기존 `imm.currentInputMethodSubtype` 읽기(전환 직후 stale 가능 → 비권위 취급). */
+    private fun immFallbackLang(): String =
         ImeLocaleParser.parseLocale(runCatching { imm.currentInputMethodSubtype }.getOrNull())
+
+    /**
+     * 서브타입 hashCode → [InputMethodSubtype] 매핑. 목록은 IME id 기준으로 캐시하고,
+     * 캐시 미스(사용자가 서브타입을 새로 추가한 경우 등)일 때만 1회 재조회한다.
+     * 재조회로도 못 찾은 해시는 기억해 두어 같은 해시로 IPC 를 반복하지 않는다.
+     */
+    private fun subtypeForHash(imeId: String, hash: Int): InputMethodSubtype? {
+        if (imeId != cachedImeId) refreshSubtypeCache(imeId)
+        cachedSubtypes.firstOrNull { it.hashCode() == hash }?.let { return it }
+        if (hash == lastUnresolvedHash) return null
+        refreshSubtypeCache(imeId)
+        val found = cachedSubtypes.firstOrNull { it.hashCode() == hash }
+        if (found == null) lastUnresolvedHash = hash
+        return found
+    }
+
+    private fun refreshSubtypeCache(imeId: String) {
+        cachedSubtypes = runCatching {
+            imm.enabledInputMethodList.firstOrNull { it.id == imeId }
+                ?.let { imm.getEnabledInputMethodSubtypeList(it, true) }
+        }.getOrNull().orEmpty()
+        cachedImeId = imeId
+        lastUnresolvedHash = 0
+    }
 
     private fun currentSubtypeId(): Int =
         runCatching { imm.currentInputMethodSubtype?.hashCode() }.getOrNull() ?: -1
@@ -216,24 +344,32 @@ class ImeStateDetector(
         /** `Settings.Secure.SELECTED_INPUT_METHOD_SUBTYPE` 가 @hide 라 문자열 키를 직접 사용. */
         private const val KEY_SELECTED_SUBTYPE = "selected_input_method_subtype"
 
+        /** `selected_input_method_subtype` 미설정/읽기 실패 표시값(프레임워크도 -1 을 sentinel 로 씀). */
+        private const val INVALID_HASH = -1
+
         /**
          * 여러 감지 신호를 합치는 구간(ms). 한/영 전환 1회가 만드는 신호 다발이 이 안에 들어오도록
-         * 잡되, 신호가 멎은 뒤 서브타입이 갱신될 시간을 충분히 주는 값(과거 지연 재확인과 동일 수준).
+         * 잡되, 신호가 멎은 뒤 설정값이 전파될 시간을 주는 값.
          */
         private const val COALESCE_MS = 150L
 
         /**
-         * 발동 직후 불응기(ms). 같은 전환의 잔여 신호 + 지연된 서브타입 캐시가 "직전 언어"로
-         * 재발동해 두 번째(다른 색) 깜박임을 만드는 것을 막는다. 사람이 한/영을 이보다 빠르게
-         * 두 번 바꾸는 일은 없으므로 정상 전환을 놓치지 않는다.
+         * 합치기 최대 대기(ms). 신호가 [COALESCE_MS] 이내 간격으로 끝없이 이어져도(예: 삼성 IME 가
+         * 윈도우 이벤트를 계속 뿜는 경우) 첫 신호 후 이 시간이 지나면 강제로 평가한다(굶주림 방지).
          */
-        private const val REFRACTORY_MS = 450L
+        private const val COALESCE_MAX_WAIT_MS = 400L
 
         /**
-         * 안티-플랩 창(ms). "직전 언어로 되돌아가는" emit 을 이 시간 안이면 stale 메아리로 보고 무시한다.
-         * OverlayManager 의 에피소드 가드(700ms)보다 넉넉히 크게 잡아, 그 창을 넘겨 도착하는 지연 신호까지
-         * 덮는다(가끔 남던 2회 깜박임의 마지막 경로 차단).
+         * 비권위 값(팝업 힌트/IMM 폴백) 전용 메아리 가드(ms). 방금 벗어난 언어로 이 시간 안에
+         * 되돌아가는 비권위 값은 지연된 stale 신호로 보고 무시한다. 과거 플랩 가드와 같은 폭이지만
+         * **권위 값(설정 직접 읽기)에는 적용하지 않는다**는 점이 다르다 — 권위 소스가 동작하는
+         * 대다수 기기에서 정상 빠른 재전환(1초 내 한→영→한)을 더는 놓치지 않고, 비권위 폴백만
+         * 이전과 동일한 보호를 유지한다(폴백 기기 회귀 없음).
          */
-        private const val FLAP_GUARD_MS = 1000L
+        private const val ECHO_GUARD_MS = 1000L
+
+        /** "변경 없음" 평가 후 백오프 재확인 횟수/간격. 저사양 기기의 늦은 설정 전파를 흡수한다. */
+        private const val MAX_NOOP_RETRIES = 2
+        private val RETRY_BACKOFF_MS = longArrayOf(200L, 400L)
     }
 }

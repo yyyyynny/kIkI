@@ -20,20 +20,23 @@
   └── onKeyEvent()                         # 게이트 → 최근 입력 실착 검사 → (그때만) 포커스 조회(지연 평가)
         최근 입력 실착 있으면 즉시 통과 / 없을 때만 1차 활성 윈도우 → 2차 전체 윈도우 → KeyEventMonitor
 
-[ImeStateDetector]  ── 언어 전환 감지(세 경로 병행) + 2회 깜박임 다층 방어 ──
+[ImeStateDetector]  ── 언어 전환 감지(세 경로 병행) + 권위 소스 기반 방어(2026-07 재설계) ──
   ① BroadcastReceiver  ACTION_INPUT_METHOD_CHANGED
   ② ContentObserver    selected_input_method_subtype / default_input_method
   ③ 윈도우 이벤트 + Samsung 팝업 텍스트(ImeLocaleParser)
-        │  (a) 모든 신호 → requestRecheck() 로 합침(coalesce, COALESCE_MS 150ms)
-        │  (b) 발동 후 불응기(REFRACTORY_MS 450ms) — 잔여 신호·지연 캐시의 stale 재발동 차단
-        │  (c) 안티-플랩(FLAP_GUARD_MS 1000ms) — 700ms 이후 도착한 stale 신호가 "직전 언어"로
-        │      되돌아가 다른 색 2번째 깜박임을 만들던 마지막 누수 차단
+        │  (a) 모든 신호 → requestRecheck() 로 합침(COALESCE_MS 150ms,
+        │      굶주림 방지 강제 평가 COALESCE_MAX_WAIT_MS 400ms)
+        │  (b) 권위 소스 읽기(readAuthoritative) — 옵저버가 감시하는 설정값 자체를 직접 매핑,
+        │      관측 키(lastAuthKey)가 실제로 바뀌었을 때만 발동(stale 원천 제거, 씹힘 해소)
+        │  (c) "변경 없음"이면 강한 신호에 한해 +200/+400ms 백오프 재확인 2회(유실 방지)
+        │  (d) 비권위 값(팝업 힌트/IMM 폴백)만 메아리 가드(ECHO_GUARD_MS 1000ms)
         ▼  단 1회 emitIfChanged → onLanguageChanged
 [OverlayManager]
   ├── FlashOverlayView.show(lang)    → 전체화면 플래시 (windowAnimations=0)
   ├── BadgeOverlayView.update(lang)  → 상시 배지 갱신(크기/색 applyStyle)
-  │     └─ 배지 탭(드래그 아님) → QuickMenuOverlayView (물방울 간편 메뉴: 앱/설정/토글)
-  └── QuickMenuOverlayView           → WaterDropView 항목들(부채꼴 배치, 탭 시 동작 후 닫힘)
+  │     └─ 배지 탭(드래그 아님) → QuickMenuOverlayView (래디얼 메뉴: 앱/설정/토글)
+  └── QuickMenuOverlayView           → 사용자 원본 assets/radialmenu.html 을 WebView 로 렌더
+                                       (JS↔네이티브 브리지: KikiInit/onItemTap/onDismiss/KikiCollapse)
 
 [KeyEventMonitor]
   포커스 없는 문자 키 N회(기본 3) → 지연 검증(WARN_VERIFY_DELAY_MS 400ms; 그 사이 입력 실착/포커스
