@@ -313,6 +313,12 @@ html, body {
 body.app-mode { background: transparent; }
 body.app-mode .badge { display: none; }
 
+/* 앱 모드: 배지가 화면 좌측이라 좌향 팬이 화면 안에 안 들어가면 팬 전체를 좌우 반전해 오른쪽으로
+   연다(KikiInit 참조). 라벨 텍스트만 한 번 더 반전해 읽기 방향을 되돌린다 — app-mode 에선 HTML
+   자체 배지가 숨겨져 있으므로(위) 라벨 외에 텍스트를 되돌릴 요소가 없다. */
+.menu.mirror { transform: scaleX(-1); }
+.menu.mirror .orb-label { transform: translateX(-50%) scaleX(-1); }
+
 /* 저사양 모드: 연속 애니메이션 정지(펼침/수납만 유지). travel dot 은 제거됐고,
    대신 추가된 선의 곡선 호흡(끝점 고정, 제어점만 출렁이는 <animate d>)도 reduce 시
    아예 생성하지 않는다(applyLineBreath 참조 — CSS 가 아니라 JS 단에서 결정). */
@@ -520,6 +526,9 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
       let px, py;
       if (ev.clientX !== undefined && ev.clientX !== 0) {
         px = ev.clientX - rect.left; py = ev.clientY - rect.top;
+        // 미러 모드(scaleX(-1))에선 자식의 레이아웃 x 가 시각적으로 반전되므로, 화면 좌표에서
+        // 얻은 시각적 오프셋을 레이아웃 좌표로 되돌린다(pos.x 폴백은 이미 레이아웃 좌표라 무보정).
+        if (menu.classList.contains('mirror')) px = rect.width - px;
       } else {
         px = pos.x; py = pos.y;
       }
@@ -698,16 +707,36 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
         orbLabels.forEach((el, i) => { el.textContent = LABELS[i]; });
         orbWraps.forEach((w, i) => w.setAttribute('aria-label', LABELS[i]));
       }
-      // 네이티브 배지 중심(CSS px=dp)에 팬의 배지 지점(BX,BY)을 맞춘다. 화면 밖으로 안 나가게 clamp.
+      // 네이티브 배지 중심(CSS px=dp)에 팬의 배지 지점(BX,BY)을 맞춘다.
+      // 스테이지(460×420)는 뷰포트보다 넓을 수 있으므로, 화면 안 유지는 스테이지 사각형이 아니라
+      // **팬 실측 범위**(오브+라벨+여백) 기준으로 앵커를 최소 보정한다 — 과거의 스테이지 기준
+      // 클램프는 left 를 [vw-460, 0] 좁은 밴드로 뭉개, 배지를 어디로 옮겨도 메뉴가 화면 우측
+      // 고정 위치에서 열리는 버그였다. 배지가 화면 좌측이라 좌향 팬이 안 들어가면 팬을 좌우
+      // 반전(.mirror)해 오른쪽으로 연다(원본 지오메트리는 그대로, CSS scaleX(-1)만 사용).
       if (typeof cfg.anchorX === 'number' && typeof cfg.anchorY === 'number') {
         menu.style.position = 'absolute';
-        let left = cfg.anchorX - BX;
-        let top  = cfg.anchorY - BY;
         const vw = window.innerWidth, vh = window.innerHeight;
-        left = Math.max(vw - 460, Math.min(left, 0)) === left ? left : Math.min(0, Math.max(left, vw - 460));
-        top  = Math.min(Math.max(top, vh - 420), Math.max(0, top));
-        menu.style.left = left + 'px';
-        menu.style.top  = top + 'px';
+        const PAD = 16, LABEL_H = 26, ORB_HALF_H = 28;
+        let minX = BX, maxX = BX, minY = BY, maxY = BY;
+        positions.forEach(p => {
+          const hw = p.size / 2;
+          minX = Math.min(minX, p.x - hw); maxX = Math.max(maxX, p.x + hw);
+          minY = Math.min(minY, p.y - ORB_HALF_H);
+          maxY = Math.max(maxY, p.y + ORB_HALF_H + LABEL_H);
+        });
+        // 배지 지점(BX,BY) 기준 팬이 뻗는 거리(좌/우/상/하).
+        const extLeft = BX - minX + PAD, extRight = maxX - BX + PAD;
+        const extUp = BY - minY + PAD, extDown = maxY - BY + PAD;
+        // 화면이 좁아 하한>상한이 되면(어느 쪽에도 못 들어감) 중앙으로 축퇴.
+        const clamp = (v, lo, hi) => hi < lo ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v));
+        const mirror = cfg.anchorX < extLeft && vw - cfg.anchorX > cfg.anchorX;
+        menu.classList.toggle('mirror', mirror);
+        const ax = mirror ? clamp(cfg.anchorX, extRight, vw - extLeft)
+                          : clamp(cfg.anchorX, extLeft, vw - extRight);
+        const ay = clamp(cfg.anchorY, extUp, vh - extDown);
+        // scaleX(-1) 은 박스 중심 기준 반전이라, 미러 시 배지 지점의 시각적 x 는 (스테이지폭-BX).
+        menu.style.left = (ax - (mirror ? 460 - BX : BX)) + 'px';
+        menu.style.top  = (ay - BY) + 'px';
       }
       start(!!cfg.reduceMotion);
       // 다음 프레임에 펼침(트랜지션이 걸리도록).

@@ -356,6 +356,8 @@ class LangSenseAccessibilityService : AccessibilityService(),
         if (!initialized) return
         keyboardDetector?.recheck()
         refreshSoftKeyboardState()
+        // 회전/화면 크기 변경으로 배지가 새 화면 밖에 남지 않게 보정(화면 밖이면 복구 불가).
+        if (::overlay.isInitialized) overlay.onScreenChanged()
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {

@@ -102,6 +102,17 @@ class ImeStateDetector(
      */
     private var lastAuthKey: String? = null
 
+    /**
+     * "권위 역행" 지연 확인 상태. 일부 IME 는 한 번의 토글에 `selected_input_method_subtype` 를
+     * 두 번 기록한다(중간값→최종값). 중간값이 직전 언어([prevLang])로 읽히면 진짜 빠른 재전환과
+     * 구별이 안 되므로, 발동 직후([REVERT_CONFIRM_WINDOW_MS] 안) 직전 언어로 되돌아가는 권위 키는
+     * 즉시 발동하지 않고 [REVERT_CONFIRM_DELAY_MS] 뒤 재확인한다 — 같은 키가 유지되면 진짜
+     * 재전환으로 발동, 그 사이 최종값으로 넘어갔으면 자연 no-op(중복 깜박임 소스 차단).
+     * 차단(가드)이 아니라 지연이므로 정상 빠른 재전환은 최대 250ms 늦게 발동할 뿐 유실되지 않는다.
+     */
+    private var pendingRevertKey: String? = null
+    private var revertDeferredAt = 0L
+
     /** 현재 IME id 기준 서브타입 목록 캐시(권위 소스 매핑용 — IME 가 바뀔 때만 재조회해 IPC 최소화). */
     private var cachedImeId: String? = null
     private var cachedSubtypes: List<InputMethodSubtype> = emptyList()
@@ -167,6 +178,8 @@ class ImeStateDetector(
         pendingPopupHint = null
         pendingSince = 0L
         retriesLeft = 0
+        pendingRevertKey = null
+        revertDeferredAt = 0L
         runCatching { appContext.unregisterReceiver(imeChangeReceiver) }
         runCatching { appContext.contentResolver.unregisterContentObserver(subtypeObserver) }
         receiverRegistered = false
@@ -178,9 +191,12 @@ class ImeStateDetector(
         val popupLang = if (isSystemPopupSource(event)) {
             ImeLocaleParser.parseFromSystemPopupText(eventText(event))
         } else null
-        // 팝업 텍스트가 실제로 잡힌 경우만 "강한 신호"(재시도 충전). 그 외 일반 윈도우 이벤트는
-        // 백스톱 재확인만 하고 재시도 예산은 건드리지 않는다(시스템 전체 윈도우 변화마다 오기 때문).
-        requestRecheck(popupLang, strong = popupLang != null)
+        // 팝업 텍스트가 잡혔고 **그 내용이 새 정보일 때만** "강한 신호"(재시도 충전). 현재 언어를
+        // 그대로 말하는 후행 팝업까지 강한 신호로 치면, 폴백 기기에서 재확인 체인이 메아리 가드
+        // (ECHO_GUARD_MS) 너머까지 이어져 stale IMM 값이 재발동하는 연료가 된다. 일반 윈도우
+        // 이벤트는 백스톱 재확인만 하고 재시도 예산은 건드리지 않는다(시스템 전체 윈도우 변화마다
+        // 오기 때문).
+        requestRecheck(popupLang, strong = popupLang != null && popupLang != lastState?.locale)
     }
 
     /**
@@ -234,6 +250,10 @@ class ImeStateDetector(
         val auth = readAuthoritative()
         if (auth != null) {
             val changed = auth.key != lastAuthKey
+            // 발동 직후 직전 언어로 되돌아가는 키 변경은 서브타입 이중 기록(바운스)의 중간값일 수
+            // 있으므로, lastAuthKey 를 갱신하지 않은 채 잠깐 미뤄 재확인한다(주석: pendingRevertKey).
+            if (changed && deferSuspectRevert(auth)) return
+            if (!changed) pendingRevertKey = null // 바운스가 원래 키로 되돌아와 소멸한 경우 등
             lastAuthKey = auth.key
             if (changed && emitIfChanged(auth.lang, authoritative = true)) return
             if (!changed && hint != null && emitIfChanged(hint, authoritative = false)) return
@@ -246,6 +266,37 @@ class ImeStateDetector(
             retriesLeft--
             handler.postDelayed(recheckRunnable, RETRY_BACKOFF_MS[attempt])
         }
+    }
+
+    /**
+     * "권위 역행" 의심 판정 + 지연 확인 예약. true 를 반환하면 이번 평가에서 발동을 보류한 것이다
+     * (호출부는 lastAuthKey 를 갱신하지 않고 종료 — 재확인 시 changed 판정이 유지되도록).
+     *
+     * 의심 조건: 키가 바뀌었고, 그 언어가 직전에 벗어난 언어([prevLang])이며, 마지막 발동 후
+     * [REVERT_CONFIRM_WINDOW_MS] 이내. 의심되면 [REVERT_CONFIRM_DELAY_MS] 뒤 재확인을 예약하고,
+     * 재확인 시점에도 같은 키가 유지되어 있으면 진짜 재전환으로 확인(false 반환 → 발동 진행).
+     */
+    private fun deferSuspectRevert(auth: AuthReading): Boolean {
+        val now = SystemClock.uptimeMillis()
+        val suspect = auth.lang == prevLang && now - lastEmitAt < REVERT_CONFIRM_WINDOW_MS
+        if (!suspect) {
+            pendingRevertKey = null
+            return false
+        }
+        if (pendingRevertKey == auth.key && now - revertDeferredAt >= REVERT_CONFIRM_DELAY_MS) {
+            pendingRevertKey = null // 유예 후에도 같은 키 → 진짜 재전환으로 확인
+            return false
+        }
+        if (pendingRevertKey != auth.key) {
+            pendingRevertKey = auth.key
+            revertDeferredAt = now
+        }
+        // 다른 신호가 합치기 창을 다시 열어도 유예 시각(revertDeferredAt)은 유지되므로,
+        // 남은 유예 시간만큼만 재예약해 확인 지연이 늘어나지 않게 한다.
+        val remaining = (REVERT_CONFIRM_DELAY_MS - (now - revertDeferredAt)).coerceAtLeast(1L)
+        handler.removeCallbacks(recheckRunnable)
+        handler.postDelayed(recheckRunnable, remaining)
+        return true
     }
 
     /**
@@ -371,5 +422,16 @@ class ImeStateDetector(
         /** "변경 없음" 평가 후 백오프 재확인 횟수/간격. 저사양 기기의 늦은 설정 전파를 흡수한다. */
         private const val MAX_NOOP_RETRIES = 2
         private val RETRY_BACKOFF_MS = longArrayOf(200L, 400L)
+
+        /**
+         * "권위 역행" 의심 창(ms): 마지막 발동 후 이 시간 안에 직전 언어로 되돌아가는 권위 키
+         * 변경은 서브타입 이중 기록(바운스)의 중간값일 수 있어 지연 확인 대상이 된다.
+         * 바운스의 두 기록은 실질 동시(수십 ms 간격)지만 합치기+백오프 케이던스 때문에 관측이
+         * 최대 ~550ms 벌어질 수 있어 그보다 약간 넉넉히 잡는다.
+         */
+        private const val REVERT_CONFIRM_WINDOW_MS = 600L
+
+        /** 권위 역행 의심 시 재확인까지의 유예(ms). 바운스 최종값이 설정에 반영되기에 충분한 시간. */
+        private const val REVERT_CONFIRM_DELAY_MS = 250L
     }
 }

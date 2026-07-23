@@ -110,5 +110,19 @@ class FlashOverlayView(context: Context) : FrameLayout(context) {
     companion object {
         /** 깜박임 사이클 사이의 짧은 간격(ms). */
         private const val INTER_BLINK_MS = 60L
+
+        /**
+         * [play] 가 실제로 화면을 점유하는 총 시간(ms).
+         *
+         * 1사이클 = 유지([playCycle] 의 startDelay = dur/2) + 페이드아웃(dur) = 1.5×dur 이고,
+         * 사이클 사이에 [INTER_BLINK_MS] 가 끼므로 총 길이는 설정값(dur)보다 항상 길다.
+         * OverlayManager 의 동일 색 중복 억제 창이 이 실제 재생 길이에 연동되도록 여기(사이클
+         * 구조가 정의된 파일)에 진실 수식을 둔다.
+         */
+        fun totalDurationMs(durationMs: Int, count: Int): Long {
+            val n = count.coerceAtLeast(1)
+            val dur = durationMs.toLong()
+            return n * (dur + dur / 2) + (n - 1) * INTER_BLINK_MS
+        }
     }
 }

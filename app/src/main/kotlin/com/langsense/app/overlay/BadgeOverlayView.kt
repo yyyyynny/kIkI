@@ -155,6 +155,20 @@ class BadgeOverlayView(
         }
     }
 
+    /**
+     * 현재 params 좌표가 화면 밖이면 화면 안으로 되돌린다(회전/해상도 변경, 저장 좌표 복원 대비).
+     * 저장값(prefs)은 건드리지 않는다 — 회전했다 되돌아오면 사용자가 저장한 원위치가 유지되도록,
+     * 표시할 때마다 그 시점의 화면에 맞춰 보정만 한다.
+     */
+    fun ensureOnScreen() {
+        val cx = clampX(params.x)
+        val cy = clampY(params.y)
+        if (cx == params.x && cy == params.y) return
+        params.x = cx
+        params.y = cy
+        if (isAttachedToWindow) runCatching { windowManager.updateViewLayout(this, params) }
+    }
+
     private val touchSlop: Int
         get() = dp(6f)
 

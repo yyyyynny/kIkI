@@ -95,6 +95,9 @@ class QuickMenuOverlayView(
     }
 
     override fun onDetachedFromWindow() {
+        // 외부 경로(배지 숨김 → hideQuickMenuInternal 등)로 창이 제거된 경우에도 이후의 늦은
+        // 콜백이 destroy 된 WebView 를 만지지 못하게 표시한다(onItemTap 가드 참조).
+        dismissed = true
         // 창에서 제거되면 예약된 콜백 정리 + WebView 자원 해제(누수 방지).
         mainHandler.removeCallbacksAndMessages(null)
         runCatching {
@@ -111,6 +114,10 @@ class QuickMenuOverlayView(
         fun onItemTap(index: Int) {
             mainHandler.post {
                 items.getOrNull(index)?.onClick?.invoke()
+                // "배지 숨기기" 항목은 onClick 안에서 이 메뉴 창 제거(→ WebView destroy)까지
+                // 동기로 이어질 수 있다. 그 뒤 destroy 된 WebView 에 evaluateJavascript 를
+                // 호출하지 않도록 가드한다.
+                if (dismissed || !isAttachedToWindow) return@post
                 // 수납 애니메이션을 잠깐 보인 뒤 창 제거(항목 실행은 이미 완료).
                 webView.evaluateJavascript("window.KikiCollapse && window.KikiCollapse();", null)
                 mainHandler.postDelayed({ dismiss() }, COLLAPSE_REMOVE_MS)
