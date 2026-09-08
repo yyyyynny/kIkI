@@ -14,13 +14,22 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * 간편 메뉴 항목(표시 라벨 + 탭 동작).
  * @param id 안정적 식별자(설정의 항목 순서 저장·배지 탭 직접 실행 매핑에 쓰임 — `Prefs.ACTION_*`).
  *   HTML/JS 는 [label] 과 인덱스만 보므로 이 값이 외형에 영향을 주지 않는다.
+ * @param isActive on/off 개념이 있는 토글 액션만 넘긴다(null 이면 강조 없음). 탭 시점과 동일하게
+ *   prefs 를 캡처하는 살아있는 클로저라, [QuickMenuOverlayView] 가 메뉴를 열 때(최초 오픈·재오픈
+ *   모두) 매번 호출해 최신 ON/OFF 를 오브 테두리 강조(`activeFlags`)로 반영한다.
  */
-data class QuickMenuItem(val id: String, val label: String, val onClick: () -> Unit)
+data class QuickMenuItem(
+    val id: String,
+    val label: String,
+    val isActive: (() -> Boolean)? = null,
+    val onClick: () -> Unit
+)
 
 /**
  * 플로팅 래디얼 메뉴 (추가 기능 1).
@@ -52,6 +61,12 @@ class QuickMenuOverlayView(
     private val items: List<QuickMenuItem>,
     /** 저사양(움직임 줄이기) 모드: 원본 HTML 의 연속 애니메이션(오브 morph/부유/별/먼지/선 sway)을 끈다. */
     val reduceMotion: Boolean,
+    /**
+     * (accentHex, glowHex) 를 그때그때 조회. [reduceMotion] 과 달리 구조적 값이 아니라(오브
+     * morph/별/먼지 생성 여부를 바꾸지 않음) 열 때마다 새로 읽어도 충분해, 색상 변경이 20초
+     * 유휴 캐시의 재사용 판정([OverlayManager] 의 reduceMotion 비교)에 영향을 주지 않는다.
+     */
+    private val colorProvider: () -> Pair<String, String>,
     private val onDismiss: () -> Unit
 ) : FrameLayout(context) {
 
@@ -119,16 +134,26 @@ class QuickMenuOverlayView(
         mainHandler.postDelayed(watchdog, LOAD_TIMEOUT_MS)
     }
 
-    /** 로드 완료 후 배지 위치(dp)·라벨·저사양 여부를 HTML 로 주입하고 자동 펼침. */
+    /**
+     * 로드 완료 후 배지 위치(dp)·라벨·저사양 여부·강조색·활성 상태를 HTML 로 주입하고 자동 펼침.
+     * 색상([colorProvider])과 활성 플래그([QuickMenuItem.isActive])는 최초 오픈·[reopen] 양쪽에서
+     * 이 함수가 호출될 때마다 다시 읽으므로, 20초 유휴 캐시로 재사용된 창이라도 그 사이 설정에서
+     * 바뀐 값이 다음 오픈에 자동으로 반영된다(별도 캐시 무효화/리스너 불필요).
+     */
     private fun initMenu() {
         if (dismissed || destroyed) return
         val density = resources.displayMetrics.density.coerceAtLeast(0.1f)
         val (ax, ay) = anchorProvider()
-        val anchorXdp = ax / density
-        val anchorYdp = ay / density
-        val labelsJson = JSONArray(items.map { it.label }).toString()
-        val cfg = "{anchorX:${anchorXdp}, anchorY:${anchorYdp}, " +
-            "reduceMotion:${reduceMotion}, labels:${labelsJson}}"
+        val (accentHex, glowHex) = colorProvider()
+        val cfg = JSONObject().apply {
+            put("anchorX", ax / density)
+            put("anchorY", ay / density)
+            put("reduceMotion", reduceMotion)
+            put("labels", JSONArray(items.map { it.label }))
+            put("accentColor", accentHex)
+            put("glowColor", glowHex)
+            put("activeFlags", JSONArray(items.map { it.isActive?.invoke() ?: false }))
+        }
         evalJs("window.KikiInit && window.KikiInit($cfg);")
     }
 

@@ -71,6 +71,9 @@
     <string name="settings_radial">플로팅 메뉴(배지 탭)</string>
     <string name="settings_radial_reduce_motion">저사양 모드 (움직임 줄이기)</string>
     <string name="settings_radial_reduce_motion_desc">켜면 메뉴를 펼친 뒤 오브가 떠다니는 움직임·별·먼지·선의 흔들림과 유리 블러를 꺼서 펼친 메뉴가 가만히 멈춰 있습니다. 펼치고 접는 동작은 그대로예요. 직접 정하지 않으면 기기 사양(메모리 4GB 이하, 시스템 애니메이션 끔)에 맞춰 자동으로 켜집니다.</string>
+    <string name="settings_radial_colors_desc">메뉴의 은은한 색과 발광 색을 원하는 색으로 바꿀 수 있어요.</string>
+    <string name="settings_radial_accent_color">메뉴 강조색</string>
+    <string name="settings_radial_glow_color">메뉴 발광색</string>
 
     <!-- 배지 탭 동작 -->
     <string name="settings_badge_tap">배지 탭 동작</string>
@@ -78,11 +81,13 @@
     <string name="settings_badge_tap_menu">메뉴 열기(기본값)</string>
     <string name="settings_badge_tap_hide_warning">"숨기기"를 고르면 탭 한 번에 배지가 사라집니다. 다시 켜려면 홈 화면의 kIkI 아이콘을 눌러 설정에서 "상시 배지 표시"를 다시 켜세요.</string>
 
-    <!-- 퀵메뉴 항목 순서 -->
-    <string name="settings_quick_menu_order">퀵메뉴 항목 순서</string>
-    <string name="settings_quick_menu_order_desc">배지를 탭해 여는 메뉴에서 각 항목이 나오는 순서를 바꿉니다. 항목 개수(5개)는 고정이며 순서만 바꿀 수 있어요.</string>
+    <!-- 퀵메뉴 항목 선택/순서 -->
+    <string name="settings_quick_menu_order">퀵메뉴 항목</string>
+    <string name="settings_quick_menu_order_desc">배지를 탭해 여는 메뉴에 넣을 항목을 최대 5개까지 골라 순서를 정하세요. 켜진 것만 메뉴에 나타납니다.</string>
     <string name="settings_quick_menu_move_up">위로 이동</string>
     <string name="settings_quick_menu_move_down">아래로 이동</string>
+    <string name="settings_quick_menu_limit_reached">최대 5개까지 선택할 수 있어요</string>
+    <string name="settings_quick_menu_min_required">최소 1개는 선택해야 해요</string>
 
     <!-- 간편 메뉴(비눗방울 래디얼) -->
     <string name="quick_app">앱</string>
@@ -90,6 +95,10 @@
     <string name="quick_flash">플래시</string>
     <string name="quick_replace">한영타</string>
     <string name="quick_badge">숨기기</string>
+    <string name="quick_nofocus">포커스 경고</string>
+    <string name="quick_touchkb">터치 키보드 제외</string>
+    <string name="quick_lowspec">저사양 모드</string>
+    <string name="quick_badge_size">배지 크기</string>
     <string name="quick_state_on">켜짐</string>
     <string name="quick_state_off">꺼짐</string>
     <string name="quick_badge_hidden">배지를 숨겼어요. 설정에서 다시 켤 수 있어요.</string>

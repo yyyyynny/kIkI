@@ -335,7 +335,8 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
                     badgeView?.let { badgeCenterOnScreen(it) } ?: initialAnchor
                 },
                 items = quickMenuItems,
-                reduceMotion = reduce // 저사양 모드면 펼친 뒤 연속 애니메이션을 끈다
+                reduceMotion = reduce, // 저사양 모드면 펼친 뒤 연속 애니메이션을 끈다
+                colorProvider = { prefs.radialAccentColorHex to prefs.radialGlowColorHex }
             ) {
                 hideQuickMenu()
             }

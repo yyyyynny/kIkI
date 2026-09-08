@@ -144,12 +144,23 @@ class Prefs(context: Context) {
     }
 
     /**
-     * 퀵메뉴 항목 순서(id 리스트, 항상 정확히 5개). 콤마 조인 문자열로 저장하고, 읽을 때
-     * [resolveQuickMenuOrder] 로 보정한다(저장값이 없거나 손상돼도 항상 유효한 5개를 반환).
+     * 퀵메뉴에 실제로 넣을 항목(id 리스트, 1~[MAX_QUICK_MENU_ITEMS]개, 사용자가 고른 것만 —
+     * 백필 없음). 콤마 조인 문자열로 저장하고, 읽을 때 [resolveQuickMenuOrder] 로 보정한다
+     * (저장값이 없거나 완전히 손상됐을 때만 기본 5개로 폴백. 정상적인 1~5개 선택은 그대로 반환).
      */
     var quickMenuOrder: List<String>
         get() = resolveQuickMenuOrder(sp.getString(KEY_QUICK_MENU_ORDER, null))
         set(v) = sp.edit().putString(KEY_QUICK_MENU_ORDER, v.joinToString(",")).apply()
+
+    /** 래디얼 메뉴 강조색(#RRGGBB). 오브 림/글자/별/버스트 등. 기본은 기존 은은한 하늘색. */
+    var radialAccentColorHex: String
+        get() = sp.getString(KEY_RADIAL_ACCENT_COLOR, DEFAULT_RADIAL_ACCENT) ?: DEFAULT_RADIAL_ACCENT
+        set(v) = sp.edit().putString(KEY_RADIAL_ACCENT_COLOR, normalizeHex(v)).apply()
+
+    /** 래디얼 메뉴 글로우색(#RRGGBB). 선/오브의 확산 발광. 기본은 기존 짙은 파랑. */
+    var radialGlowColorHex: String
+        get() = sp.getString(KEY_RADIAL_GLOW_COLOR, DEFAULT_RADIAL_GLOW) ?: DEFAULT_RADIAL_GLOW
+        set(v) = sp.edit().putString(KEY_RADIAL_GLOW_COLOR, normalizeHex(v)).apply()
 
     /**
      * 배지 탭 시 할 일. 기본 [BADGE_TAP_MENU](퀵메뉴 열기) — 또는 5개 액션 id 중 하나를 골라
@@ -258,6 +269,12 @@ class Prefs(context: Context) {
         const val KEY_RADIAL_REDUCE_MOTION = "radial_reduce_motion"
         const val KEY_QUICK_MENU_ORDER = "quick_menu_order"
         const val KEY_BADGE_TAP_ACTION = "badge_tap_action"
+        const val KEY_RADIAL_ACCENT_COLOR = "radial_accent_color"
+        const val KEY_RADIAL_GLOW_COLOR = "radial_glow_color"
+
+        /** 원본 HTML 의 은은한 하늘색/짙은 파랑(CLAUDE.md Feature 5 참조) — 커스터마이즈 기본값. */
+        const val DEFAULT_RADIAL_ACCENT = "#CDEEFF"
+        const val DEFAULT_RADIAL_GLOW = "#4DA8FF"
 
         // 퀵메뉴 액션 id — LangSenseAccessibilityService 의 액션 레지스트리 키와 일치해야 한다.
         const val ACTION_OPEN_APP = "open_app"
@@ -265,25 +282,38 @@ class Prefs(context: Context) {
         const val ACTION_TOGGLE_FLASH = "toggle_flash"
         const val ACTION_TOGGLE_REPLACE = "toggle_replace"
         const val ACTION_HIDE_BADGE = "hide_badge"
+        const val ACTION_TOGGLE_NOFOCUS = "toggle_nofocus"
+        const val ACTION_TOGGLE_TOUCHKB = "toggle_touchkb"
+        const val ACTION_TOGGLE_LOWSPEC = "toggle_lowspec"
+        const val ACTION_CYCLE_BADGE_SIZE = "cycle_badge_size"
 
-        /** 기본 순서 = 기존에 고정돼 있던 순서와 100% 동일 → 업데이트해도 기존 사용자는 무변화. */
+        /**
+         * 액션 풀(9개). 앞 5개는 예전에 고정돼 있던 순서·id 와 100% 동일 → 업데이트해도 저장값이
+         * 없는 기존 사용자는 [resolveQuickMenuOrder] 의 폴백으로 무변화. 뒤 4개가 신규 추가분.
+         */
         val QUICK_MENU_ACTION_IDS = listOf(
-            ACTION_OPEN_APP, ACTION_OPEN_SETTINGS, ACTION_TOGGLE_FLASH, ACTION_TOGGLE_REPLACE, ACTION_HIDE_BADGE
+            ACTION_OPEN_APP, ACTION_OPEN_SETTINGS, ACTION_TOGGLE_FLASH, ACTION_TOGGLE_REPLACE, ACTION_HIDE_BADGE,
+            ACTION_TOGGLE_NOFOCUS, ACTION_TOGGLE_TOUCHKB, ACTION_TOGGLE_LOWSPEC, ACTION_CYCLE_BADGE_SIZE
         )
+
+        /** 메뉴에 동시에 뜨는 최대 항목 수 — `radialmenu.html` 팬 지오메트리의 가변 상한. */
+        const val MAX_QUICK_MENU_ITEMS = 5
 
         /** 배지 탭 = 퀵메뉴 열기(기존 동작, 기본값). */
         const val BADGE_TAP_MENU = "menu"
 
         /**
-         * 저장된 순서 문자열을 정확히 5개·중복 없음·유효 id 로 보정하는 순수 함수(Context 불필요 —
-         * 단위 테스트 대상). 알 수 없는 id 는 버리고, 저장값에 없는 id 는 기본 순서로 뒤에 보충한다.
+         * 저장된 항목 문자열을 유효 id·중복 없음·최대 [MAX_QUICK_MENU_ITEMS]개로 보정하는 순수
+         * 함수(Context 불필요 — 단위 테스트 대상). 사용자가 고른 것만 그 순서대로 반환하며(백필
+         * 없음 — "선택 안 한 건 안 보인다"), 결과가 0개가 되는 경우(저장값 없음/전부 미상 id 등
+         * 손상된 상태)에만 기본 5개로 폴백한다.
          */
         fun resolveQuickMenuOrder(raw: String?): List<String> {
             val saved = raw?.split(",")?.map { it.trim() }.orEmpty()
             val result = LinkedHashSet<String>()
             saved.forEach { if (it in QUICK_MENU_ACTION_IDS) result.add(it) }
-            QUICK_MENU_ACTION_IDS.forEach { if (it !in result) result.add(it) }
-            return result.toList()
+            val capped = result.toList().take(MAX_QUICK_MENU_ITEMS)
+            return capped.ifEmpty { QUICK_MENU_ACTION_IDS.take(MAX_QUICK_MENU_ITEMS) }
         }
         const val KEY_LANG_KO = "lang_ko"
         const val KEY_LANG_EN = "lang_en"

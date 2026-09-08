@@ -147,6 +147,14 @@ class SettingsActivity : AppCompatActivity() {
             addView(switchRow(getString(R.string.settings_radial_reduce_motion), prefs.radialReduceMotion) {
                 prefs.radialReduceMotion = it; markSaved()
             })
+            // 메뉴 강조색 2종 — 배지 색상과 동일한 공용 색 선택 컴포넌트 재사용.
+            addView(descRow(getString(R.string.settings_radial_colors_desc)))
+            addView(colorPickerRow(getString(R.string.settings_radial_accent_color), prefs.radialAccentColorHex) {
+                prefs.radialAccentColorHex = it
+            })
+            addView(colorPickerRow(getString(R.string.settings_radial_glow_color), prefs.radialGlowColorHex) {
+                prefs.radialGlowColorHex = it
+            })
         })
 
         // --- 배지 탭 동작 ---
@@ -506,20 +514,16 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     /**
-     * 배지 탭 동작 6지선다: "메뉴 열기"(기본) + 퀵메뉴 액션 5개. [badgeSizeRow] 와 동일한
-     * RadioGroup/RadioButton 패턴이되 인덱스 대신 [Prefs] 의 액션 id 문자열로 매핑한다.
-     * 라벨은 기존 퀵메뉴 문자열(`quick_*`)을 그대로 재사용해 중복 정의를 피한다.
+     * 배지 탭 동작 10지선다: "메뉴 열기"(기본) + 퀵메뉴 액션 풀 9개 **전체**(퀵메뉴에 실제로 넣은
+     * 것만이 아니라 항상 전체 노출) — 배지 탭은 메뉴와 독립된 기능이라 결합할 근거가 약하고,
+     * 좁히면 "퀵메뉴에서 선택 해제 시 라디오가 사라짐" 동기화 로직이 새로 필요해진다.
+     * [badgeSizeRow] 와 동일한 RadioGroup/RadioButton 패턴이되 인덱스 대신 [Prefs] 의 액션 id
+     * 문자열로 매핑한다. 라벨은 [quickMenuActionLabelRes] 를 그대로 재사용해 중복 정의를 피한다.
      */
     private fun badgeTapActionRow(): View {
         val group = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
-        val options = listOf(
-            Prefs.BADGE_TAP_MENU to R.string.settings_badge_tap_menu,
-            Prefs.ACTION_OPEN_APP to R.string.quick_app,
-            Prefs.ACTION_OPEN_SETTINGS to R.string.quick_settings,
-            Prefs.ACTION_TOGGLE_FLASH to R.string.quick_flash,
-            Prefs.ACTION_TOGGLE_REPLACE to R.string.quick_replace,
-            Prefs.ACTION_HIDE_BADGE to R.string.quick_badge
-        )
+        val options = listOf(Prefs.BADGE_TAP_MENU to R.string.settings_badge_tap_menu) +
+            Prefs.QUICK_MENU_ACTION_IDS.map { it to quickMenuActionLabelRes(it) }
         val buttons = options.map { (_, res) ->
             RadioButton(this).apply {
                 id = View.generateViewId()
@@ -550,38 +554,81 @@ class SettingsActivity : AppCompatActivity() {
         Prefs.ACTION_OPEN_SETTINGS -> R.string.quick_settings
         Prefs.ACTION_TOGGLE_FLASH -> R.string.quick_flash
         Prefs.ACTION_TOGGLE_REPLACE -> R.string.quick_replace
-        else -> R.string.quick_badge // Prefs.resolveQuickMenuOrder 는 항상 유효 id 만 반환하므로 실도달 안 함
+        Prefs.ACTION_TOGGLE_NOFOCUS -> R.string.quick_nofocus
+        Prefs.ACTION_TOGGLE_TOUCHKB -> R.string.quick_touchkb
+        Prefs.ACTION_TOGGLE_LOWSPEC -> R.string.quick_lowspec
+        Prefs.ACTION_CYCLE_BADGE_SIZE -> R.string.quick_badge_size
+        else -> R.string.quick_badge // hide_badge 및 방어적 기본값
     }
 
+    /**
+     * 액션 풀(9개) 전체를 [Prefs.QUICK_MENU_ACTION_IDS] 순서로 그려, 각 행에 포함 여부 스위치 +
+     * (포함된 것만) 순번·▲▼ 이동 버튼을 보인다. 앱 전역에서 토글 위젯은 항상 SwitchCompat 이므로
+     * (체크박스 전례 없음) 그 관용구를 그대로 쓴다.
+     */
     private fun rebuildQuickMenuOrderRows() {
         quickMenuOrderContainer.removeAllViews()
-        val order = prefs.quickMenuOrder
-        order.forEachIndexed { index, id ->
-            quickMenuOrderContainer.addView(quickMenuOrderRow(id, index, order.size))
+        val selected = prefs.quickMenuOrder
+        Prefs.QUICK_MENU_ACTION_IDS.forEach { id ->
+            quickMenuOrderContainer.addView(quickMenuActionRow(id, selected.indexOf(id), selected.size))
         }
     }
 
-    private fun quickMenuOrderRow(id: String, index: Int, total: Int): View {
+    private fun quickMenuActionRow(id: String, indexInSelected: Int, selectedCount: Int): View {
+        val included = indexInSelected >= 0
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(4), 0, dp(4))
         }
         row.addView(TextView(this).apply {
-            text = "${index + 1}. ${getString(quickMenuActionLabelRes(id))}"
+            text = if (included) "${indexInSelected + 1}. ${getString(quickMenuActionLabelRes(id))}"
+            else "· ${getString(quickMenuActionLabelRes(id))}"
             textSize = 14f
+            alpha = if (included) 1f else 0.5f
             setTextColor(getColor(R.color.ui_on_surface))
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
                 .also { it.weight = 1f }
         })
-        row.addView(orderMoveButton(R.drawable.ic_arrow_up, R.string.settings_quick_menu_move_up, index > 0) {
-            moveQuickMenuOrder(index, index - 1)
-        })
-        row.addView(
-            orderMoveButton(R.drawable.ic_arrow_down, R.string.settings_quick_menu_move_down, index < total - 1) {
-                moveQuickMenuOrder(index, index + 1)
+        if (included) {
+            row.addView(
+                orderMoveButton(R.drawable.ic_arrow_up, R.string.settings_quick_menu_move_up, indexInSelected > 0) {
+                    moveQuickMenuOrder(indexInSelected, indexInSelected - 1)
+                }
+            )
+            row.addView(
+                orderMoveButton(
+                    R.drawable.ic_arrow_down, R.string.settings_quick_menu_move_down,
+                    indexInSelected < selectedCount - 1
+                ) { moveQuickMenuOrder(indexInSelected, indexInSelected + 1) }
+            )
+        }
+        row.addView(SwitchCompat(this).apply {
+            isChecked = included
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .also { it.marginStart = dp(8) }
+            setOnCheckedChangeListener { sw, checked ->
+                val current = prefs.quickMenuOrder.toMutableList()
+                if (checked) {
+                    if (current.size >= Prefs.MAX_QUICK_MENU_ITEMS) {
+                        sw.isChecked = false
+                        toastMsg(getString(R.string.settings_quick_menu_limit_reached))
+                        return@setOnCheckedChangeListener
+                    }
+                    current.add(id)
+                } else {
+                    if (current.size <= 1) {
+                        sw.isChecked = true
+                        toastMsg(getString(R.string.settings_quick_menu_min_required))
+                        return@setOnCheckedChangeListener
+                    }
+                    current.remove(id)
+                }
+                prefs.quickMenuOrder = current
+                markSaved()
+                rebuildQuickMenuOrderRows()
             }
-        )
+        })
         return row
     }
 
@@ -603,6 +650,10 @@ class SettingsActivity : AppCompatActivity() {
         prefs.quickMenuOrder = order
         markSaved()
         rebuildQuickMenuOrderRows()
+    }
+
+    private fun toastMsg(msg: String) {
+        runCatching { android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show() }
     }
 
     private fun applyPreview(view: View, hex: String) {

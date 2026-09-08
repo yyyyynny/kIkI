@@ -219,20 +219,40 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
   화면이 잠긴다. `onReceivedError`/`onRenderProcessGone` + 로드 워치독(3s)으로 창을 제거하고,
   HTML 폴백 타이머도 기본 라벨로 여는 대신 `onDismiss` 로 닫는다(기본 라벨 순서는 네이티브 항목
   순서와 달라 "숨기기를 눌렀는데 앱이 열리는" 오동작이 된다).
-- 항목(서비스가 주입): **앱 열기 / 설정 / 플래시 토글 / 한영타 토글 / 배지 숨기기**(고정 5개 —
-  `radialmenu.html` 의 팬 지오메트리가 5 오브 전제라 개수는 불변). 토글은 탭 시점에 `Prefs` 를
-  읽어 현재 상태를 뒤집고 토스트로 새 상태(켜짐/꺼짐)를 안내.
-- **항목 순서 커스터마이즈(설정)**: `Prefs.quickMenuOrder`(id 리스트, 콤마 문자열 저장)로 결정.
-  `LangSenseAccessibilityService` 가 id→`QuickMenuItem` 레지스트리를 만들고 저장된 순서로
-  정렬해 `OverlayManager.setQuickMenuItems` 에 주입 — 저장값에 없는 id 는 기본 순서로 보충,
-  알 수 없는 id 는 무시해 항상 정확히 5개를 보장(`Prefs.resolveQuickMenuOrder`, 순수 함수).
-  순서 변경 시 유휴 캐시(`QUICK_MENU_CACHE_MS`)된 WebView 가 옛 순서를 들고 있으므로
-  `trimQuickMenuCache()` 로 함께 폐기한다.
-- **배지 탭 동작 커스터마이즈(설정)**: 기본은 이 메뉴를 여는 것("menu")이지만, 설정에서 5개
-  액션 중 하나로 바꿔 탭 한 번에 즉시 실행하게 할 수 있다(`Prefs.badgeTapAction`).
+- 항목(서비스가 주입): **액션 풀 9개**(앱 열기 / 설정 / 플래시 토글 / 한영타 토글 / 배지 숨기기 /
+  포커스 경고 토글 / 터치 키보드 제외 토글 / 저사양 모드 토글 / 배지 크기 순환) 중 사용자가 설정에서
+  고른 것만 최대 **5개**까지 동시에 뜬다(메뉴에 동시 표시되는 최대 개수는 `radialmenu.html` 팬
+  지오메트리의 가변 상한 — `computePositions`/`buildLines`/`buildOrbs` 가 오브 개수(1~5)를 받아
+  일반화돼 있어, 고른 개수 그대로(백필 없이) 균등한 부채꼴로 렌더된다). 토글 항목은 탭 시점에
+  `Prefs` 를 읽어 현재 상태를 뒤집고 토스트로 새 상태(켜짐/꺼짐)를 안내.
+- **항목 선택·순서 커스터마이즈(설정)**: `Prefs.quickMenuOrder`(id 리스트, 콤마 문자열 저장)로
+  결정 — "9개 풀 중 사용자가 켠 것만, 그 순서대로, 1~5개"가 저장 계약(백필 없음: 선택 안 한 건
+  메뉴에도 안 보인다). `LangSenseAccessibilityService` 가 id→`QuickMenuItem` 레지스트리를 만들고
+  저장된 순서로 정렬해 `OverlayManager.setQuickMenuItems` 에 주입 — 알 수 없는 id 는 무시하고,
+  유효 선택이 0개가 되는 손상된 상태일 때만 기본 5개로 폴백한다(`Prefs.resolveQuickMenuOrder`,
+  순수 함수). 설정 화면은 9행 전체를 보이며 각 행의 스위치로 포함 여부를, 포함된 행만 순번+▲▼로
+  순서를 조정한다(6번째 선택·마지막 1개 해제 시도는 즉시 되돌림+토스트). 구성이 바뀌면 유휴 캐시
+  (`QUICK_MENU_CACHE_MS`)된 WebView 가 옛 구성을 들고 있으므로 `trimQuickMenuCache()` 로 함께 폐기한다.
+- **배지 탭 동작 커스터마이즈(설정)**: 기본은 이 메뉴를 여는 것("menu")이지만, 설정에서 액션 풀
+  9개 중 하나로 바꿔 탭 한 번에 즉시 실행하게 할 수 있다(`Prefs.badgeTapAction`) — 퀵메뉴에 실제로
+  넣은 것과 무관하게 항상 9개 전체가 선택지다(배지 탭은 메뉴와 독립된 기능이라 결합할 근거가 약함).
   `OverlayManager.setBadgeTapHandler` 로 서비스가 탭 디스패치 로직을 1회 주입하고, 그 안에서
   매 탭마다 prefs 를 읽어 반영(기존 토글 항목과 동일한 "탭 시점에 읽기" 원칙). 알 수 없는
   저장값이면 항상 메뉴 열기로 안전 폴백.
+- **강조색 커스터마이즈(설정)**: 원본의 은은한 하늘색(ACCENT, 기본 `#CDEEFF`)과 짙은 파랑(GLOW,
+  기본 `#4DA8FF`) 2색을 배지 색상과 동일한 `colorPickerRow`(32색 팔레트+hex)로 바꿀 수 있다
+  (`Prefs.radialAccentColorHex`/`radialGlowColorHex`). HTML 은 이 두 값을 CSS 커스텀 프로퍼티
+  (`--kiki-accent-rgb`/`--kiki-glow-rgb`, `rgb(var())`/`rgba(var(),a)`)로 참조하도록 리터럴을
+  치환해 두었다 — 오브 배경의 짙은 네이비(`rgba(20,60,180,..)`)만 계열이 달라 커스터마이즈에서
+  제외(저사양 모드에서 이 배경이 사실상 오브 표면색이라, 통일하면 기본 외형이 바뀌는 회귀가 됨).
+  `QuickMenuOverlayView` 는 `colorProvider` 로 열 때마다(최초 오픈·재오픈 모두) 최신 hex 를 읽어
+  `KikiInit(cfg.accentColor/glowColor)` 로 넘긴다 — 구조적 값이 아니라 20초 유휴 캐시의 재사용
+  판정에 영향을 주지 않는다(리스너/캐시비교 불필요).
+- **활성 항목 강조**: 메뉴에서 현재 ON 인 토글류 항목(플래시/한영타/포커스 경고/터치 키보드 제외/
+  저사양 모드)은 오브에 테두리(`outline`, hover/tap 상태와 레이어 분리)가 표시된다. `QuickMenuItem`
+  의 `isActive` 콜백이 탭 동작과 동일하게 prefs 를 캡처하는 살아있는 클로저라, 메뉴를 열 때마다
+  다시 평가해 `KikiInit(cfg.activeFlags)` 로 넘긴다 — 설정에서 토글만 바꾸고 메뉴를 열지 않은
+  채 배지를 탭해도(캐시 유휴 상태) 다음 오픈에 최신 상태로 뜬다.
 - "저사양 모드(움직임 줄이기)" ON: 원본의 연속 애니메이션(오브 morph/부유/선 호흡) 정지 + 별/먼지
   **미생성** + 오브의 `backdrop-filter`/50px 글로우 제거(reduce 모드에서만 외형 단순화 — 풀모션 기기는
   원본 그대로). 사용자가 설정에서 명시하지 않았으면 **기기 자동 판정**(`Prefs.radialReduceMotion`:

@@ -448,10 +448,11 @@ class LangSenseAccessibilityService : AccessibilityService(),
     }
 
     /**
-     * 퀵메뉴 액션 5개의 레지스트리(id → 항목). 실행 로직은 서비스 안에서만 접근 가능한 메서드를
-     * 부르므로(launchActivity/toggle/refreshBadge) 여기 둔다. [buildQuickMenuItems] 가 저장된
-     * 순서로 재배열하고, [handleBadgeTap] 이 배지 탭 직접 실행 시 id 로 찾아 쓴다.
-     * 토글 값은 탭 시점에 prefs 에서 읽으므로 한 번만 구성해도 항상 현재 상태로 동작한다.
+     * 퀵메뉴 액션 풀(9개)의 레지스트리(id → 항목). 실행 로직은 서비스 안에서만 접근 가능한 메서드를
+     * 부르므로(launchActivity/toggle/refreshBadge) 여기 둔다. [buildQuickMenuItems] 가 사용자가
+     * 고른 것만(최대 5개) 저장된 순서로 재배열하고, [handleBadgeTap] 이 배지 탭 직접 실행 시 id 로
+     * 찾아 쓴다. 토글 값은 탭 시점에 prefs 에서 읽으므로 한 번만 구성해도 항상 현재 상태로 동작한다.
+     * `isActive` 를 넘긴 항목은 메뉴에서 현재 ON 이면 오브 테두리로 강조된다.
      */
     private fun quickMenuActionRegistry(): Map<String, QuickMenuItem> = linkedMapOf(
         Prefs.ACTION_OPEN_APP to QuickMenuItem(Prefs.ACTION_OPEN_APP, getString(R.string.quick_app)) {
@@ -460,10 +461,16 @@ class LangSenseAccessibilityService : AccessibilityService(),
         Prefs.ACTION_OPEN_SETTINGS to QuickMenuItem(Prefs.ACTION_OPEN_SETTINGS, getString(R.string.quick_settings)) {
             launchActivity(SettingsActivity::class.java)
         },
-        Prefs.ACTION_TOGGLE_FLASH to QuickMenuItem(Prefs.ACTION_TOGGLE_FLASH, getString(R.string.quick_flash)) {
+        Prefs.ACTION_TOGGLE_FLASH to QuickMenuItem(
+            Prefs.ACTION_TOGGLE_FLASH, getString(R.string.quick_flash),
+            isActive = { prefs.flashEnabled }
+        ) {
             toggle(R.string.quick_flash, prefs.flashEnabled) { prefs.flashEnabled = it }
         },
-        Prefs.ACTION_TOGGLE_REPLACE to QuickMenuItem(Prefs.ACTION_TOGGLE_REPLACE, getString(R.string.quick_replace)) {
+        Prefs.ACTION_TOGGLE_REPLACE to QuickMenuItem(
+            Prefs.ACTION_TOGGLE_REPLACE, getString(R.string.quick_replace),
+            isActive = { prefs.replaceEnabled }
+        ) {
             toggle(R.string.quick_replace, prefs.replaceEnabled) { prefs.replaceEnabled = it }
         },
         Prefs.ACTION_HIDE_BADGE to QuickMenuItem(Prefs.ACTION_HIDE_BADGE, getString(R.string.quick_badge)) {
@@ -471,10 +478,45 @@ class LangSenseAccessibilityService : AccessibilityService(),
             // 설정 리스너 타이밍과 무관하게 즉시 배지를 숨긴다(이중 안전 — 숨기기 직후 미반영 방지).
             refreshBadge()
             toastMsg(getString(R.string.quick_badge_hidden))
+        },
+        Prefs.ACTION_TOGGLE_NOFOCUS to QuickMenuItem(
+            Prefs.ACTION_TOGGLE_NOFOCUS, getString(R.string.quick_nofocus),
+            isActive = { prefs.noFocusEnabled }
+        ) {
+            toggle(R.string.quick_nofocus, prefs.noFocusEnabled) { prefs.noFocusEnabled = it }
+        },
+        Prefs.ACTION_TOGGLE_TOUCHKB to QuickMenuItem(
+            Prefs.ACTION_TOGGLE_TOUCHKB, getString(R.string.quick_touchkb),
+            isActive = { prefs.excludeTouchKeyboard }
+        ) {
+            toggle(R.string.quick_touchkb, prefs.excludeTouchKeyboard) { prefs.excludeTouchKeyboard = it }
+        },
+        Prefs.ACTION_TOGGLE_LOWSPEC to QuickMenuItem(
+            Prefs.ACTION_TOGGLE_LOWSPEC, getString(R.string.quick_lowspec),
+            // radialReduceMotion 의 getter 는 사용자가 명시하지 않았을 때 자동판정값도 돌려주므로,
+            // toggle() 이 "현재 유효값의 반대"를 그대로 setter 에 저장 — 자동판정 상태에서도 탭
+            // 한 번에 사용자 명시값으로 전환된다(요구사항 그대로).
+            isActive = { prefs.radialReduceMotion }
+        ) {
+            toggle(R.string.quick_lowspec, prefs.radialReduceMotion) { prefs.radialReduceMotion = it }
+        },
+        Prefs.ACTION_CYCLE_BADGE_SIZE to QuickMenuItem(
+            Prefs.ACTION_CYCLE_BADGE_SIZE, getString(R.string.quick_badge_size)
+        ) {
+            val next = (prefs.badgeSize + 1) % 3
+            prefs.badgeSize = next
+            refreshBadge()
+            toastMsg("${getString(R.string.quick_badge_size)} ${getString(badgeSizeLabelRes(next))}")
         }
     )
 
-    /** 저장된 순서([Prefs.quickMenuOrder])로 정렬된 정확히 5개의 퀵메뉴 항목. */
+    private fun badgeSizeLabelRes(size: Int): Int = when (size) {
+        0 -> R.string.settings_badge_size_small
+        2 -> R.string.settings_badge_size_large
+        else -> R.string.settings_badge_size_medium
+    }
+
+    /** 사용자가 고른 것만(최대 [Prefs.MAX_QUICK_MENU_ITEMS]개), [Prefs.quickMenuOrder] 순서로. */
     private fun buildQuickMenuItems(): List<QuickMenuItem> {
         val registry = quickMenuActionRegistry()
         return prefs.quickMenuOrder.mapNotNull { registry[it] }

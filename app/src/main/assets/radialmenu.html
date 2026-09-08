@@ -8,6 +8,15 @@
 /* ── Reset ───────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* 커스터마이즈 가능한 2색(설정 화면의 색 선택 UI, Kotlin 이 KikiInit(cfg.accentColor/glowColor) 로
+   주입). 기본값은 원본의 은은한 하늘색(#cdeeff)/짙은 파랑(#4da8ff). "R,G,B" 형태로 저장해
+   rgb(var(--x))/rgba(var(--x),a) 양쪽에 쓴다. 오브 배경(rgba(20,60,180,..))은 이 두 계열과
+   색상이 달라 커스터마이즈 대상에서 제외했다(저사양 모드 기본 외형 회귀 방지, 아래 .orb 참조). */
+:root {
+  --kiki-accent-rgb: 205, 238, 255; /* #CDEEFF */
+  --kiki-glow-rgb: 77, 168, 255;    /* #4DA8FF */
+}
+
 html, body {
   width: 100%; height: 100%;
   overflow: hidden;
@@ -67,14 +76,14 @@ html, body {
 .menu.open .line-glow, .menu.open .line-crisp { opacity: 1; }
 
 .line-glow {
-  stroke: #4da8ff;
+  stroke: rgb(var(--kiki-glow-rgb));
   stroke-opacity: 0.30;
   stroke-width: 4;
   fill: none;
   filter: url(#lineBlur);
 }
 .line-crisp {
-  stroke: #cdeeff;
+  stroke: rgb(var(--kiki-accent-rgb));
   stroke-opacity: 0.55;
   stroke-width: 1.2;
   fill: none;
@@ -119,17 +128,20 @@ html, body {
   border-radius: 20px;
   position: relative;
 
+  /* 오브 배경(네이비)은 강조색 2종과 색상 계열이 달라 커스터마이즈 대상에서 제외한다 —
+     backdrop-filter 가 없는 저사양 모드에서 이 배경이 사실상 오브의 표면색이 되므로(아래
+     body.reduce-motion .orb 참조), 통일하면 그 기본 외형이 하늘색으로 바뀌는 회귀가 된다. */
   background: rgba(20, 60, 180, 0.12);
   backdrop-filter: blur(10px) saturate(1.3);
   -webkit-backdrop-filter: blur(10px) saturate(1.3);
 
   /* same glass + cyan rim treatment as the badge */
-  border: 1.5px solid rgba(180,240,255,0.55);
+  border: 1.5px solid rgba(var(--kiki-accent-rgb),0.55);
   box-shadow:
-    0 0 0 1.5px rgba(180,240,255,0.55),
-    0 0 20px  6px rgba(120,200,255,0.70),
-    0 0 50px 14px rgba(80,150,255,0.40),
-    inset 0 0 22px  6px rgba(127,210,255,0.12);
+    0 0 0 1.5px rgba(var(--kiki-accent-rgb),0.55),
+    0 0 20px  6px rgba(var(--kiki-glow-rgb),0.70),
+    0 0 50px 14px rgba(var(--kiki-glow-rgb),0.40),
+    inset 0 0 22px  6px rgba(var(--kiki-accent-rgb),0.12);
 
   transition: box-shadow 0.28s ease, filter 0.28s ease;
   /* organic breathing morph — offset per orb via inline --morph-del */
@@ -165,7 +177,7 @@ html, body {
   position: absolute;
   inset: 4px;
   border-radius: 10px;
-  border: 1px solid rgba(127,210,255,0.20);
+  border: 1px solid rgba(var(--kiki-accent-rgb),0.20);
   pointer-events: none;
 }
 
@@ -186,11 +198,11 @@ html, body {
   white-space: nowrap;
   font-size: 12px; font-weight: 700;
   letter-spacing: 0.04em;
-  color: #cdeeff;
+  color: rgb(var(--kiki-accent-rgb));
   text-shadow:
-    0 0  6px rgba(127,210,255,0.95),
-    0 0 14px rgba(77,168,255,0.65),
-    0 0 26px rgba(77,168,255,0.30);
+    0 0  6px rgba(var(--kiki-accent-rgb),0.95),
+    0 0 14px rgba(var(--kiki-glow-rgb),0.65),
+    0 0 26px rgba(var(--kiki-glow-rgb),0.30);
   pointer-events: none;
   user-select: none;
 }
@@ -199,11 +211,20 @@ html, body {
 .orb-wrap:hover .orb,
 .orb-wrap:focus-visible .orb {
   box-shadow:
-    0 0 0 2px   rgba(180,240,255,1.00),
-    0 0 28px  9px rgba(120,200,255,0.90),
-    0 0 70px 22px rgba(80,150,255,0.55),
-    inset 0 0 30px  8px rgba(127,210,255,0.22);
+    0 0 0 2px   rgba(var(--kiki-accent-rgb),1.00),
+    0 0 28px  9px rgba(var(--kiki-glow-rgb),0.90),
+    0 0 70px 22px rgba(var(--kiki-glow-rgb),0.55),
+    inset 0 0 30px  8px rgba(var(--kiki-accent-rgb),0.22);
   filter: brightness(1.18);
+}
+
+/* ── 활성 항목 강조(설정에서 켜진 토글 액션) ─────────────────
+   box-shadow 가 아니라 outline 을 쓰는 이유: hover/tap/저사양 상태가 이미 box-shadow/filter/
+   scale 을 각자 쓰고 있어 같은 속성을 얹으면 우선순위가 꼬인다. outline 은 별도 레이어라
+   backdrop-filter 가 없는 저사양 모드에서도 항상 정상 렌더된다(activeFlags — KikiInit 참조). */
+.orb-wrap.active .orb {
+  outline: 2px solid rgba(var(--kiki-accent-rgb), 0.85);
+  outline-offset: 2px;
 }
 
 /* ── Burst particles ─────────────────────────────────────── */
@@ -211,8 +232,8 @@ html, body {
   position: absolute;
   width: 6px; height: 6px;
   border-radius: 50%;
-  background: #7fd2ff;
-  box-shadow: 0 0 7px 2px rgba(127,210,255,0.9);
+  background: rgb(var(--kiki-accent-rgb));
+  box-shadow: 0 0 7px 2px rgba(var(--kiki-accent-rgb),0.9);
   pointer-events: none;
   opacity: 0;
 }
@@ -293,13 +314,16 @@ html, body {
 
 /* ── Sparkle stars ───────────────────────────────────────── */
 .star { position: absolute; pointer-events: none; }
+/* buildStars() 가 JS 로 rect 를 innerHTML 주입하는데, fill 속성 문자열보다 CSS 선택자 쪽이
+   var() 치환 경로가 더 확실히 검증돼 있어 이쪽으로 옮긴다(JS 쪽 fill 속성은 제거). */
+#sparkleGroup rect { fill: rgb(var(--kiki-accent-rgb)); }
 
 /* ── Dust particles ──────────────────────────────────────── */
 .dust {
   position: absolute;
   border-radius: 50%;
   pointer-events: none;
-  background: radial-gradient(circle, #cdeeff 0%, transparent 70%);
+  background: radial-gradient(circle, rgb(var(--kiki-accent-rgb)) 0%, transparent 70%);
   animation: dustFloat var(--d-dur, 4s) ease-in-out var(--d-del, 0s) infinite;
 }
 @keyframes dustFloat {
@@ -336,10 +360,13 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
    풀모션 기기(reduce-motion 클래스 없음)는 원본 그대로. */
 body.reduce-motion .orb {
   backdrop-filter: none; -webkit-backdrop-filter: none;
+  /* 이 네이비 배경은 커스터마이즈 대상에서 제외(위 .orb 참조) — backdrop-filter 가 없어 이
+     배경이 곧 오브의 실제 표면색이 되므로, 강조색과 통일하면 저사양 모드(Tab S6 Lite 기본
+     ON)의 기본 외형이 하늘색으로 바뀌는 회귀가 된다. */
   background: rgba(20, 60, 180, 0.30);
   box-shadow:
-    0 0 0 1.5px rgba(180,240,255,0.55),
-    0 0 20px  6px rgba(120,200,255,0.70);
+    0 0 0 1.5px rgba(var(--kiki-accent-rgb),0.55),
+    0 0 20px  6px rgba(var(--kiki-glow-rgb),0.70);
 }
 </style>
 </head>
@@ -380,7 +407,11 @@ body.reduce-motion .orb {
   /* ── Fan geometry ─────────────────────────────────────── */
   const BX = 400, BY = 210;   // badge center within 460x420 menu
   const R  = 180;             // fan radius
-  const N  = 5;
+  const MAX_N = 5;
+  /* 현재 오브 개수(가변, 1~MAX_N). 원본은 5 고정이었으나, 앱에서 퀵메뉴 항목을 1~5개로 골라
+     넣을 수 있게 되어 KikiInit(cfg.labels) 이 개수를 바꿀 수 있다. 반경/호 각도/사이즈 티어
+     공식 자체는 그대로 두고 분모만 이 값으로 일반화한다("지오메트리 재해석"이 아니라 일반화). */
+  let N = 5;
   /* 펼침 스태거 간격(ms) — 오브(orb-wrap)와 선(line-glow/crisp) 이 공유하는 단일 값.
      오브가 하나씩 피어나는 리듬에 선도 정확히 맞춰 함께 나타나게 한다. */
   const STAGGER_MS = 60;
@@ -394,22 +425,25 @@ body.reduce-motion .orb {
   /* ── App(WebView) 브리지 감지 — 있으면 메뉴 전용 모드로 동작 ── */
   const BRIDGE = window.KikiNative || null;
 
-  /* build positions: index 0 = top, index 4 = bottom
+  /* build positions: index 0 = top, index (count-1) = bottom
      [앱 모드 추가] tiltDeg 는 팬 전체를 배지 기준으로 회전시킨다(원본 각도식 + 상수).
      배지가 화면 최상/최하단이거나 가로 모드라 세로로 팬이 안 들어갈 때만 KikiInit 이
-     0 이 아닌 값을 쓴다 — tilt=0 이면 원본 지오메트리 그대로다. */
-  function computePositions(tiltDeg) {
-    return LABELS.map((_, i) => {
-      const deg = ARC_END - (ARC_END - ARC_START) * (i / (N - 1)) + tiltDeg; // 250 -> 110 (+tilt)
+     0 이 아닌 값을 쓴다 — tilt=0 이면 원본 지오메트리 그대로다.
+     count 는 생략 시 현재 N(오브 개수)을 쓴다 — 1개일 때 분모가 0 이 되는 것만 방지한다. */
+  function computePositions(tiltDeg, count) {
+    const n = count || N;
+    const denom = (n - 1) || 1;
+    return LABELS.slice(0, n).map((_, i) => {
+      const deg = ARC_END - (ARC_END - ARC_START) * (i / denom) + tiltDeg; // 250 -> 110 (+tilt)
       const rad = deg * Math.PI / 180;
       return {
         x: BX + R * Math.cos(rad),
         y: BY + R * Math.sin(rad),
-        size: (i === 0 || i === N - 1) ? 88 : 96   // ends 88px, middle 96px
+        size: (i === 0 || i === n - 1) ? 88 : 96   // ends 88px, middle 96px
       };
     });
   }
-  let positions = computePositions(0);
+  let positions = computePositions(0, N);
   /* 현재 적용된 틸트. KikiInit 이 여러 번 와도(창 재사용) 값이 달라질 때만 재배치한다. */
   let currentTilt = 0;
 
@@ -483,8 +517,9 @@ body.reduce-motion .orb {
     lineAnimIndex = 0;
     /* spokes: trim from badge edge (~36px) to orb edge (~44px) */
     positions.forEach((p, i) => addLine({x:BX,y:BY}, p, 'b', i, 36, 44));
-    /* arc between adjacent orbs: trim ~46px each side to reach orb edges */
-    for (let i = 0; i < N - 1; i++) addLine(positions[i], positions[i+1], i, i+1, 46, 46);
+    /* arc between adjacent orbs: trim ~46px each side to reach orb edges.
+       positions.length 기준(과거엔 N-1 상수) — 오브가 1개뿐이면 인접 호가 없다. */
+    for (let i = 0; i < positions.length - 1; i++) addLine(positions[i], positions[i+1], i, i+1, 46, 46);
   }
   buildLines();
 
@@ -520,7 +555,13 @@ body.reduce-motion .orb {
   const orbWraps = [];
   const orbLabels = [];
 
-  positions.forEach((pos, i) => {
+  /* 오브 DOM 을 (재)생성한다. 항목 개수가 바뀔 때만 KikiInit 이 호출한다(개수가 같으면 라벨
+     텍스트만 갱신해 리스너/bob 파라미터를 그대로 유지 — applyOrbPositions 와 같은 원칙). */
+  function buildOrbs() {
+    orbContainer.innerHTML = '';
+    orbWraps.length = 0;
+    orbLabels.length = 0;
+    positions.forEach((pos, i) => {
     const bobAmp = 5 + Math.random() * 5;
     const bobDur = 3.8 + Math.random() * 1.5;
 
@@ -583,9 +624,12 @@ body.reduce-motion .orb {
     wrap.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(e); }
     });
-  });
+    });
+  }
+  buildOrbs();
 
-  /* 틸트 재배치: 오브를 다시 만들지 않고(리스너·bob 파라미터 유지) 좌표만 갱신한다. */
+  /* 틸트 재배치: 오브를 다시 만들지 않고(리스너·bob 파라미터 유지) 좌표만 갱신한다.
+     오브 개수가 바뀔 때는 buildOrbs() 로 통째로 재생성한다(이 함수는 순수 좌표 갱신만). */
   function applyOrbPositions() {
     orbWraps.forEach((w, i) => {
       const p = positions[i];
@@ -714,8 +758,8 @@ body.reduce-motion .orb {
          <animateTransform attributeName="transform" type="rotate" values="0 ${x} ${y};15 ${x} ${y};0 ${x} ${y}" dur="${2.2+i*0.32}s" begin="${i*0.48}s" repeatCount="indefinite"/>`;
       const op = reduce ? '0.35' : '0';
       g.innerHTML = `
-        <rect x="${x-w}" y="${y-h}" width="${w*2}" height="${h*2}" rx="${w*0.6}" fill="#cdeeff" opacity="${op}">${anim}</rect>
-        <rect x="${x-h}" y="${y-w}" width="${h*2}" height="${w*2}" rx="${w*0.6}" fill="#cdeeff" opacity="${op}">${anim}</rect>`;
+        <rect x="${x-w}" y="${y-h}" width="${w*2}" height="${h*2}" rx="${w*0.6}" opacity="${op}">${anim}</rect>
+        <rect x="${x-h}" y="${y-w}" width="${h*2}" height="${w*2}" rx="${w*0.6}" opacity="${op}">${anim}</rect>`;
       sparkleGroup.appendChild(g);
     });
   }
@@ -759,16 +803,52 @@ body.reduce-motion .orb {
 
   /* 앱(WebView): KikiInit 로 배지 위치/저사양/라벨을 받아 메뉴 전용 모드로 자동 오픈.
      standalone(브라우저): 기존 데모 그대로 — 배지 탭으로 열고 별/선 sway 는 바로 동작. */
+  /* hex("#RRGGBB") -> "R,G,B" 문자열, CSS 커스텀 프로퍼티에 그대로 대입 가능(rgb(var(--x))).
+     Kotlin(Prefs.normalizeHex) 이 이미 검증한 값을 보내지만, 외형의 진실은 이 HTML 이므로
+     자체적으로도 방어한다 — 잘못된 값이면 조용히 무시(기존 색 유지). */
+  function hexToRgbTriplet(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+  }
+  function applyColorVar(name, hex) {
+    const triplet = hexToRgbTriplet(hex);
+    if (triplet) document.documentElement.style.setProperty(name, triplet);
+  }
+
   if (BRIDGE) {
     document.body.classList.add('app-mode');
     document.documentElement.style.background = 'transparent';
     // KikiInit 이 오기 전에도 안전하도록 기본값으로 별/선 구성은 미룬다.
     window.KikiInit = function (cfg) {
       cfg = cfg || {};
-      if (Array.isArray(cfg.labels) && cfg.labels.length === orbLabels.length) {
-        LABELS = cfg.labels.slice();
-        orbLabels.forEach((el, i) => { el.textContent = LABELS[i]; });
-        orbWraps.forEach((w, i) => w.setAttribute('aria-label', LABELS[i]));
+      // 항목 개수가 1~5 로 가변(퀵메뉴 선택 UI) — 개수가 실제로 달라질 때만 오브를 통째로
+      // 재생성한다(buildOrbs+buildLines). 개수가 같으면(라벨 문구만 바뀜) 텍스트만 갱신해
+      // 리스너/bob 파라미터를 그대로 유지한다(기존 동작).
+      let countChanged = false;
+      if (Array.isArray(cfg.labels) && cfg.labels.length > 0) {
+        const newCount = Math.min(cfg.labels.length, MAX_N);
+        countChanged = newCount !== N;
+        LABELS = cfg.labels.slice(0, newCount);
+        N = newCount;
+        if (countChanged) {
+          positions = computePositions(currentTilt, N);
+          buildOrbs();
+          buildLines();
+          if (started && !startedReduce) applyLineBreath(false);
+        } else {
+          orbLabels.forEach((el, i) => { el.textContent = LABELS[i]; });
+          orbWraps.forEach((w, i) => w.setAttribute('aria-label', LABELS[i]));
+        }
+      }
+      // 강조색 2종(설정에서 커스터마이즈) — 값이 안 오면(구버전 캐시 등) 기존 색 유지.
+      if (typeof cfg.accentColor === 'string') applyColorVar('--kiki-accent-rgb', cfg.accentColor);
+      if (typeof cfg.glowColor === 'string') applyColorVar('--kiki-glow-rgb', cfg.glowColor);
+      // 현재 켜져 있는(ON) 토글 항목에 테두리 강조. buildOrbs 로 오브가 재생성됐어도(위)
+      // orbWraps 는 최신 배열이라 인덱스가 항상 맞는다.
+      if (Array.isArray(cfg.activeFlags)) {
+        orbWraps.forEach((w, i) => w.classList.toggle('active', !!cfg.activeFlags[i]));
       }
       // 창 재사용(reopen)으로 KikiInit 이 다시 온 경우: 이전 펼침 상태를 먼저 접어 두어야
       // 아래 setOpen(true) 가 다시 동작한다(배지 숨김 등으로 KikiCollapse 없이 닫혔을 수 있음).
@@ -794,7 +874,7 @@ body.reduce-motion .orb {
 
         // 후보 틸트의 배치 결과: 팬 실측 범위 → 미러 여부 → 클램프된 앵커 → 배지 이탈 거리.
         function evaluate(tilt) {
-          const pts = computePositions(tilt);
+          const pts = computePositions(tilt, N);
           let minX = BX, maxX = BX, minY = BY, maxY = BY;
           pts.forEach(p => {
             const hw = p.size / 2;
@@ -828,7 +908,9 @@ body.reduce-motion .orb {
             if (cand.score < best.score - 0.5) best = cand; // 실질 개선일 때만(작은 틸트 우선)
           }
         }
-        if (best.tilt !== currentTilt) {
+        // countChanged 면 위(라벨 처리)에서 이미 새 개수로 한 번 재빌드했지만, 틸트 후보 평가는
+        // 그 개수로 다시 계산된 최신 좌표(best.pts)이므로 한 번 더 반영해도 안전(순수 재구성).
+        if (best.tilt !== currentTilt || countChanged) {
           positions = best.pts;
           currentTilt = best.tilt;
           buildLines();
