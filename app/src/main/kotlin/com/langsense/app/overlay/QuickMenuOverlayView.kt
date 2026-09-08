@@ -15,8 +15,12 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import org.json.JSONArray
 
-/** 간편 메뉴 항목(표시 라벨 + 탭 동작). */
-data class QuickMenuItem(val label: String, val onClick: () -> Unit)
+/**
+ * 간편 메뉴 항목(표시 라벨 + 탭 동작).
+ * @param id 안정적 식별자(설정의 항목 순서 저장·배지 탭 직접 실행 매핑에 쓰임 — `Prefs.ACTION_*`).
+ *   HTML/JS 는 [label] 과 인덱스만 보므로 이 값이 외형에 영향을 주지 않는다.
+ */
+data class QuickMenuItem(val id: String, val label: String, val onClick: () -> Unit)
 
 /**
  * 플로팅 래디얼 메뉴 (추가 기능 1).

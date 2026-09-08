@@ -177,6 +177,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
                 overlay.showReplaceChip(node, fullText, selStart, selEnd, converted)
             }
             overlay.setQuickMenuItems(buildQuickMenuItems())
+            overlay.setBadgeTapHandler(::handleBadgeTap)
             syncKeyEvalThread()
             syncKeyboardDetector()
             prefs.register(this)
@@ -447,25 +448,55 @@ class LangSenseAccessibilityService : AccessibilityService(),
     }
 
     /**
-     * 배지 탭 시 뜨는 비눗방울 래디얼 메뉴 항목. 앱/설정 열기 + 주요 기능 즉석 토글.
+     * 퀵메뉴 액션 5개의 레지스트리(id → 항목). 실행 로직은 서비스 안에서만 접근 가능한 메서드를
+     * 부르므로(launchActivity/toggle/refreshBadge) 여기 둔다. [buildQuickMenuItems] 가 저장된
+     * 순서로 재배열하고, [handleBadgeTap] 이 배지 탭 직접 실행 시 id 로 찾아 쓴다.
      * 토글 값은 탭 시점에 prefs 에서 읽으므로 한 번만 구성해도 항상 현재 상태로 동작한다.
      */
-    private fun buildQuickMenuItems(): List<QuickMenuItem> = listOf(
-        QuickMenuItem(getString(R.string.quick_app)) { launchActivity(MainActivity::class.java) },
-        QuickMenuItem(getString(R.string.quick_settings)) { launchActivity(SettingsActivity::class.java) },
-        QuickMenuItem(getString(R.string.quick_flash)) {
+    private fun quickMenuActionRegistry(): Map<String, QuickMenuItem> = linkedMapOf(
+        Prefs.ACTION_OPEN_APP to QuickMenuItem(Prefs.ACTION_OPEN_APP, getString(R.string.quick_app)) {
+            launchActivity(MainActivity::class.java)
+        },
+        Prefs.ACTION_OPEN_SETTINGS to QuickMenuItem(Prefs.ACTION_OPEN_SETTINGS, getString(R.string.quick_settings)) {
+            launchActivity(SettingsActivity::class.java)
+        },
+        Prefs.ACTION_TOGGLE_FLASH to QuickMenuItem(Prefs.ACTION_TOGGLE_FLASH, getString(R.string.quick_flash)) {
             toggle(R.string.quick_flash, prefs.flashEnabled) { prefs.flashEnabled = it }
         },
-        QuickMenuItem(getString(R.string.quick_replace)) {
+        Prefs.ACTION_TOGGLE_REPLACE to QuickMenuItem(Prefs.ACTION_TOGGLE_REPLACE, getString(R.string.quick_replace)) {
             toggle(R.string.quick_replace, prefs.replaceEnabled) { prefs.replaceEnabled = it }
         },
-        QuickMenuItem(getString(R.string.quick_badge)) {
+        Prefs.ACTION_HIDE_BADGE to QuickMenuItem(Prefs.ACTION_HIDE_BADGE, getString(R.string.quick_badge)) {
             prefs.badgeEnabled = false
             // 설정 리스너 타이밍과 무관하게 즉시 배지를 숨긴다(이중 안전 — 숨기기 직후 미반영 방지).
             refreshBadge()
             toastMsg(getString(R.string.quick_badge_hidden))
         }
     )
+
+    /** 저장된 순서([Prefs.quickMenuOrder])로 정렬된 정확히 5개의 퀵메뉴 항목. */
+    private fun buildQuickMenuItems(): List<QuickMenuItem> {
+        val registry = quickMenuActionRegistry()
+        return prefs.quickMenuOrder.mapNotNull { registry[it] }
+    }
+
+    /**
+     * 배지 탭 디스패치(추가 기능: 배지 탭 동작 커스터마이즈). 탭마다 [Prefs.badgeTapAction] 을
+     * 새로 읽어 최신 설정을 반영한다(설정 화면에서 바꾼 직후 다음 탭부터 바로 적용 — 기존 퀵메뉴
+     * 토글 항목들과 동일한 "탭 시점에 읽기" 원칙). "menu"(기본)가 아니면 그 액션을 메뉴 없이 즉시
+     * 실행하고, 알 수 없는 값이면(레지스트리 축소 등 미래 변경 대비 방어) 메뉴 열기로 폴백한다.
+     */
+    private fun handleBadgeTap() {
+        val action = prefs.badgeTapAction
+        if (action != Prefs.BADGE_TAP_MENU) {
+            quickMenuActionRegistry()[action]?.let {
+                overlay.pulseBadge()
+                it.onClick()
+                return
+            }
+        }
+        overlay.toggleQuickMenu()
+    }
 
     private fun launchActivity(cls: Class<*>) {
         runCatching {
@@ -679,6 +710,14 @@ class LangSenseAccessibilityService : AccessibilityService(),
                     syncKeyEvalThread()
                 }
                 Prefs.KEY_REPLACE_ENABLED -> syncServiceInfo()
+                Prefs.KEY_QUICK_MENU_ORDER -> {
+                    overlay.setQuickMenuItems(buildQuickMenuItems())
+                    // 유휴 캐시된 메뉴 WebView(QUICK_MENU_CACHE_MS=20s)가 옛 순서의 items 를 생성자
+                    // val 로 들고 있으므로, 비우지 않으면 순서를 바꾼 직후에도 다음 탭이 스테일 순서로
+                    // 열린다.
+                    overlay.trimQuickMenuCache()
+                }
+                // KEY_BADGE_TAP_ACTION 은 handleBadgeTap() 이 탭마다 즉시 읽으므로 별도 처리 불필요.
                 // "터치 키보드 제외"를 켜면 현재 소프트 키보드 표시 상태를 즉시 계산해 반영(추가 기능 2).
                 Prefs.KEY_EXCLUDE_TOUCH_KEYBOARD -> {
                     syncServiceInfo()

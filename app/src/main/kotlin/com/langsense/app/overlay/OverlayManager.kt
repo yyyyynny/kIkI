@@ -53,6 +53,13 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     private var quickMenuView: QuickMenuOverlayView? = null
     /** 간편 메뉴 항목(앱 열기/설정/토글 등). 서비스가 [setQuickMenuItems] 로 주입. */
     private var quickMenuItems: List<QuickMenuItem> = emptyList()
+    /**
+     * 서비스가 1회 주입하는 배지 탭 디스패치 훅(추가 기능: 배지 탭 동작 커스터마이즈). `var` 필드를
+     * 참조하는 람다로 배지에 연결하므로([showBadge] 의 `onTap` 참조), 배지 뷰가 서비스 생존 동안
+     * 1회만 생성돼도 이후 이 필드가 갱신되면 다음 탭부터 바로 반영된다(뷰 재생성 불필요).
+     * 미주입 상태(null)면 기존처럼 [toggleQuickMenu] 로 폴백.
+     */
+    private var badgeTapHandler: (() -> Unit)? = null
     /** 닫힌 메뉴(WebView)의 유휴 캐시. [QUICK_MENU_CACHE_MS] 뒤 또는 메모리 압박 시 폐기. */
     private var cachedQuickMenu: QuickMenuOverlayView? = null
     private val quickMenuCacheExpire = Runnable { trimQuickMenuCache() }
@@ -198,7 +205,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
 
             val view = BadgeOverlayView(
                 context, wm, params,
-                onTap = { toggleQuickMenu() },
+                onTap = { (badgeTapHandler ?: this::toggleQuickMenu).invoke() },
                 onPositionSaved = { x, y -> prefs.setBadgePosition(x, y) }
             )
             badgeStyleSig = null // 새 뷰에는 반드시 적용
@@ -282,6 +289,14 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     fun setQuickMenuItems(items: List<QuickMenuItem>) {
         quickMenuItems = items
     }
+
+    /** 서비스가 배지 탭 디스패치 로직을 주입(배지 탭 동작 커스터마이즈 — [badgeTapHandler] 참조). */
+    fun setBadgeTapHandler(handler: () -> Unit) {
+        badgeTapHandler = handler
+    }
+
+    /** 배지 탭 피드백 펄스를 외부(직접 액션 실행 경로)에서도 재사용할 수 있게 공개. */
+    fun pulseBadge() = onMain { if (!released) badgeView?.pulse() }
 
     /** 배지 탭 시: 열려 있으면 (수납 애니메이션과 함께) 닫고, 닫혀 있으면 배지를 앵커로 메뉴를 연다. */
     fun toggleQuickMenu() = onMain {

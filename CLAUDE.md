@@ -219,8 +219,20 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
   화면이 잠긴다. `onReceivedError`/`onRenderProcessGone` + 로드 워치독(3s)으로 창을 제거하고,
   HTML 폴백 타이머도 기본 라벨로 여는 대신 `onDismiss` 로 닫는다(기본 라벨 순서는 네이티브 항목
   순서와 달라 "숨기기를 눌렀는데 앱이 열리는" 오동작이 된다).
-- 항목(서비스가 주입): **앱 열기 / 설정 / 플래시 토글 / 한영타 토글 / 배지 숨기기**.
-  토글은 탭 시점에 `Prefs` 를 읽어 현재 상태를 뒤집고 토스트로 새 상태(켜짐/꺼짐)를 안내.
+- 항목(서비스가 주입): **앱 열기 / 설정 / 플래시 토글 / 한영타 토글 / 배지 숨기기**(고정 5개 —
+  `radialmenu.html` 의 팬 지오메트리가 5 오브 전제라 개수는 불변). 토글은 탭 시점에 `Prefs` 를
+  읽어 현재 상태를 뒤집고 토스트로 새 상태(켜짐/꺼짐)를 안내.
+- **항목 순서 커스터마이즈(설정)**: `Prefs.quickMenuOrder`(id 리스트, 콤마 문자열 저장)로 결정.
+  `LangSenseAccessibilityService` 가 id→`QuickMenuItem` 레지스트리를 만들고 저장된 순서로
+  정렬해 `OverlayManager.setQuickMenuItems` 에 주입 — 저장값에 없는 id 는 기본 순서로 보충,
+  알 수 없는 id 는 무시해 항상 정확히 5개를 보장(`Prefs.resolveQuickMenuOrder`, 순수 함수).
+  순서 변경 시 유휴 캐시(`QUICK_MENU_CACHE_MS`)된 WebView 가 옛 순서를 들고 있으므로
+  `trimQuickMenuCache()` 로 함께 폐기한다.
+- **배지 탭 동작 커스터마이즈(설정)**: 기본은 이 메뉴를 여는 것("menu")이지만, 설정에서 5개
+  액션 중 하나로 바꿔 탭 한 번에 즉시 실행하게 할 수 있다(`Prefs.badgeTapAction`).
+  `OverlayManager.setBadgeTapHandler` 로 서비스가 탭 디스패치 로직을 1회 주입하고, 그 안에서
+  매 탭마다 prefs 를 읽어 반영(기존 토글 항목과 동일한 "탭 시점에 읽기" 원칙). 알 수 없는
+  저장값이면 항상 메뉴 열기로 안전 폴백.
 - "저사양 모드(움직임 줄이기)" ON: 원본의 연속 애니메이션(오브 morph/부유/선 호흡) 정지 + 별/먼지
   **미생성** + 오브의 `backdrop-filter`/50px 글로우 제거(reduce 모드에서만 외형 단순화 — 풀모션 기기는
   원본 그대로). 사용자가 설정에서 명시하지 않았으면 **기기 자동 판정**(`Prefs.radialReduceMotion`:

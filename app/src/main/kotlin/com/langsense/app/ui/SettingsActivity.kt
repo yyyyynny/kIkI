@@ -149,6 +149,19 @@ class SettingsActivity : AppCompatActivity() {
             })
         })
 
+        // --- 배지 탭 동작 ---
+        content.addView(sectionCard(getString(R.string.settings_badge_tap)).apply {
+            addView(descRow(getString(R.string.settings_badge_tap_desc)))
+            addView(badgeTapActionRow())
+            addView(descRow(getString(R.string.settings_badge_tap_hide_warning)))
+        })
+
+        // --- 퀵메뉴 항목 순서 ---
+        content.addView(sectionCard(getString(R.string.settings_quick_menu_order)).apply {
+            addView(descRow(getString(R.string.settings_quick_menu_order_desc)))
+            addView(quickMenuOrderSection())
+        })
+
         // --- 포커스 없는 키 입력 경고 ---
         content.addView(sectionCard(getString(R.string.settings_nofocus)).apply {
             addView(descRow(getString(R.string.settings_nofocus_desc))) // [3] 기능 설명
@@ -490,6 +503,106 @@ class SettingsActivity : AppCompatActivity() {
         }
         container.addView(group)
         return container
+    }
+
+    /**
+     * 배지 탭 동작 6지선다: "메뉴 열기"(기본) + 퀵메뉴 액션 5개. [badgeSizeRow] 와 동일한
+     * RadioGroup/RadioButton 패턴이되 인덱스 대신 [Prefs] 의 액션 id 문자열로 매핑한다.
+     * 라벨은 기존 퀵메뉴 문자열(`quick_*`)을 그대로 재사용해 중복 정의를 피한다.
+     */
+    private fun badgeTapActionRow(): View {
+        val group = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+        val options = listOf(
+            Prefs.BADGE_TAP_MENU to R.string.settings_badge_tap_menu,
+            Prefs.ACTION_OPEN_APP to R.string.quick_app,
+            Prefs.ACTION_OPEN_SETTINGS to R.string.quick_settings,
+            Prefs.ACTION_TOGGLE_FLASH to R.string.quick_flash,
+            Prefs.ACTION_TOGGLE_REPLACE to R.string.quick_replace,
+            Prefs.ACTION_HIDE_BADGE to R.string.quick_badge
+        )
+        val buttons = options.map { (_, res) ->
+            RadioButton(this).apply {
+                id = View.generateViewId()
+                setText(res)
+                textSize = 14f
+                minHeight = dp(40)
+            }.also { group.addView(it) }
+        }
+        buttons.getOrNull(options.indexOfFirst { it.first == prefs.badgeTapAction })?.isChecked = true
+        group.setOnCheckedChangeListener { _, checkedId ->
+            val idx = buttons.indexOfFirst { it.id == checkedId }
+            if (idx >= 0) { prefs.badgeTapAction = options[idx].first; markSaved() }
+        }
+        return group
+    }
+
+    /** 퀵메뉴 항목 순서 5행 리스트(각 행 라벨 + ▲/▼). [rebuildQuickMenuOrderRows] 가 내용을 채운다. */
+    private lateinit var quickMenuOrderContainer: LinearLayout
+
+    private fun quickMenuOrderSection(): View {
+        quickMenuOrderContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        rebuildQuickMenuOrderRows()
+        return quickMenuOrderContainer
+    }
+
+    private fun quickMenuActionLabelRes(id: String): Int = when (id) {
+        Prefs.ACTION_OPEN_APP -> R.string.quick_app
+        Prefs.ACTION_OPEN_SETTINGS -> R.string.quick_settings
+        Prefs.ACTION_TOGGLE_FLASH -> R.string.quick_flash
+        Prefs.ACTION_TOGGLE_REPLACE -> R.string.quick_replace
+        else -> R.string.quick_badge // Prefs.resolveQuickMenuOrder 는 항상 유효 id 만 반환하므로 실도달 안 함
+    }
+
+    private fun rebuildQuickMenuOrderRows() {
+        quickMenuOrderContainer.removeAllViews()
+        val order = prefs.quickMenuOrder
+        order.forEachIndexed { index, id ->
+            quickMenuOrderContainer.addView(quickMenuOrderRow(id, index, order.size))
+        }
+    }
+
+    private fun quickMenuOrderRow(id: String, index: Int, total: Int): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(4), 0, dp(4))
+        }
+        row.addView(TextView(this).apply {
+            text = "${index + 1}. ${getString(quickMenuActionLabelRes(id))}"
+            textSize = 14f
+            setTextColor(getColor(R.color.ui_on_surface))
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .also { it.weight = 1f }
+        })
+        row.addView(orderMoveButton(R.drawable.ic_arrow_up, R.string.settings_quick_menu_move_up, index > 0) {
+            moveQuickMenuOrder(index, index - 1)
+        })
+        row.addView(
+            orderMoveButton(R.drawable.ic_arrow_down, R.string.settings_quick_menu_move_down, index < total - 1) {
+                moveQuickMenuOrder(index, index + 1)
+            }
+        )
+        return row
+    }
+
+    private fun orderMoveButton(iconRes: Int, descRes: Int, enabled: Boolean, onClick: () -> Unit): ImageButton =
+        ImageButton(this).apply {
+            setImageResource(iconRes)
+            contentDescription = getString(descRes)
+            background = rippleCircleBackground()
+            isEnabled = enabled
+            alpha = if (enabled) 1f else 0.3f
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+            setOnClickListener { onClick() }
+        }
+
+    private fun moveQuickMenuOrder(from: Int, to: Int) {
+        val order = prefs.quickMenuOrder.toMutableList()
+        if (to !in order.indices) return
+        order.add(to, order.removeAt(from))
+        prefs.quickMenuOrder = order
+        markSaved()
+        rebuildQuickMenuOrderRows()
     }
 
     private fun applyPreview(view: View, hex: String) {
