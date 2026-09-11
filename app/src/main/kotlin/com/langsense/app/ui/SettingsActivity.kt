@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.text.InputFilter
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
@@ -540,13 +541,32 @@ class SettingsActivity : AppCompatActivity() {
         return group
     }
 
-    /** 퀵메뉴 항목 순서 5행 리스트(각 행 라벨 + ▲/▼). [rebuildQuickMenuOrderRows] 가 내용을 채운다. */
-    private lateinit var quickMenuOrderContainer: LinearLayout
+    /**
+     * "선택됨"(순서 있음, 드래그로 재정렬) / "추가 가능"(스위치 없이 + 버튼만) 두 컨테이너.
+     * [rebuildQuickMenuOrderRows] 가 매번 두 컨테이너를 전부 다시 그린다 — 항목이 최대 9개뿐이라
+     * 전체 재생성 비용이 무시할 만하고, 순번 텍스트가 항상 정확히 갱신된다는 이점이 더 크다.
+     */
+    private lateinit var selectedContainer: LinearLayout
+    private lateinit var addableContainer: LinearLayout
 
     private fun quickMenuOrderSection(): View {
-        quickMenuOrderContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        selectedContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        addableContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        container.addView(subsectionTitle(R.string.settings_quick_menu_selected_title))
+        container.addView(selectedContainer)
+        container.addView(subsectionTitle(R.string.settings_quick_menu_addable_title))
+        container.addView(addableContainer)
         rebuildQuickMenuOrderRows()
-        return quickMenuOrderContainer
+        return container
+    }
+
+    private fun subsectionTitle(textRes: Int): TextView = TextView(this).apply {
+        text = getString(textRes)
+        textSize = 12.5f
+        setTypeface(typeface, Typeface.BOLD)
+        setTextColor(getColor(R.color.ui_on_surface_muted))
+        setPadding(0, dp(10), 0, dp(4))
     }
 
     private fun quickMenuActionLabelRes(id: String): Int = when (id) {
@@ -561,69 +581,92 @@ class SettingsActivity : AppCompatActivity() {
         else -> R.string.quick_badge // hide_badge 및 방어적 기본값
     }
 
-    /**
-     * 액션 풀(9개) 전체를 [Prefs.QUICK_MENU_ACTION_IDS] 순서로 그려, 각 행에 포함 여부 스위치 +
-     * (포함된 것만) 순번·▲▼ 이동 버튼을 보인다. 앱 전역에서 토글 위젯은 항상 SwitchCompat 이므로
-     * (체크박스 전례 없음) 그 관용구를 그대로 쓴다.
-     */
+    /** 선택된 항목은 순서대로 [selectedContainer]에, 나머지는 액션 풀 순서로 [addableContainer]에. */
     private fun rebuildQuickMenuOrderRows() {
-        quickMenuOrderContainer.removeAllViews()
+        selectedContainer.removeAllViews()
+        addableContainer.removeAllViews()
         val selected = prefs.quickMenuOrder
-        Prefs.QUICK_MENU_ACTION_IDS.forEach { id ->
-            quickMenuOrderContainer.addView(quickMenuActionRow(id, selected.indexOf(id), selected.size))
+        selected.forEachIndexed { index, id ->
+            selectedContainer.addView(selectedItemRow(id, index, selected.size))
+        }
+        Prefs.QUICK_MENU_ACTION_IDS.filter { it !in selected }.forEach { id ->
+            addableContainer.addView(addableItemRow(id))
         }
     }
 
-    private fun quickMenuActionRow(id: String, indexInSelected: Int, selectedCount: Int): View {
-        val included = indexInSelected >= 0
+    /** "선택됨" 행: 순번 + 라벨 + 빼기 버튼(마지막 1개면 비활성) + 드래그 손잡이. `tag` 에 id 보관. */
+    private fun selectedItemRow(id: String, index: Int, total: Int): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(ROW_HEIGHT_DP)
             setPadding(0, dp(4), 0, dp(4))
+            tag = id
         }
         row.addView(TextView(this).apply {
-            text = if (included) "${indexInSelected + 1}. ${getString(quickMenuActionLabelRes(id))}"
-            else "· ${getString(quickMenuActionLabelRes(id))}"
+            text = "${index + 1}. ${getString(quickMenuActionLabelRes(id))}"
             textSize = 14f
-            alpha = if (included) 1f else 0.5f
             setTextColor(getColor(R.color.ui_on_surface))
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
                 .also { it.weight = 1f }
         })
-        if (included) {
-            row.addView(
-                orderMoveButton(R.drawable.ic_arrow_up, R.string.settings_quick_menu_move_up, indexInSelected > 0) {
-                    moveQuickMenuOrder(indexInSelected, indexInSelected - 1)
-                }
-            )
-            row.addView(
-                orderMoveButton(
-                    R.drawable.ic_arrow_down, R.string.settings_quick_menu_move_down,
-                    indexInSelected < selectedCount - 1
-                ) { moveQuickMenuOrder(indexInSelected, indexInSelected + 1) }
-            )
-        }
-        row.addView(SwitchCompat(this).apply {
-            isChecked = included
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                .also { it.marginStart = dp(8) }
-            setOnCheckedChangeListener { sw, checked ->
+        val canRemove = total > 1
+        row.addView(ImageButton(this).apply {
+            setImageResource(R.drawable.ic_remove)
+            contentDescription = getString(R.string.settings_quick_menu_remove)
+            background = rippleCircleBackground()
+            isEnabled = canRemove
+            alpha = if (canRemove) 1f else 0.3f
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+            setOnClickListener {
+                // 마지막 1개일 땐 이 버튼 자체가 비활성이라 여기 도달하지 않는다 — 되돌림 로직이
+                // 필요 없어(클릭 리스너는 스위치처럼 프로그래매틱 되돌림을 하지 않으므로 재귀 호출
+                // 문제 자체가 없다) 이전 스위치 방식의 버그 클래스가 구조적으로 사라진다.
                 val current = prefs.quickMenuOrder.toMutableList()
-                if (checked) {
-                    if (current.size >= Prefs.MAX_QUICK_MENU_ITEMS) {
-                        sw.isChecked = false
-                        toastMsg(getString(R.string.settings_quick_menu_limit_reached))
-                        return@setOnCheckedChangeListener
-                    }
-                    current.add(id)
-                } else {
-                    if (current.size <= 1) {
-                        sw.isChecked = true
-                        toastMsg(getString(R.string.settings_quick_menu_min_required))
-                        return@setOnCheckedChangeListener
-                    }
-                    current.remove(id)
+                current.remove(id)
+                prefs.quickMenuOrder = current
+                markSaved()
+                rebuildQuickMenuOrderRows()
+            }
+        })
+        row.addView(ImageButton(this).apply {
+            setImageResource(R.drawable.ic_drag_handle)
+            contentDescription = getString(R.string.settings_quick_menu_drag_handle)
+            background = rippleCircleBackground()
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).also { it.marginStart = dp(4) }
+            attachDragTouch(this, row)
+        })
+        return row
+    }
+
+    /** "추가 가능" 행: 라벨 + 추가 버튼(5개 꽉 찼으면 토스트만, 리스트는 안 깨짐). */
+    private fun addableItemRow(id: String): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(44)
+            setPadding(0, dp(4), 0, dp(4))
+        }
+        row.addView(TextView(this).apply {
+            text = getString(quickMenuActionLabelRes(id))
+            textSize = 14f
+            alpha = 0.75f
+            setTextColor(getColor(R.color.ui_on_surface))
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .also { it.weight = 1f }
+        })
+        row.addView(ImageButton(this).apply {
+            setImageResource(R.drawable.ic_add)
+            contentDescription = getString(R.string.settings_quick_menu_add)
+            background = rippleCircleBackground()
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+            setOnClickListener {
+                val current = prefs.quickMenuOrder.toMutableList()
+                if (current.size >= Prefs.MAX_QUICK_MENU_ITEMS) {
+                    toastMsg(getString(R.string.settings_quick_menu_limit_reached))
+                    return@setOnClickListener
                 }
+                current.add(id)
                 prefs.quickMenuOrder = current
                 markSaved()
                 rebuildQuickMenuOrderRows()
@@ -632,23 +675,70 @@ class SettingsActivity : AppCompatActivity() {
         return row
     }
 
-    private fun orderMoveButton(iconRes: Int, descRes: Int, enabled: Boolean, onClick: () -> Unit): ImageButton =
-        ImageButton(this).apply {
-            setImageResource(iconRes)
-            contentDescription = getString(descRes)
-            background = rippleCircleBackground()
-            isEnabled = enabled
-            alpha = if (enabled) 1f else 0.3f
-            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
-            setOnClickListener { onClick() }
+    /**
+     * 드래그 핸들 터치 처리(RecyclerView/ItemTouchHelper 없이 최소 의존성 원칙 유지 — [selectedContainer]
+     * 는 최대 5행뿐이라 커스텀 구현의 검증 범위가 통제 가능하다). [row] 는 손가락을 그대로 따라가고
+     * (`translationY`), 한 칸 이상 넘어가면 인접 행과 뷰 순서를 즉시 교체한 뒤 그 인접 행만 FLIP
+     * 기법(반대 오프셋에서 0 으로 애니메이션)으로 부드럽게 자리를 넘겨준 것처럼 보이게 한다.
+     */
+    private fun attachDragTouch(handle: View, row: View) {
+        var startRawY = 0f
+        handle.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    // 이 카드는 화면 전체 ScrollView 안에 있어, 안 막으면 세로 드래그가 스크롤로 먹힌다.
+                    selectedContainer.parent?.requestDisallowInterceptTouchEvent(true)
+                    startRawY = event.rawY
+                    row.animate().scaleX(1.03f).scaleY(1.03f).alpha(0.95f).setDuration(100).start()
+                    row.translationZ = dp(6).toFloat()
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val delta = event.rawY - startRawY
+                    row.translationY = delta
+                    val rowH = row.height.takeIf { it > 0 } ?: dp(ROW_HEIGHT_DP)
+                    val index = selectedContainer.indexOfChild(row)
+                    if (delta > rowH / 2f && index < selectedContainer.childCount - 1) {
+                        swapWithNeighbor(row, selectedContainer.getChildAt(index + 1), neighborMovesUp = true)
+                        startRawY += rowH
+                    } else if (delta < -rowH / 2f && index > 0) {
+                        swapWithNeighbor(row, selectedContainer.getChildAt(index - 1), neighborMovesUp = false)
+                        startRawY -= rowH
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    selectedContainer.parent?.requestDisallowInterceptTouchEvent(false)
+                    row.animate().translationY(0f).scaleX(1f).scaleY(1f).alpha(1f)
+                        .translationZ(0f).setDuration(150)
+                        .withEndAction { commitSelectedOrder() }
+                        .start()
+                    true
+                }
+                else -> false
+            }
         }
+    }
 
-    private fun moveQuickMenuOrder(from: Int, to: Int) {
-        val order = prefs.quickMenuOrder.toMutableList()
-        if (to !in order.indices) return
-        order.add(to, order.removeAt(from))
+    /** [neighbor] 를 [draggingRow] 가 있던 자리로 뷰 순서상 즉시 옮기고, FLIP 애니메이션으로 보정. */
+    private fun swapWithNeighbor(draggingRow: View, neighbor: View, neighborMovesUp: Boolean) {
+        val rowH = draggingRow.height.takeIf { it > 0 } ?: dp(ROW_HEIGHT_DP)
+        val draggingIndex = selectedContainer.indexOfChild(draggingRow)
+        selectedContainer.removeView(neighbor)
+        selectedContainer.addView(neighbor, draggingIndex)
+        // neighbor 는 방금 뷰 계층상 순간이동했으므로, 이전 화면 위치에서 지금 자리로 온 것처럼
+        // 반대 오프셋에서 시작해 0으로 애니메이션한다(끊김 없는 자리 교대로 보임).
+        neighbor.translationY = if (neighborMovesUp) rowH.toFloat() else -rowH.toFloat()
+        neighbor.animate().translationY(0f).setDuration(150).start()
+    }
+
+    /** 드래그 종료(애니메이션이 0으로 완전히 정착한 뒤) 시 실제 뷰 순서를 prefs 에 반영. */
+    private fun commitSelectedOrder() {
+        val order = (0 until selectedContainer.childCount).map { selectedContainer.getChildAt(it).tag as String }
         prefs.quickMenuOrder = order
         markSaved()
+        // 순번 텍스트("1. 2. 3...")를 정확히 다시 매긴다 — 이 시점엔 모든 translationY 가 0 이라
+        // 재생성해도 시각적 점프가 없다.
         rebuildQuickMenuOrderRows()
     }
 
@@ -671,6 +761,9 @@ class SettingsActivity : AppCompatActivity() {
     ).roundToInt()
 
     companion object {
+        /** 퀵메뉴 "선택됨" 행의 고정 높이(dp) — 드래그 자리교체 판정/애니메이션 오프셋 기준. */
+        private const val ROW_HEIGHT_DP = 52
+
         /** 32색 팔레트. */
         private val PALETTE = listOf(
             "#000000", "#444444", "#888888", "#CCCCCC", "#FFFFFF",
