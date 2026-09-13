@@ -45,7 +45,14 @@ class TextSelectionMonitor(
         val selected = text.subSequence(selStart, selEnd).toString()
         if (selected.isBlank()) return false
 
-        val analysis = HangulConverter.analyze(selected)
+        // 선택에 한글이 섞여 있으면 "한글 자판으로 잘못 친 영어"(역방향)로, 아니면 기존처럼
+        // "영어 자판으로 잘못 친 한국어"(정방향)로 판정한다 — 한 선택에 양방향을 다 계산하는
+        // 이중 변환을 피한다(저사양 원칙: 판정은 1회 변환만).
+        val analysis = if (HangulConverter.containsHangul(selected)) {
+            HangulConverter.analyzeReverse(selected)
+        } else {
+            HangulConverter.analyze(selected)
+        }
         if (analysis.confidence * 100f < confidencePercentProvider()) return false
         if (analysis.converted == selected) return false // 변환 결과가 동일하면 의미 없음
 

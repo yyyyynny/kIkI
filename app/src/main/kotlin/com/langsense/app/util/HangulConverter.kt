@@ -39,9 +39,9 @@ object HangulConverter {
     private val ENGLISH_STOPWORDS: Set<String> = setOf(
         "a", "i", "an", "am", "as", "at", "be", "by", "do", "go", "he", "if", "in", "is", "it",
         "me", "my", "no", "of", "on", "or", "so", "to", "up", "us", "we",
-        "all", "and", "any", "are", "but", "can", "day", "did", "for", "get", "had", "has",
-        "her", "him", "his", "how", "its", "let", "man", "may", "new", "not", "now", "off",
-        "old", "one", "our", "out", "own", "put", "say", "see", "she", "the", "too", "two",
+        "all", "and", "any", "are", "but", "can", "day", "did", "for", "get", "god", "had",
+        "has", "her", "him", "his", "how", "its", "let", "man", "may", "new", "not", "now",
+        "off", "old", "one", "our", "out", "own", "put", "say", "see", "she", "sos", "the", "too", "two",
         "use", "was", "way", "who", "why", "you",
         "also", "back", "been", "best", "both", "call", "come", "does", "down", "each", "even",
         "find", "form", "from", "give", "good", "have", "here", "home", "into", "just", "know",
@@ -210,6 +210,48 @@ object HangulConverter {
         if (units == 0) return Analysis(0f, converted)
         val composeRatio = syllables.toFloat() / units
         return Analysis(composeRatio * mapRatio, converted)
+    }
+
+    /** 입력에 완성형 한글 음절 또는 조합되지 못한 호환 자모가 하나라도 있으면 true. */
+    fun containsHangul(input: String): Boolean = input.any {
+        val code = it.code
+        code in HANGUL_BASE..HANGUL_LAST || code in COMPAT_JAMO_START..COMPAT_JAMO_END
+    }
+
+    /**
+     * 한글 → 영타 방향의 한영타 판정 + 변환(역방향, 2026-09 추가) — "한글 자판 상태에서 영어를
+     * 친" 경우(예: `god`를 한글 자판으로 치면 `행`)를 잡는다.
+     *
+     * [analyze]와 반대로 강한 신호가 없다: [convertKorToEng] 는 완성형 한글 음절이면 항상 어떤
+     * 알파벳으로 변환되므로(조합 성공/실패라는 구분 자체가 없음), "그 결과가 실제로 의도된 영어
+     * 단어인가"는 조합만으로 알 수 없다. 그래서 최대한 보수적으로 판정한다: 변환 결과의 모든
+     * 토큰(공백으로 나눈 조각, [analyze]의 상용어 토큰화와 동일한 방식)이 [ENGLISH_STOPWORDS]
+     * 사전에 정확히 일치할 때만 신뢰도 1.0 을 준다. 사전에 없는 단어는 절대 감지하지 않아(미탐
+     * 증가) 오탐을 원천 차단한다 — "영문을 읽던 중 칩이 튀어나오는 오탐 비용이 더 크다"는
+     * 이 앱의 기존 원칙과 같은 트레이드오프.
+     */
+    fun analyzeReverse(input: String): Analysis {
+        val converted = convertKorToEng(input)
+        if (converted == input) return Analysis(0f, input) // 한글이 전혀 없었음
+        var sawToken = false
+        var allMatch = true
+        val tok = StringBuilder()
+        fun flushToken() {
+            if (tok.isEmpty()) return
+            sawToken = true
+            if (allMatch && tok.toString() !in ENGLISH_STOPWORDS) allMatch = false
+            tok.setLength(0)
+        }
+        for (c in converted) {
+            if (c.isWhitespace()) {
+                flushToken()
+                continue
+            }
+            if (c.isLetter()) tok.append(c.lowercaseChar())
+        }
+        flushToken()
+        if (!sawToken || !allMatch) return Analysis(0f, converted)
+        return Analysis(1f, converted)
     }
 
     /**

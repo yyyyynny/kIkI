@@ -110,4 +110,50 @@ class HangulConverterTest {
         // 상용어가 섞여 있어도 전부가 상용어는 아니므로 억제되지 않는다.
         assertTrue(HangulConverter.detectEnglishToKorean("dkssud the") > 0f)
     }
+
+    // ---------------------------------------------------------------------
+    // 역방향(한글 자판으로 잘못 친 영어) — analyzeReverse
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun containsHangul_detectsSyllablesAndLooseJamo() {
+        assertTrue(HangulConverter.containsHangul("행"))
+        assertTrue(HangulConverter.containsHangul("hello 행"))
+        assertTrue(HangulConverter.containsHangul("ㅇ")) // 조합 안 된 낱자모(호환 자모)
+        assertTrue(HangulConverter.containsHangul(HangulConverter.convertEngToKor("dak"))) // "ㅇ마"
+        assertEquals(false, HangulConverter.containsHangul("hello"))
+        assertEquals(false, HangulConverter.containsHangul("123!@#"))
+    }
+
+    /** god/sos 를 한글 자판으로 치면 각각 행/낸 이 나온다 — 두벌식 매핑: g=ㅎ o=ㅐ d=ㅇ, s=ㄴ o=ㅐ s=ㄴ. */
+    @Test
+    fun analyzeReverse_commonEnglishStopword_highConfidence() {
+        assertEquals("god", HangulConverter.convertKorToEng("행"))
+        assertEquals("sos", HangulConverter.convertKorToEng("낸"))
+        assertEquals(1f, HangulConverter.analyzeReverse("행").confidence, 0.0001f)
+        assertEquals("god", HangulConverter.analyzeReverse("행").converted)
+        assertEquals(1f, HangulConverter.analyzeReverse("낸").confidence, 0.0001f)
+    }
+
+    /** 사전에 없는 임의의 한글은(진짜 한국어 문장 포함) 절대 감지하지 않는다 — 오탐 원천 차단. */
+    @Test
+    fun analyzeReverse_nonDictionaryHangul_isZero() {
+        for (s in listOf("안녕하세요", "나무위키", "한글", "오늘 날씨가 좋다", "행복")) {
+            assertEquals(s, 0f, HangulConverter.analyzeReverse(s).confidence, 0.0001f)
+        }
+    }
+
+    @Test
+    fun analyzeReverse_noHangul_isZero() {
+        assertEquals(0f, HangulConverter.analyzeReverse("hello").confidence, 0.0001f)
+        assertEquals(0f, HangulConverter.analyzeReverse("123!@#").confidence, 0.0001f)
+        assertEquals(0f, HangulConverter.analyzeReverse("").confidence, 0.0001f)
+    }
+
+    /** 상용어 여러 개로만 이뤄져도(전부 사전 매치) 감지된다 — 정방향의 "전부 상용어면 억제"와는 반대. */
+    @Test
+    fun analyzeReverse_allStopwordTokens_stillDetected() {
+        // "행" -> god, 두 번 선택해도 각 토큰이 전부 사전에 있으면 그대로 통과.
+        assertEquals(1f, HangulConverter.analyzeReverse("행 행").confidence, 0.0001f)
+    }
 }
