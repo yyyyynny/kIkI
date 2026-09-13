@@ -455,7 +455,8 @@ langsense/
 ├── CLAUDE.md                  ← 이 파일
 ├── docs/
 │   ├── features.md            ← 기능 상세 명세 + HangulConverter 스펙
-│   └── architecture.md        ← 아키텍처 다이어그램
+│   ├── architecture.md        ← 아키텍처 다이어그램
+│   └── 개선_아이디어.md        ← 검토 중인 개선 아이디어 백로그(미확정, 작업 순위 아님)
 ├── app/
 │   ├── build.gradle.kts
 │   ├── src/main/
