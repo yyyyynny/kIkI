@@ -322,10 +322,18 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
   클립보드/추천 툴바(얇은 띠)와 실제 터치 키보드(플로팅/분리형 포함)를 면적으로 가른다.
 - 외장 키보드 연결 자체는 `HardwareKeyboardDetector`(`InputManager`+`InputDevice`, 가상이 아닌
   알파벳 키보드만 인정)가 실시간 감지하며, `onConfigurationChanged` 가 도킹 등 일부 경로의 백스톱.
-  이 감지기는 **옵션 ON 일 때만 생성**된다(OFF 면 그 결과가 하는 일이 없어 순수 오버헤드).
+  이 감지기는 **"터치 키보드 제외" 또는 아래 "외장 키보드 연결 알림" 옵션이 하나라도 켜져
+  있을 때만 생성**된다(`syncKeyboardDetector()` — 둘 다 OFF 면 그 결과가 하는 일이 없어 순수
+  오버헤드).
 - 옵션이 꺼져 있으면(기본값) `windows` 순회를 하지 않을 뿐 아니라 `TYPE_WINDOWS_CHANGED` 구독과
   윈도우 추적 플래그 자체를 `syncServiceInfo()` 가 내려 이벤트가 앱에 도달조차 하지 않는다.
   ON 이면 `TYPE_WINDOW_STATE_CHANGED`/`TYPE_WINDOWS_CHANGED` 모두 150ms 디바운스 후 재평가.
+- **외장 키보드 연결 알림(설정, 독립 옵션, 2026-09 추가, 기본 ON)**: "터치 키보드 제외"와
+  무관하게 켜고 끌 수 있다 — 블루투스 키보드 배터리가 나가 연결이 끊긴 걸 모르고 계속 입력해
+  한영타가 반복되는 상황을 조기에 알아챌 수 있게, 연결/해제 시 짧은 토스트로 안내
+  (`Prefs.keyboardConnectNotify`, `HardwareKeyboardDetector.isConnected` 로 어느 쪽인지 읽음).
+  이 옵션만 켜져 있어도(터치 키보드 제외는 OFF) 감지기가 생성되지만, `refreshSoftKeyboardState()`
+  자체가 "터치 키보드 제외" OFF 를 가드하므로 그쪽 로직에는 영향이 없다.
 
 ---
 

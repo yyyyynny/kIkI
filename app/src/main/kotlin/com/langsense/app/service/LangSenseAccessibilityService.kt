@@ -323,11 +323,11 @@ class LangSenseAccessibilityService : AccessibilityService(),
     }
 
     /**
-     * 외장 키보드 감지기는 "터치 키보드 제외" 옵션이 켜져 있을 때만 필요하다(그 결과가 하는 일은
-     * 소프트 키보드 재평가 1회뿐이고, 옵션 OFF 면 그 재평가가 즉시 return 이라 순수 오버헤드).
+     * 외장 키보드 감지기는 "터치 키보드 제외" 또는 "외장 키보드 연결 알림" 옵션이 하나라도 켜져
+     * 있을 때만 필요하다(둘 다 OFF 면 결과가 하는 일이 없어 순수 오버헤드).
      */
     private fun syncKeyboardDetector() {
-        val want = prefs.excludeTouchKeyboard
+        val want = prefs.excludeTouchKeyboard || prefs.keyboardConnectNotify
         if (want && keyboardDetector == null) {
             keyboardDetector = HardwareKeyboardDetector(this) { onKeyboardPresenceChanged() }
                 .also { it.start() }
@@ -415,10 +415,22 @@ class LangSenseAccessibilityService : AccessibilityService(),
         mainHandler.postDelayed(softKeyboardRecheck, WINDOWS_CHANGED_DEBOUNCE_MS)
     }
 
-    /** 외장 키보드 연결/해제 시: 소프트 키보드 표시 상태가 함께 바뀌므로 재평가(추가 기능 2). */
+    /**
+     * 외장 키보드 연결/해제 시: 소프트 키보드 표시 상태가 함께 바뀌므로 재평가(추가 기능 2).
+     * "외장 키보드 연결 알림" 옵션이 켜져 있으면 토스트로도 안내한다(2026-09 추가) — 블루투스
+     * 키보드 배터리가 나가 연결이 끊긴 걸 모르고 계속 입력해 한영타가 반복되는 상황을 조기에
+     * 알아챌 수 있게. "터치 키보드 제외"가 꺼져 있어도 이 알림만으로 감지기가 살아있을 수
+     * 있으므로 [refreshSoftKeyboardState] 호출은 항상 안전(그 함수 자체가 옵션 OFF 를 가드).
+     */
     private fun onKeyboardPresenceChanged() {
         if (!initialized) return
-        guarded("keyboardPresence") { refreshSoftKeyboardState() }
+        guarded("keyboardPresence") {
+            refreshSoftKeyboardState()
+            if (prefs.keyboardConnectNotify) {
+                val connected = keyboardDetector?.isConnected ?: return@guarded
+                toastMsg(getString(if (connected) R.string.keyboard_connected_toast else R.string.keyboard_disconnected_toast))
+            }
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -793,6 +805,8 @@ class LangSenseAccessibilityService : AccessibilityService(),
                     // 윈도우 추적 플래그를 막 켠 직후엔 시스템이 창 목록을 비동기로 채우므로 한 번 더.
                     scheduleSoftKeyboardRecheck()
                 }
+                // 감지기 생성/해제 여부만 바뀐다("터치 키보드 제외"와 무관한 독립 옵션).
+                Prefs.KEY_KEYBOARD_CONNECT_NOTIFY -> syncKeyboardDetector()
                 // 배지 크기/색은 표시 중인 배지에 즉시 재적용(꺼져 있으면 다음 표시 때 반영).
                 Prefs.KEY_BADGE_SIZE, Prefs.KEY_BADGE_BG_COLOR, Prefs.KEY_BADGE_TEXT_COLOR -> {
                     if (prefs.badgeEnabled && featuresEnabled()) overlay.updateBadge(currentLang)

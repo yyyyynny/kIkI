@@ -28,8 +28,11 @@ class HardwareKeyboardDetector(
         appContext.getSystemService(Context.INPUT_SERVICE) as InputManager
     private val handler = Handler(Looper.getMainLooper())
 
-    /** 현재 외장 키보드 연결 여부(메인 스레드에서만 접근). 외부에서 읽는 곳이 없어 내부 상태로만 둔다. */
+    /** 현재 외장 키보드 연결 여부(메인 스레드에서만 접근). */
     private var connected: Boolean = false
+
+    /** [onChanged] 콜백 시점에 "연결/해제 어느 쪽으로 바뀌었는지" 읽기 위한 공개 게터. */
+    val isConnected: Boolean get() = connected
 
     private var registered = false
 

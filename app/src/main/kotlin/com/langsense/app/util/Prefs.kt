@@ -108,6 +108,16 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_EXCLUDE_TOUCH_KEYBOARD, false)
         set(v) = sp.edit().putBoolean(KEY_EXCLUDE_TOUCH_KEYBOARD, v).apply()
 
+    /**
+     * 외장 키보드 연결/해제 시 토스트로 안내(2026-09 추가). "터치 키보드 제외"와 독립적인
+     * 옵션 — 켜져 있으면 이 옵션만으로도 [HardwareKeyboardDetector] 가 생성된다. 정보성이고
+     * 침습적이지 않아 기본 ON(블루투스 키보드 배터리가 나가 연결이 끊긴 걸 모르고 계속 입력해
+     * 한영타가 반복되는 상황을 조기에 알아챌 수 있게).
+     */
+    var keyboardConnectNotify: Boolean
+        get() = sp.getBoolean(KEY_KEYBOARD_CONNECT_NOTIFY, true)
+        set(v) = sp.edit().putBoolean(KEY_KEYBOARD_CONNECT_NOTIFY, v).apply()
+
     // ---- 플로팅 메뉴(배지 탭 래디얼 메뉴) ----
     /**
      * 저사양(움직임 줄이기) 모드. ON 이면 메뉴를 펼친 뒤의 연속 애니메이션(오브 morph/부유/별/먼지/
@@ -266,6 +276,7 @@ class Prefs(context: Context) {
         const val KEY_REPLACE_ENABLED = "replace_enabled"
         const val KEY_REPLACE_CONFIDENCE = "replace_confidence"
         const val KEY_EXCLUDE_TOUCH_KEYBOARD = "exclude_touch_keyboard"
+        const val KEY_KEYBOARD_CONNECT_NOTIFY = "keyboard_connect_notify"
         const val KEY_RADIAL_REDUCE_MOTION = "radial_reduce_motion"
         const val KEY_QUICK_MENU_ORDER = "quick_menu_order"
         const val KEY_BADGE_TAP_ACTION = "badge_tap_action"

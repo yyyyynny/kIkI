@@ -95,6 +95,11 @@ class SettingsActivity : AppCompatActivity() {
             addView(switchRow(getString(R.string.settings_exclude_touch_kb_enabled), prefs.excludeTouchKeyboard) {
                 prefs.excludeTouchKeyboard = it; markSaved()
             })
+            // 위 옵션과 독립적인 옵션 — 외장 키보드 연결/해제를 토스트로 안내(2026-09 추가).
+            addView(descRow(getString(R.string.settings_keyboard_connect_notify_desc)))
+            addView(switchRow(getString(R.string.settings_keyboard_connect_notify), prefs.keyboardConnectNotify) {
+                prefs.keyboardConnectNotify = it; markSaved()
+            })
         })
 
         // --- 전환 플래시 ---
