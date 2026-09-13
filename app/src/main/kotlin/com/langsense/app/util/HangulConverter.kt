@@ -140,6 +140,97 @@ object HangulConverter {
      */
     private val REVERSE_TYPO_WORDS: Set<String> = setOf("god", "sos")
 
+    /**
+     * [analyze] 안전망: 스톱워드 사전에 아직 없는 영어 단어를 더 이상 손으로 하나씩 찾아
+     * 추가하지 않고 통계로 걸러내기 위한 문자 bigram(연속 두 알파벳) 언어 모델(2026-09 추가).
+     *
+     * **문제의식**: [ENGLISH_STOPWORDS] 는 정확 일치 방식이라 근본적으로 "본 적 있는 단어"만
+     * 막을 수 있다 — 대량 검증(2026-09)에서 스톱워드를 아무리 보강해도 전체 영어 사전(37만 단어)
+     * 기준으로는 여전히 ~4%가 스톱워드 밖에서 오탐됐다(위 [ENGLISH_STOPWORDS_FREQUENT] 문서
+     * 참조). 오탐이 나올 때마다 그 단어를 찾아 목록에 추가하는 건 무한히 반복되는 데다, 코드에
+     * 나열된 예외가 계속 늘어나 유지보수 부담도 커진다.
+     *
+     * **원리**: 영어 사전 37만 단어(dwyl/english-words)에서 계산한 알파벳 26×26 bigram
+     * 로그확률표(라플라스 스무딩)를 내장해, 토큰을 이루는 연속 두 글자들의 평균 로그확률
+     * ("영어스러움" 점수)이 임계값 이상이면 실제 영단어로 보고 억제한다. `dkssud`(=안녕) 같은
+     * 진짜 한영타는 `dk`/`ks`/`su` 처럼 영어에서 드문 자음-자음/모음-자음 조합이 많아 점수가
+     * 낮은 반면(-10~-13 대), `work`/`city`/`video` 같은 실제 단어는 `th`/`he`/`in`/`on` 처럼
+     * 흔한 조합이 많아 높다(-7~-9 대). 사전 멤버십(있다/없다)과 달리 **한 번도 본 적 없는
+     * 단어에도 일반화**되므로, 새 오탐이 나올 때마다 스톱워드를 추가해야 하는 부담을 크게 줄인다.
+     *
+     * ⚠️ 기존 [ENGLISH_STOPWORDS] 를 **대체하지는 않는다** — 대량 검증에서 `work`/`wow`/
+     * `keyboard`/`sp` 처럼 이미 알려진 고위험 단어 상당수는 이 통계 모델의 안전한 임계값에서도
+     * 걸러지지 않았다(빈도 상위 위험 단어 627개 중 임계값 -8.5 기준 63.2%만 포착 — 나머지는
+     * 실제 영어 단어치고는 흔치 않은 자모 배열이라 통계만으로는 못 잡는다). 반대로 이 모델은
+     * **사전 밖의 미지의 단어**에는 강하다(전체 사전 37만 단어 기준 스톱워드로도 못 잡는 잔여
+     * 15,546개 중 75.9%를 같은 임계값에서 추가로 포착). 그래서 정확 일치 스톱워드(고정밀,
+     * 알려진 단어 전용)와 이 통계 안전망(일반화, 미지의 단어용)을 **OR 조건**으로 함께 쓴다 —
+     * 토큰이 둘 중 하나라도 걸리면 억제한다.
+     *
+     * 임계값 [ENGLISH_BIGRAM_THRESHOLD](-8.5)는 네이버 영화리뷰 20만 문장에서 뽑은 실제 한글
+     * 단어 34만개를 [convertKorToEng] 로 되돌린 "진짜 한영타" 샘플로 보정했다 — 이 임계값에서
+     * 진짜 한영타 오억제(미탐 증가)는 0.29%(1004/347595)에 그친다. 이미 이 앱이 감수하고 있는
+     * "상용어와 형태가 겹치는 단음절 한영타(go=해, to=새, sp=네 …)는 자동 제안이 안 뜬다"는
+     * 정확 일치 스톱워드의 트레이드오프보다도 훨씬 낮은 비용이다.
+     */
+    private const val ENGLISH_BIGRAM_THRESHOLD = -8.5
+
+    // bigram(a,b) 하나당 로그확률(log2, 라플라스 스무딩)을 [ENGLISH_BIGRAM_LEVELS]단계로
+    // 양자화해 인쇄 가능 ASCII 문자 하나에 대응시킨 표. 26×26=676칸, a-a, a-b, …, z-z 순
+    // (행 우선, 첫 글자가 바깥 루프). Kotlin 문자열 리터럴 이스케이프가 필요한 " \ $ 는 제외한
+    // 33~126 범위 91개 문자만 사용— 그래서 [ENGLISH_BIGRAM_LEVELS]=91. 생성: 영어 사전 37만
+    // 단어(dwyl/english-words)의 모든 연속 두 글자를 세어 라플라스 스무딩(+1) 확률을 구하고,
+    // 그 log2 값을 이 범위에 선형 양자화했다(원본 확률표는 코드에 두지 않음 — 이 문자열이
+    // 유일한 표현이며 [decodeBigramLogProb] 로 역산한다).
+    private const val ENGLISH_BIGRAM_TABLE =
+        "Pqsnkbm_kRezpzSoRxszjfa^d_m`SUnKGMnP@pOLlN6k_UhKF0W6u=cCr;9tp!kiCOvAMm[om,<)fBmSNauR[UtQBeW_mM8i" +
+        "dKfSU,aAreqxlgh_hSXtqzjmZ~{shfci`UfCAAie=Al58gBBj?!dR^g,A.[3mN@JpJbdm8@jZdiE)l`Ng2N!b8qQJKtPFIr9" +
+        "EaZ[rM8gZcd@T!m;uhyrqklTWKdrm}ulUlyvcmKYHm_,26[!,5T30.0:[.!7.._),!4!cPDEmN@Uh=K]PY[K)SaPU?Q)X.vY" +
+        "^cy[ZPx<Zt_]t_;Mefk]Q6tCthHHtO@Gs;@Sf[pl3JaIgGH)d9t_qrxfw_uVba`gtdUbrwfaZIaVfiomdbo[jLats{lrRwrq" +
+        "tkhb[YpNKHsMFso<FlOVpf0rghg5M)a)<!!,3)),;!!,),0,0325j,,!)!yejjz_fbyMadkhxfKjpmk`Z8lJnUnPuUPpsFag" +
+        "ldnm[QuyoJ_!e<uVaN{YPs|EEfZXuS<tjjlG]4lRgihff[cIhGVqnw[iAqtnFU?TKQi)46s!5)k!3;.8d.!I>5UB,!K0iPFP" +
+        "fKC_f2MWK[fI,YXLI,G!L<[AW;]A8Nb!,D@8Y[88H]Q5@6Y)bUc_`OZN_6Ggcc`g2bfbOARN6Oc<:<k.69c,9P98a:0799K6" +
+        ";!TV"
+    private const val ENGLISH_BIGRAM_LOG2_LO = -21.575549864188368
+    private const val ENGLISH_BIGRAM_LOG2_HI = -5.5498046909575915
+    private const val ENGLISH_BIGRAM_LEVELS = 91
+
+    // ENGLISH_BIGRAM_TABLE 문자 → 양자화 단계(0..90). 코드포인트 33..126 중 " \ $ 를 건너뛴
+    // 순번이 곧 단계 번호(표를 만들 때 쓴 순서와 동일).
+    private val BIGRAM_DECODE_STEP: IntArray = IntArray(127).also { arr ->
+        var step = 0
+        for (code in 33..126) {
+            val ch = code.toChar()
+            if (ch == '"' || ch == '\\' || ch == '$') continue
+            arr[code] = step
+            step++
+        }
+    }
+
+    private fun decodeBigramLogProb(tableChar: Char): Double {
+        val step = BIGRAM_DECODE_STEP[tableChar.code]
+        val frac = step.toDouble() / (ENGLISH_BIGRAM_LEVELS - 1)
+        return ENGLISH_BIGRAM_LOG2_LO + frac * (ENGLISH_BIGRAM_LOG2_HI - ENGLISH_BIGRAM_LOG2_LO)
+    }
+
+    /**
+     * 소문자 알파벳 문자열의 평균 bigram 로그확률("영어스러움" 점수). 알파벳이 2개 미만이면
+     * 신호가 없으므로 null(짧은 토큰은 이 안전망을 적용하지 않고 정확 일치 스톱워드에만 맡김).
+     */
+    private fun englishnessScore(lettersLower: String): Double? {
+        var sum = 0.0
+        var n = 0
+        for (i in 0 until lettersLower.length - 1) {
+            val a = lettersLower[i]
+            val b = lettersLower[i + 1]
+            if (a !in 'a'..'z' || b !in 'a'..'z') continue
+            val idx = (a - 'a') * 26 + (b - 'a')
+            sum += decodeBigramLogProb(ENGLISH_BIGRAM_TABLE[idx])
+            n++
+        }
+        return if (n == 0) null else sum / n
+    }
+
     /** 소문자 QWERTY → 한국어 자모 (두벌식) */
     private val ENG_TO_JAMO: Map<Char, Char> = mapOf(
         'q' to 'ㅂ', 'w' to 'ㅈ', 'e' to 'ㄷ', 'r' to 'ㄱ', 't' to 'ㅅ',
@@ -315,6 +406,10 @@ object HangulConverter {
             val letters = t.letters.length
             if (letters == 0 || t.mappable == 0) continue
             if (t.letters in ENGLISH_STOPWORDS) continue
+            // 사전 밖의 미지의 영단어 안전망(englishnessScore 문서 참조) — 정확 일치 스톱워드와
+            // OR 조건.
+            val bigramScore = englishnessScore(t.letters)
+            if (bigramScore != null && bigramScore >= ENGLISH_BIGRAM_THRESHOLD) continue
             val mapRatio = t.mappable.toFloat() / letters
             val convertedTok = convertEngToKor(t.text)
             var syllables = 0

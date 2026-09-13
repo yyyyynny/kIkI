@@ -194,8 +194,10 @@ object HangulConverter {
      * ⚠️ 실제 `HangulConverter.analyze()`는 이보다 복잡하다(2026-09 대량 fuzz 검증 후 재설계,
      * 상세는 CLAUDE.md Feature 4 참조) — 선택 텍스트 전체가 아니라 공백/한글로 나눈 **토큰별로**
      * 위 두 신호를 계산해 최댓값을 채택하고(다른 라틴 조각이 섞여도 진짜 한영타 신호가 희석되지
-     * 않도록), 토큰이 영어 상용어 스톱리스트(`ENGLISH_STOPWORDS`)에 정확히 일치하면 그 토큰은
-     * 후보에서 제외한다. 아래 스니펫은 그 핵심 아이디어(두 신호의 곱)만 보여주는 단순화판이다.
+     * 않도록), 토큰이 영어 상용어 스톱리스트(`ENGLISH_STOPWORDS`)에 정확히 일치하거나 bigram
+     * 통계 안전망(`englishnessScore`, 알파벳 26×26 로그확률표 기반 "영어스러움" 점수 —
+     * 스톱워드에 없는 미지의 영단어까지 일반화해서 잡는다) 임계값 이상이면 그 토큰은 후보에서
+     * 제외한다. 아래 스니펫은 그 핵심 아이디어(두 신호의 곱)만 보여주는 단순화판이다.
      */
     fun detectEnglishToKorean(input: String): Float {
         val letters = input.filter { it.isLetter() }

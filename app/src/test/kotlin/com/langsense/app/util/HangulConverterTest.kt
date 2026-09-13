@@ -153,6 +153,25 @@ class HangulConverterTest {
         assertEquals(0f, HangulConverter.detectEnglishToKorean("급소를 1cm만 비껴가도 산다."), 0.0001f)
     }
 
+    /**
+     * bigram 안전망(englishnessScore) 회귀 고정(2026-09) — 스톱워드 사전에 없는데도 오탐이던
+     * 실제 영단어들(전체 영어 사전 37만 단어 fuzz 검증으로 발견, ENGLISH_STOPWORDS 어디에도
+     * 없음)이 이제 억제되는지 확인. 이 단어들을 스톱워드에 하나씩 추가하는 대신 통계적 안전망
+     * (26×26 bigram 로그확률표)으로 잡은 것 — HangulConverter.analyze 문서의
+     * "englishnessScore" 참조.
+     */
+    @Test
+    fun analyze_bigramSafetyNet_suppressesUnlistedEnglishWords() {
+        for (w in listOf("abacus", "aback", "abash")) {
+            assertEquals(w, 0f, HangulConverter.detectEnglishToKorean(w), 0.0001f)
+        }
+        // 이 안전망은 위 detect_hangulTyped_notSuppressedByStopwords 의 진짜 한영타까지
+        // 삼키면 안 된다(오탐 억제 강화가 미탐을 늘리는 부작용 확인).
+        for (s in listOf("dkssud", "rkawk", "dlfjgrp", "ehs", "dho")) {
+            assertTrue(s, HangulConverter.detectEnglishToKorean(s) >= 0.70f)
+        }
+    }
+
     // ---------------------------------------------------------------------
     // 역방향(한글 자판으로 잘못 친 영어) — analyzeReverse
     // ---------------------------------------------------------------------
