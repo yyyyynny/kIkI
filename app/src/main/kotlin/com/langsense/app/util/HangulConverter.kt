@@ -36,7 +36,7 @@ object HangulConverter {
      * 최고 신뢰도를 준다. 길이·음절수 같은 구조 신호로는 진짜 한영타(dkssud=안녕)와 분리되지
      * 않으므로, 고빈도 영단어를 어휘로 직접 배제한다.
      */
-    private val ENGLISH_STOPWORDS: Set<String> = setOf(
+    private val ENGLISH_STOPWORDS_BASE: Set<String> = setOf(
         "a", "i", "an", "am", "as", "at", "be", "by", "do", "go", "he", "if", "in", "is", "it",
         "me", "my", "no", "of", "on", "or", "so", "to", "up", "us", "we",
         "all", "and", "any", "are", "but", "can", "day", "did", "for", "get", "god", "had",
@@ -49,12 +49,96 @@ object HangulConverter {
         "much", "must", "name", "need", "next", "only", "open", "over", "part", "same", "show",
         "side", "some", "such", "take", "tell", "than", "that", "them", "then", "they", "this",
         "time", "very", "want", "well", "went", "were", "what", "when", "will", "with", "word",
-        "work", "year", "your", "hello",
+        "work", "year", "your", "hello", "fuck",
         "about", "after", "again", "being", "could", "every", "first", "great", "house",
         "large", "other", "place", "right", "small", "still", "their", "there", "these",
         "thing", "think", "those", "three", "under", "water", "where", "which", "while",
         "world", "would", "write"
     )
+
+    /**
+     * 실사용 빈도 상위 영어 단어(Google 웹 말뭉치 상위 1만 단어, google-10000-english) 대량
+     * 검증에서 [ENGLISH_STOPWORDS_BASE] 만으로는 오탐(70% 이상 오판)이 나온 626개(2026-09).
+     * "city"/"video"/"check"/"dog"/"wow" 처럼 극히 일상적인 단어까지 걸릴 정도로 심각해
+     * (627/9894 ≈ 6.3%) 기본 목록을 크게 확장했다 — 완전한 해결은 아니지만(1만 단어 밖은 여전히
+     * 위험) 실사용 빈도 기준으로는 큰 폭의 개선이다. 확장 시 반드시 같은 방식(빈도 상위 목록
+     * 대량 검증)으로 재검증할 것.
+     */
+    private val ENGLISH_STOPWORDS_FREQUENT: Set<String> = setOf(
+        "ab", "abc", "abraham", "abs", "absent", "ah", "ai", "aid", "air", "airplane",
+        "aj", "ak", "aka", "al", "ala", "alabama", "alan", "alarm", "alaska", "alexandria",
+        "algorithm", "alt", "although", "alto", "always", "amd", "amend", "amendment", "amendments", "american",
+        "americans", "ana", "anaheim", "analysis", "analytical", "anchor", "ancient", "andale", "andy", "angel",
+        "angela", "angels", "angle", "angry", "ant", "anti", "antigua", "antique", "antiques", "antivirus",
+        "anxiety", "ap", "apache", "apartment", "appendix", "approach", "approval", "apr", "apt", "atlantic",
+        "au", "auckland", "aud", "audi", "audience", "audit", "auditor", "aug", "aus", "authentic",
+        "author", "authorities", "authority", "auto", "autos", "aye", "bandwidth", "beneficial", "brisbane", "british",
+        "britney", "broadband", "canadian", "capacity", "cb", "cbs", "celebrity", "century", "ch", "chair",
+        "chairman", "chan", "channel", "channels", "chaos", "chapel", "charity", "charm", "charms", "cheap",
+        "check", "checks", "chem", "chen", "cheque", "chevy", "chicken", "cho", "chorus", "chosen",
+        "chris", "christian", "christianity", "christians", "christmas", "chrysler", "ci", "cia", "ciao", "cir",
+        "circle", "circus", "cisco", "citizen", "citizens", "city", "civic", "cj", "cl", "clan",
+        "clarity", "clark", "clarke", "classical", "clay", "clean", "clerk", "cleveland", "cm", "cms",
+        "cn", "co", "coach", "coal", "cocktail", "cod", "coleman", "confident", "confidential", "confidentiality",
+        "confirm", "coral", "cork", "corn", "cornell", "cornwall", "corp", "corps", "cos", "cosmetic",
+        "cosmetics", "cow", "cp", "critical", "criticism", "crucial", "cu", "cultural", "currency", "cursor",
+        "curtis", "custody", "cut", "cycle", "db", "density", "dependent", "dh", "di", "diagnosis",
+        "dial", "dialogue", "diana", "diane", "diary", "dicke", "die", "diego", "difficulty", "dig",
+        "digit", "digital", "dir", "dirt", "dirty", "dis", "disco", "discovery", "dish", "disk",
+        "disks", "disney", "dispatch", "display", "displays", "disturbed", "div", "dividend", "dj", "dk",
+        "dl", "dm", "dna", "dns", "doc", "dock", "doctor", "document", "dod", "doe",
+        "dog", "dos", "dot", "dow", "downtown", "dozen", "dozens", "dp", "du", "dual",
+        "duck", "due", "durham", "dutch", "duty", "ebay", "editorial", "editorials", "eh", "eight",
+        "el", "electoral", "element", "elementary", "elements", "elephant", "elvis", "em", "en", "end",
+        "endif", "endorsement", "enforcement", "eng", "england", "english", "enhancement", "enquiry", "ent", "entirely",
+        "entities", "entitled", "entity", "entrepreneur", "entry", "environmental", "eos", "ep", "epa", "eu",
+        "eugene", "eur", "euro", "euros", "expansys", "eye", "fairfield", "february", "fi", "field",
+        "fifth", "fifty", "fig", "fight", "filename", "financial", "firm", "firms", "fish", "fisheries",
+        "fit", "fix", "fl", "flame", "flash", "flavor", "flesh", "fm", "fo", "foam",
+        "focal", "focus", "fog", "foreign", "forgot", "forgotten", "fork", "formal", "formerly", "forms",
+        "fort", "forth", "forty", "foto", "fotos", "fox", "fp", "fu", "fuel", "fur",
+        "fuzzy", "fy", "gabriel", "gb", "gba", "gentleman", "ghana", "ghz", "gi", "giant",
+        "gif", "gift", "gig", "girl", "girlfriend", "girls", "gis", "given", "gl", "glen",
+        "gm", "gmc", "gmt", "goal", "goals", "gospel", "got", "goto", "gp", "gps",
+        "guam", "guardian", "guatemala", "guru", "handheld", "hepatitis", "malaysia", "naughty", "oriental", "orlando",
+        "paperback", "paperbacks", "penalty", "procurement", "productivity", "qld", "qualify", "quality", "quantities", "quantity",
+        "quantum", "que", "queen", "queens", "queensland", "query", "queue", "raleigh", "rb", "rh",
+        "ri", "rich", "rick", "rico", "rid", "risk", "risks", "rj", "rl", "rm",
+        "rn", "rna", "ro", "rock", "rocks", "rod", "romantic", "row", "royalty", "rp",
+        "rpg", "ru", "rug", "rural", "rush", "russia", "russian", "ruth", "ryan", "sandwich",
+        "sb", "scientific", "scotland", "scottish", "sensitivity", "sh", "shadow", "shake", "shame", "shanghai",
+        "shape", "shark", "sharp", "sheep", "sheffield", "shelf", "sherman", "shock", "shoe", "short",
+        "shot", "shown", "si", "sic", "sick", "sie", "siemens", "sig", "sight", "sigma",
+        "sign", "signal", "signals", "signature", "significant", "significantly", "signs", "sir", "sit", "sitemap",
+        "six", "sixth", "sk", "sl", "sleep", "sleeps", "sm", "sms", "smtp", "sn",
+        "snake", "snap", "snapshot", "soa", "soap", "soc", "social", "societies", "society", "socks",
+        "sofa", "soft", "softball", "sorry", "sort", "southern", "sox", "sp", "spa", "spam",
+        "span", "spanish", "spatial", "speak", "speaks", "special", "specials", "specialties", "specialty", "specific",
+        "specifics", "specified", "specifies", "specify", "spend", "spent", "sperm", "spiritual", "spirituality", "spray",
+        "su", "subsidiary", "sudan", "sue", "sufficient", "sufficiently", "sur", "surgical", "surname", "surprise",
+        "survival", "survivor", "survivors", "susan", "sydney", "synthesis", "synthetic", "syria", "sys", "systematic",
+        "tb", "tba", "th", "thai", "thailand", "theme", "theorem", "theoretical", "theories", "theory",
+        "therapeutic", "thermal", "thesaurus", "thesis", "thorough", "through", "throw", "thrown", "thru", "ti",
+        "tie", "tight", "tissue", "titans", "title", "tm", "tn", "today", "toe", "toronto",
+        "total", "totals", "tourism", "tournament", "town", "towns", "toxic", "tp", "triangle", "tu",
+        "tue", "turkey", "turkish", "turn", "turns", "turtle", "tutorial", "tutorials", "ty", "uruguay",
+        "vb", "venezuela", "vhs", "vi", "via", "vic", "victor", "victoria", "victorian", "victory",
+        "vid", "video", "videos", "vietnam", "viral", "virtual", "virtue", "virus", "visit", "visitor",
+        "visitors", "visual", "vital", "vocal", "vocals", "vp", "wb", "whale", "wheel", "wheels",
+        "wi", "width", "wifi", "wish", "wit", "witch", "wm", "wma", "wn", "works",
+        "workshop", "worldwide", "worm", "worn", "worry", "worth", "wow", "wp", "wu", "wy",
+        "xhtml", "xi", "xl", "xml", "xp", "zu", "zus"
+    )
+
+    private val ENGLISH_STOPWORDS: Set<String> = ENGLISH_STOPWORDS_BASE + ENGLISH_STOPWORDS_FREQUENT
+
+    /**
+     * [analyzeReverse] 전용 화이트리스트(정방향의 [ENGLISH_STOPWORDS] 와 별개 — 그 이유는
+     * [analyzeReverse] 문서 참조). 아주 짧고 흔하게 오타로 나올 법한 감탄사/약어만 신중하게
+     * 담는다. 확장 시 반드시 실제 한국어 말뭉치로 오탐 여부를 재검증할 것 — `work`/`to`/`so`
+     * 처럼 짧고 흔한 기능어를 넣으면 `재가`/`새`/`내` 같은 흔한 한글과 우연히 충돌한다.
+     */
+    private val REVERSE_TYPO_WORDS: Set<String> = setOf("god", "sos")
 
     /** 소문자 QWERTY → 한국어 자모 (두벌식) */
     private val ENG_TO_JAMO: Map<Char, Char> = mapOf(
@@ -162,54 +246,95 @@ object HangulConverter {
     /**
      * 한영타 판정 + 변환을 한 번에. 선택 변경 이벤트는 드래그 중 초당 수십 회 오고 전부 메인
      * 스레드에서 처리되므로, 정규식·중간 리스트·이중 변환 없이 단일 패스로 끝낸다.
+     *
+     * ⚠️ 이미 완성형 한글/호환 자모인 문자는 신뢰도 계산(매핑 비율·조합 성공률·스톱워드 토큰화
+     * 전부)에서 제외한다(대량 검증으로 발견, 2026-09). 포함시켰을 때 세 가지 문제가 있었다:
+     * ① 긴 정상 한글 문장에 짧은 한영타 조각이 섞이면 전체 글자 수 대비 매핑 비율(`mapRatio`)이
+     * 희석돼 신뢰도가 임계값 밑으로 떨어져 감지를 놓친다("저 dkssud" 처럼 아주 짧을 때만 우연히
+     * 통과) ② 라틴 부분이 순수 상용어("work")뿐이어도 섞인 한글 토큰 때문에 "선택 전체가
+     * 상용어만은 아님" 판정이 돼 스톱워드 억제가 무력화된다 ③ (mapRatio 만 좁혔을 때 새로 발견)
+     * 긴 문장 속 진짜 영어 두문자어("SF", "OO", "CG")가 조합 실패(낱자모)해도, 이미 있던 한글
+     * 음절이 압도적으로 많아 조합 성공률(`composeRatio`)이 희석 없이 여전히 높게 나와 실제
+     * 오탐이 발생했다(네이버 영화리뷰 20만 문장 대량 검증). 그래서 한글이 아닌 문자만 이어붙인
+     * [latinOnly] 를 따로 만들어 매핑 비율·조합 성공률·스톱워드 토큰화를 **전부** 그 문자열
+     * 기준으로 계산한다 — 최종 [Analysis.converted] 만 원본 전체([convertEngToKor] 가 이미
+     * 한글을 보존)를 쓴다. ④ (①~③ 수정 뒤 대량 검증에서 새로 발견, 2026-09) 위 ③처럼 전체
+     * 선택을 하나로 합쳐 판정하면, 진짜 한영타 옆에 조합 실패하는 **다른** 라틴 조각(다른 두문자어
+     * "SF"/"TV"/"CG"/"OO", `dvd`, `ost`, `well made movie` 같은 여러 개의 진짜 영단어, URL 등)가
+     * 함께 있을 때 그 조각들의 조합 실패가 진짜 한영타 신호를 희석시켜 신뢰도가 임계값 밑으로
+     * 떨어진다(실제 문장 뒤에 `dkssud` 를 붙인 500건 검증 중 31건 미탐, 원인 규명). 이번엔 반대로
+     * 한 선택 안에 "여러 후보가 섞여 있을 수 있다"는 게 문제이므로, 라틴 조각을 공백/한글 경계로
+     * **토큰화**해 토큰마다 mapRatio·composeRatio·스톱워드 여부를 **개별** 계산하고 그 중
+     * 최댓값을 선택 전체의 신뢰도로 쓴다 — 진짜 한영타 토큰 하나만 있어도 다른 토큰들의 조합
+     * 실패에 묻히지 않는다(스톱워드 억제도 토큰 단위라 "선택 전체가 상용어로만 이뤄지면 0" 규칙이
+     * 자동으로 성립해 옛 `allStop` 전역 플래그가 불필요해졌다).
      */
     fun analyze(input: String): Analysis {
-        var letters = 0
-        var mappable = 0
-        // 영어 상용어 억제: 두벌식에서 자음-모음-자음 배열이 되는 흔한 영단어는 한글로 "완벽히"
-        // 조합돼(the→솓, and→뭉, with→쟈소 …) 조합률만으로는 100% 가 나온다. 구조 신호로는
-        // 진짜 한영타와 구분되지 않으므로 어휘로 거른다 — 선택이 상용어(들)로만 이뤄졌으면
-        // 실제 영어로 보고 0. 혼합 선택("dkssud the")은 억제하지 않는다.
-        // 토큰 = 공백으로 나눈 조각에서 글자만 모아 소문자화한 것(구두점/숫자는 무시).
-        var sawToken = false
-        var allStop = true
+        // 라틴 토큰(공백/한글로 구분되는 조각) 하나 = 원문 텍스트([text], 구두점/숫자 포함 —
+        // convertEngToKor 입력용) + 글자만 모아 소문자화한 것([letters], 스톱워드 비교·매핑
+        // 비율 계산용) + 매핑 가능 글자 수. [text] 와 [letters] 를 분리해 두는 이유: "1cm" 처럼
+        // 숫자가 붙으면 원문 그대로는 사전(cm)과 일치하지 않아 억제가 무력화된다(2026-09 발견
+        // — "1cm" 오탐).
+        data class LatinToken(val text: String, val letters: String, val mappable: Int)
+
+        val tokens = mutableListOf<LatinToken>()
         val tok = StringBuilder()
+        val tokLetters = StringBuilder()
+        var tokMappable = 0
+        var anyLetter = false
         fun flushToken() {
             if (tok.isEmpty()) return
-            sawToken = true
-            if (allStop && tok.toString() !in ENGLISH_STOPWORDS) allStop = false
+            tokens.add(LatinToken(tok.toString(), tokLetters.toString(), tokMappable))
             tok.setLength(0)
+            tokLetters.setLength(0)
+            tokMappable = 0
         }
         for (c in input) {
-            if (c.isWhitespace()) {
+            val code = c.code
+            val isHangul = code in HANGUL_BASE..HANGUL_LAST || code in COMPAT_JAMO_START..COMPAT_JAMO_END
+            if (isHangul || c.isWhitespace()) {
                 flushToken()
                 continue
             }
             if (c.isLetter()) {
-                letters++
-                if (engToJamo(c) != null) mappable++
-                tok.append(c.lowercaseChar())
+                anyLetter = true
+                tokLetters.append(c.lowercaseChar())
+                if (engToJamo(c) != null) tokMappable++
             }
+            tok.append(c)
         }
         flushToken()
-        if (letters == 0 || mappable == 0) return Analysis(0f, input)
-        if (sawToken && allStop) return Analysis(0f, input)
-        val mapRatio = mappable.toFloat() / letters
+        if (!anyLetter) return Analysis(0f, input)
 
-        val converted = convertEngToKor(input)
-        var syllables = 0
-        var looseJamo = 0
-        for (ch in converted) {
-            val code = ch.code
-            when {
-                code in HANGUL_BASE..HANGUL_LAST -> syllables++
-                code in COMPAT_JAMO_START..COMPAT_JAMO_END -> looseJamo++
+        // 영어 상용어 억제: 두벌식에서 자음-모음-자음 배열이 되는 흔한 영단어는 한글로 "완벽히"
+        // 조합돼(the→솓, and→뭉, with→쟈소 …) 조합률만으로는 100% 가 나온다. 구조 신호로는
+        // 진짜 한영타와 구분되지 않으므로 토큰이 상용어 사전에 정확히 일치하면 그 토큰은 후보에서
+        // 제외한다(혼합 선택 "dkssud the" 에서 "the" 만 억제되고 "dkssud" 는 그대로 후보로 남음).
+        var best = 0f
+        for (t in tokens) {
+            val letters = t.letters.length
+            if (letters == 0 || t.mappable == 0) continue
+            if (t.letters in ENGLISH_STOPWORDS) continue
+            val mapRatio = t.mappable.toFloat() / letters
+            val convertedTok = convertEngToKor(t.text)
+            var syllables = 0
+            var looseJamo = 0
+            for (ch in convertedTok) {
+                val code = ch.code
+                when {
+                    code in HANGUL_BASE..HANGUL_LAST -> syllables++
+                    code in COMPAT_JAMO_START..COMPAT_JAMO_END -> looseJamo++
+                }
             }
+            val units = syllables + looseJamo
+            if (units == 0) continue
+            val composeRatio = syllables.toFloat() / units
+            val conf = composeRatio * mapRatio
+            if (conf > best) best = conf
         }
-        val units = syllables + looseJamo
-        if (units == 0) return Analysis(0f, converted)
-        val composeRatio = syllables.toFloat() / units
-        return Analysis(composeRatio * mapRatio, converted)
+        if (best == 0f) return Analysis(0f, input)
+        val converted = convertEngToKor(input) // 최종 반환값(교체용) — 한글은 그대로 보존됨
+        return Analysis(best, converted)
     }
 
     /** 입력에 완성형 한글 음절 또는 조합되지 못한 호환 자모가 하나라도 있으면 true. */
@@ -225,10 +350,18 @@ object HangulConverter {
      * [analyze]와 반대로 강한 신호가 없다: [convertKorToEng] 는 완성형 한글 음절이면 항상 어떤
      * 알파벳으로 변환되므로(조합 성공/실패라는 구분 자체가 없음), "그 결과가 실제로 의도된 영어
      * 단어인가"는 조합만으로 알 수 없다. 그래서 최대한 보수적으로 판정한다: 변환 결과의 모든
-     * 토큰(공백으로 나눈 조각, [analyze]의 상용어 토큰화와 동일한 방식)이 [ENGLISH_STOPWORDS]
+     * 토큰(공백으로 나눈 조각, [analyze]의 상용어 토큰화와 동일한 방식)이 [REVERSE_TYPO_WORDS]
      * 사전에 정확히 일치할 때만 신뢰도 1.0 을 준다. 사전에 없는 단어는 절대 감지하지 않아(미탐
      * 증가) 오탐을 원천 차단한다 — "영문을 읽던 중 칩이 튀어나오는 오탐 비용이 더 크다"는
      * 이 앱의 기존 원칙과 같은 트레이드오프.
+     *
+     * ⚠️ 정방향의 `ENGLISH_STOPWORDS`(짧고 흔한 기능어까지 포함해 일부러 넓게 잡음)를 그대로
+     * 재사용했다가 실제 한국어 말뭉치(네이버 영화리뷰 20만 문장) 대량 검증에서 `재가`→`work`,
+     * `쟤가`→`wOrk` 같은 흔한 표현이 오탐되는 걸 발견했다(2026-09). 두 방향은 위험 프로파일이
+     * 반대다 — 정방향은 사전이 넓을수록 안전(진짜 한영타를 더 많이 억제해서 놓치는 리스크만
+     * 있음)하지만, 역방향은 사전이 넓을수록 위험(사전 단어와 우연히 일치하는 흔한 한글이
+     * 늘어남)하다. 그래서 역방향은 실제로 흔히 오타로 나오는 아주 짧은 단어만 담은 별도의
+     * 좁은 화이트리스트를 쓴다(확장 시 반드시 대량 말뭉치로 재검증할 것).
      */
     fun analyzeReverse(input: String): Analysis {
         val converted = convertKorToEng(input)
@@ -239,7 +372,7 @@ object HangulConverter {
         fun flushToken() {
             if (tok.isEmpty()) return
             sawToken = true
-            if (allMatch && tok.toString() !in ENGLISH_STOPWORDS) allMatch = false
+            if (allMatch && tok.toString() !in REVERSE_TYPO_WORDS) allMatch = false
             tok.setLength(0)
         }
         for (c in converted) {

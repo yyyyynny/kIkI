@@ -91,7 +91,8 @@ class HangulConverterTest {
         val words = listOf(
             "the", "and", "for", "with", "when", "then", "they", "them", "than",
             "work", "down", "such", "also", "their", "who", "did", "she", "form",
-            "go", "do", "to", "so", "an", "am", "hello"
+            "go", "do", "to", "so", "an", "am", "hello",
+            "sp" // 대량 fuzz 검증(빈도 상위 9,894단어)에서 실제 오탐으로 발견돼 추가(2026-09)
         )
         for (w in words) {
             assertEquals(w, 0f, HangulConverter.detectEnglishToKorean(w), 0.0001f)
@@ -101,14 +102,55 @@ class HangulConverterTest {
         assertEquals(0f, HangulConverter.detectEnglishToKorean("the and for"), 0.0001f) // 다중 토큰
     }
 
-    /** 억제 목록이 진짜 한영타까지 삼키지 않는지(단음절 교정 포함). */
+    /**
+     * 억제 목록이 진짜 한영타까지 삼키지 않는지(단음절 교정 포함).
+     * ⚠️ "sp"는 원래 이 목록에 있었으나, 대량 fuzz 검증(빈도 상위 영어 단어 9,894개)에서 실제
+     * 오탐으로 발견돼 [ENGLISH_STOPWORDS_FREQUENT] 에 추가되며 제거됐다(2026-09) — CLAUDE.md 에
+     * 이미 기록된 "상용어와 형태가 겹치는 단음절 한영타(go=해, to=새, did=양 …)는 자동 제안이
+     * 안 뜬다" 트레이드오프의 새 사례. 아래 [detect_commonEnglishWords_suppressedToZero] 에서
+     * "sp" 가 0 으로 억제됨을 고정했다.
+     */
     @Test
     fun detect_hangulTyped_notSuppressedByStopwords() {
-        for (s in listOf("dkssud", "rkawk", "dlfjgrp", "ehs", "dho", "sp")) {
+        for (s in listOf("dkssud", "rkawk", "dlfjgrp", "ehs", "dho")) {
             assertTrue(s, HangulConverter.detectEnglishToKorean(s) >= 0.70f)
         }
         // 상용어가 섞여 있어도 전부가 상용어는 아니므로 억제되지 않는다.
         assertTrue(HangulConverter.detectEnglishToKorean("dkssud the") > 0f)
+    }
+
+    /**
+     * 대량 fuzz 검증(네이버 영화리뷰 문장 500개 + "dkssud")에서 발견한 회귀 고정(2026-09).
+     * 전체 선택을 하나로 합쳐 판정하면, 진짜 한영타 옆의 다른 라틴 조각(다른 두문자어·영단어·
+     * URL 등)의 조합 실패가 신호를 희석시켜 임계값 밑으로 떨어졌다(500건 중 31건 미탐). 토큰별
+     * 개별 판정 + 최댓값 채택으로 수정 — 아래는 그 실패 샘플 중 일부를 고정한 것.
+     */
+    @Test
+    fun analyze_typoNextToOtherLatinTokens_stillDetected() {
+        val threshold = 0.70f
+        val cases = listOf(
+            "유치한 SF액션물. 셀마 블레어만 기억에 남음 dkssud",
+            "우리나라 TV드라마가 3배는 낫다.. dkssud",
+            "dvd방에서 보다가 졸려서 나옴 dkssud",
+            "THE BEST EVER dkssud",
+            "well made movie. dkssud",
+        )
+        for (c in cases) {
+            val result = HangulConverter.analyze(c)
+            assertTrue("$c -> conf=${result.confidence}", result.confidence >= threshold)
+            assertTrue(c, result.converted.endsWith("안녕"))
+        }
+    }
+
+    /**
+     * 위 수정의 부작용으로 새로 발견한 오탐 고정(2026-09): 숫자가 바로 붙은 짧은 단위 약어
+     * ("1cm")는 스톱워드 비교용 토큰 텍스트가 "1cm"(사전엔 "cm"만 있음)가 되어 억제가 무력화됐다.
+     * 토큰의 글자만 모은 별도 버퍼로 스톱워드를 비교하도록 수정.
+     */
+    @Test
+    fun analyze_unitAbbreviationWithDigit_notFalsePositive() {
+        assertEquals(0f, HangulConverter.detectEnglishToKorean("1cm"), 0.0001f)
+        assertEquals(0f, HangulConverter.detectEnglishToKorean("급소를 1cm만 비껴가도 산다."), 0.0001f)
     }
 
     // ---------------------------------------------------------------------
