@@ -57,80 +57,21 @@ object HangulConverter {
     )
 
     /**
-     * 실사용 빈도 상위 영어 단어(Google 웹 말뭉치 상위 1만 단어, google-10000-english) 대량
-     * 검증에서 [ENGLISH_STOPWORDS_BASE] 만으로는 오탐(70% 이상 오판)이 나온 626개(2026-09).
-     * "city"/"video"/"check"/"dog"/"wow" 처럼 극히 일상적인 단어까지 걸릴 정도로 심각해
-     * (627/9894 ≈ 6.3%) 기본 목록을 크게 확장했다 — 완전한 해결은 아니지만(1만 단어 밖은 여전히
-     * 위험) 실사용 빈도 기준으로는 큰 폭의 개선이다. 확장 시 반드시 같은 방식(빈도 상위 목록
-     * 대량 검증)으로 재검증할 것.
+     * [TypoLanguageModel] 이 통계로 잡지 못하는 잔여 예외 — 전부 **기술 약어**다. 대량 검증에서
+     * 모델 임계값을 넘겨 새는 것이 이 8개뿐이었다(라틴 3글자 이상 기준). 두벌식으로 치면 그럴듯한
+     * 한글이 되면서 영어 글자 배열로도 자연스러워 통계가 갈리는, 본질적으로 모호한 경우다.
+     *
+     * ⚠️ 2026-09 이전에는 이 자리에 대량 검증으로 손수 추출한 626개 목록
+     * (`ENGLISH_STOPWORDS_FREQUENT`)이 있었다. 오탐이 나올 때마다 단어를 찾아 추가하는 방식이라
+     * 목록이 끝없이 커지는 문제가 있었는데, 우도비 모델 도입으로 그 626개 중 619개가 통계만으로
+     * 억제돼 목록을 지웠다 — 새 오탐이 나와도 대부분 모델이 이미 처리하므로 여기에 손으로 추가할
+     * 일은 드물어야 한다(추가하기 전에 먼저 모델 점수를 확인할 것).
      */
-    private val ENGLISH_STOPWORDS_FREQUENT: Set<String> = setOf(
-        "ab", "abc", "abraham", "abs", "absent", "ah", "ai", "aid", "air", "airplane",
-        "aj", "ak", "aka", "al", "ala", "alabama", "alan", "alarm", "alaska", "alexandria",
-        "algorithm", "alt", "although", "alto", "always", "amd", "amend", "amendment", "amendments", "american",
-        "americans", "ana", "anaheim", "analysis", "analytical", "anchor", "ancient", "andale", "andy", "angel",
-        "angela", "angels", "angle", "angry", "ant", "anti", "antigua", "antique", "antiques", "antivirus",
-        "anxiety", "ap", "apache", "apartment", "appendix", "approach", "approval", "apr", "apt", "atlantic",
-        "au", "auckland", "aud", "audi", "audience", "audit", "auditor", "aug", "aus", "authentic",
-        "author", "authorities", "authority", "auto", "autos", "aye", "bandwidth", "beneficial", "brisbane", "british",
-        "britney", "broadband", "canadian", "capacity", "cb", "cbs", "celebrity", "century", "ch", "chair",
-        "chairman", "chan", "channel", "channels", "chaos", "chapel", "charity", "charm", "charms", "cheap",
-        "check", "checks", "chem", "chen", "cheque", "chevy", "chicken", "cho", "chorus", "chosen",
-        "chris", "christian", "christianity", "christians", "christmas", "chrysler", "ci", "cia", "ciao", "cir",
-        "circle", "circus", "cisco", "citizen", "citizens", "city", "civic", "cj", "cl", "clan",
-        "clarity", "clark", "clarke", "classical", "clay", "clean", "clerk", "cleveland", "cm", "cms",
-        "cn", "co", "coach", "coal", "cocktail", "cod", "coleman", "confident", "confidential", "confidentiality",
-        "confirm", "coral", "cork", "corn", "cornell", "cornwall", "corp", "corps", "cos", "cosmetic",
-        "cosmetics", "cow", "cp", "critical", "criticism", "crucial", "cu", "cultural", "currency", "cursor",
-        "curtis", "custody", "cut", "cycle", "db", "density", "dependent", "dh", "di", "diagnosis",
-        "dial", "dialogue", "diana", "diane", "diary", "dicke", "die", "diego", "difficulty", "dig",
-        "digit", "digital", "dir", "dirt", "dirty", "dis", "disco", "discovery", "dish", "disk",
-        "disks", "disney", "dispatch", "display", "displays", "disturbed", "div", "dividend", "dj", "dk",
-        "dl", "dm", "dna", "dns", "doc", "dock", "doctor", "document", "dod", "doe",
-        "dog", "dos", "dot", "dow", "downtown", "dozen", "dozens", "dp", "du", "dual",
-        "duck", "due", "durham", "dutch", "duty", "ebay", "editorial", "editorials", "eh", "eight",
-        "el", "electoral", "element", "elementary", "elements", "elephant", "elvis", "em", "en", "end",
-        "endif", "endorsement", "enforcement", "eng", "england", "english", "enhancement", "enquiry", "ent", "entirely",
-        "entities", "entitled", "entity", "entrepreneur", "entry", "environmental", "eos", "ep", "epa", "eu",
-        "eugene", "eur", "euro", "euros", "expansys", "eye", "fairfield", "february", "fi", "field",
-        "fifth", "fifty", "fig", "fight", "filename", "financial", "firm", "firms", "fish", "fisheries",
-        "fit", "fix", "fl", "flame", "flash", "flavor", "flesh", "fm", "fo", "foam",
-        "focal", "focus", "fog", "foreign", "forgot", "forgotten", "fork", "formal", "formerly", "forms",
-        "fort", "forth", "forty", "foto", "fotos", "fox", "fp", "fu", "fuel", "fur",
-        "fuzzy", "fy", "gabriel", "gb", "gba", "gentleman", "ghana", "ghz", "gi", "giant",
-        "gif", "gift", "gig", "girl", "girlfriend", "girls", "gis", "given", "gl", "glen",
-        "gm", "gmc", "gmt", "goal", "goals", "gospel", "got", "goto", "gp", "gps",
-        "guam", "guardian", "guatemala", "guru", "handheld", "hepatitis", "malaysia", "naughty", "oriental", "orlando",
-        "paperback", "paperbacks", "penalty", "procurement", "productivity", "qld", "qualify", "quality", "quantities", "quantity",
-        "quantum", "que", "queen", "queens", "queensland", "query", "queue", "raleigh", "rb", "rh",
-        "ri", "rich", "rick", "rico", "rid", "risk", "risks", "rj", "rl", "rm",
-        "rn", "rna", "ro", "rock", "rocks", "rod", "romantic", "row", "royalty", "rp",
-        "rpg", "ru", "rug", "rural", "rush", "russia", "russian", "ruth", "ryan", "sandwich",
-        "sb", "scientific", "scotland", "scottish", "sensitivity", "sh", "shadow", "shake", "shame", "shanghai",
-        "shape", "shark", "sharp", "sheep", "sheffield", "shelf", "sherman", "shock", "shoe", "short",
-        "shot", "shown", "si", "sic", "sick", "sie", "siemens", "sig", "sight", "sigma",
-        "sign", "signal", "signals", "signature", "significant", "significantly", "signs", "sir", "sit", "sitemap",
-        "six", "sixth", "sk", "sl", "sleep", "sleeps", "sm", "sms", "smtp", "sn",
-        "snake", "snap", "snapshot", "soa", "soap", "soc", "social", "societies", "society", "socks",
-        "sofa", "soft", "softball", "sorry", "sort", "southern", "sox", "sp", "spa", "spam",
-        "span", "spanish", "spatial", "speak", "speaks", "special", "specials", "specialties", "specialty", "specific",
-        "specifics", "specified", "specifies", "specify", "spend", "spent", "sperm", "spiritual", "spirituality", "spray",
-        "su", "subsidiary", "sudan", "sue", "sufficient", "sufficiently", "sur", "surgical", "surname", "surprise",
-        "survival", "survivor", "survivors", "susan", "sydney", "synthesis", "synthetic", "syria", "sys", "systematic",
-        "tb", "tba", "th", "thai", "thailand", "theme", "theorem", "theoretical", "theories", "theory",
-        "therapeutic", "thermal", "thesaurus", "thesis", "thorough", "through", "throw", "thrown", "thru", "ti",
-        "tie", "tight", "tissue", "titans", "title", "tm", "tn", "today", "toe", "toronto",
-        "total", "totals", "tourism", "tournament", "town", "towns", "toxic", "tp", "triangle", "tu",
-        "tue", "turkey", "turkish", "turn", "turns", "turtle", "tutorial", "tutorials", "ty", "uruguay",
-        "vb", "venezuela", "vhs", "vi", "via", "vic", "victor", "victoria", "victorian", "victory",
-        "vid", "video", "videos", "vietnam", "viral", "virtual", "virtue", "virus", "visit", "visitor",
-        "visitors", "visual", "vital", "vocal", "vocals", "vp", "wb", "whale", "wheel", "wheels",
-        "wi", "width", "wifi", "wish", "wit", "witch", "wm", "wma", "wn", "works",
-        "workshop", "worldwide", "worm", "worn", "worry", "worth", "wow", "wp", "wu", "wy",
-        "xhtml", "xi", "xl", "xml", "xp", "zu", "zus"
+    private val ENGLISH_TECH_ABBREVIATIONS: Set<String> = setOf(
+        "apr", "dna", "dns", "eos", "ghz", "rpg", "sms", "smtp"
     )
 
-    private val ENGLISH_STOPWORDS: Set<String> = ENGLISH_STOPWORDS_BASE + ENGLISH_STOPWORDS_FREQUENT
+    private val ENGLISH_STOPWORDS: Set<String> = ENGLISH_STOPWORDS_BASE + ENGLISH_TECH_ABBREVIATIONS
 
     /**
      * [analyzeReverse] 전용 화이트리스트(정방향의 [ENGLISH_STOPWORDS] 와 별개 — 그 이유는
@@ -139,97 +80,6 @@ object HangulConverter {
      * 처럼 짧고 흔한 기능어를 넣으면 `재가`/`새`/`내` 같은 흔한 한글과 우연히 충돌한다.
      */
     private val REVERSE_TYPO_WORDS: Set<String> = setOf("god", "sos")
-
-    /**
-     * [analyze] 안전망: 스톱워드 사전에 아직 없는 영어 단어를 더 이상 손으로 하나씩 찾아
-     * 추가하지 않고 통계로 걸러내기 위한 문자 bigram(연속 두 알파벳) 언어 모델(2026-09 추가).
-     *
-     * **문제의식**: [ENGLISH_STOPWORDS] 는 정확 일치 방식이라 근본적으로 "본 적 있는 단어"만
-     * 막을 수 있다 — 대량 검증(2026-09)에서 스톱워드를 아무리 보강해도 전체 영어 사전(37만 단어)
-     * 기준으로는 여전히 ~4%가 스톱워드 밖에서 오탐됐다(위 [ENGLISH_STOPWORDS_FREQUENT] 문서
-     * 참조). 오탐이 나올 때마다 그 단어를 찾아 목록에 추가하는 건 무한히 반복되는 데다, 코드에
-     * 나열된 예외가 계속 늘어나 유지보수 부담도 커진다.
-     *
-     * **원리**: 영어 사전 37만 단어(dwyl/english-words)에서 계산한 알파벳 26×26 bigram
-     * 로그확률표(라플라스 스무딩)를 내장해, 토큰을 이루는 연속 두 글자들의 평균 로그확률
-     * ("영어스러움" 점수)이 임계값 이상이면 실제 영단어로 보고 억제한다. `dkssud`(=안녕) 같은
-     * 진짜 한영타는 `dk`/`ks`/`su` 처럼 영어에서 드문 자음-자음/모음-자음 조합이 많아 점수가
-     * 낮은 반면(-10~-13 대), `work`/`city`/`video` 같은 실제 단어는 `th`/`he`/`in`/`on` 처럼
-     * 흔한 조합이 많아 높다(-7~-9 대). 사전 멤버십(있다/없다)과 달리 **한 번도 본 적 없는
-     * 단어에도 일반화**되므로, 새 오탐이 나올 때마다 스톱워드를 추가해야 하는 부담을 크게 줄인다.
-     *
-     * ⚠️ 기존 [ENGLISH_STOPWORDS] 를 **대체하지는 않는다** — 대량 검증에서 `work`/`wow`/
-     * `keyboard`/`sp` 처럼 이미 알려진 고위험 단어 상당수는 이 통계 모델의 안전한 임계값에서도
-     * 걸러지지 않았다(빈도 상위 위험 단어 627개 중 임계값 -8.5 기준 63.2%만 포착 — 나머지는
-     * 실제 영어 단어치고는 흔치 않은 자모 배열이라 통계만으로는 못 잡는다). 반대로 이 모델은
-     * **사전 밖의 미지의 단어**에는 강하다(전체 사전 37만 단어 기준 스톱워드로도 못 잡는 잔여
-     * 15,546개 중 75.9%를 같은 임계값에서 추가로 포착). 그래서 정확 일치 스톱워드(고정밀,
-     * 알려진 단어 전용)와 이 통계 안전망(일반화, 미지의 단어용)을 **OR 조건**으로 함께 쓴다 —
-     * 토큰이 둘 중 하나라도 걸리면 억제한다.
-     *
-     * 임계값 [ENGLISH_BIGRAM_THRESHOLD](-8.5)는 네이버 영화리뷰 20만 문장에서 뽑은 실제 한글
-     * 단어 34만개를 [convertKorToEng] 로 되돌린 "진짜 한영타" 샘플로 보정했다 — 이 임계값에서
-     * 진짜 한영타 오억제(미탐 증가)는 0.29%(1004/347595)에 그친다. 이미 이 앱이 감수하고 있는
-     * "상용어와 형태가 겹치는 단음절 한영타(go=해, to=새, sp=네 …)는 자동 제안이 안 뜬다"는
-     * 정확 일치 스톱워드의 트레이드오프보다도 훨씬 낮은 비용이다.
-     */
-    private const val ENGLISH_BIGRAM_THRESHOLD = -8.5
-
-    // bigram(a,b) 하나당 로그확률(log2, 라플라스 스무딩)을 [ENGLISH_BIGRAM_LEVELS]단계로
-    // 양자화해 인쇄 가능 ASCII 문자 하나에 대응시킨 표. 26×26=676칸, a-a, a-b, …, z-z 순
-    // (행 우선, 첫 글자가 바깥 루프). Kotlin 문자열 리터럴 이스케이프가 필요한 " \ $ 는 제외한
-    // 33~126 범위 91개 문자만 사용— 그래서 [ENGLISH_BIGRAM_LEVELS]=91. 생성: 영어 사전 37만
-    // 단어(dwyl/english-words)의 모든 연속 두 글자를 세어 라플라스 스무딩(+1) 확률을 구하고,
-    // 그 log2 값을 이 범위에 선형 양자화했다(원본 확률표는 코드에 두지 않음 — 이 문자열이
-    // 유일한 표현이며 [decodeBigramLogProb] 로 역산한다).
-    private const val ENGLISH_BIGRAM_TABLE =
-        "Pqsnkbm_kRezpzSoRxszjfa^d_m`SUnKGMnP@pOLlN6k_UhKF0W6u=cCr;9tp!kiCOvAMm[om,<)fBmSNauR[UtQBeW_mM8i" +
-        "dKfSU,aAreqxlgh_hSXtqzjmZ~{shfci`UfCAAie=Al58gBBj?!dR^g,A.[3mN@JpJbdm8@jZdiE)l`Ng2N!b8qQJKtPFIr9" +
-        "EaZ[rM8gZcd@T!m;uhyrqklTWKdrm}ulUlyvcmKYHm_,26[!,5T30.0:[.!7.._),!4!cPDEmN@Uh=K]PY[K)SaPU?Q)X.vY" +
-        "^cy[ZPx<Zt_]t_;Mefk]Q6tCthHHtO@Gs;@Sf[pl3JaIgGH)d9t_qrxfw_uVba`gtdUbrwfaZIaVfiomdbo[jLats{lrRwrq" +
-        "tkhb[YpNKHsMFso<FlOVpf0rghg5M)a)<!!,3)),;!!,),0,0325j,,!)!yejjz_fbyMadkhxfKjpmk`Z8lJnUnPuUPpsFag" +
-        "ldnm[QuyoJ_!e<uVaN{YPs|EEfZXuS<tjjlG]4lRgihff[cIhGVqnw[iAqtnFU?TKQi)46s!5)k!3;.8d.!I>5UB,!K0iPFP" +
-        "fKC_f2MWK[fI,YXLI,G!L<[AW;]A8Nb!,D@8Y[88H]Q5@6Y)bUc_`OZN_6Ggcc`g2bfbOARN6Oc<:<k.69c,9P98a:0799K6" +
-        ";!TV"
-    private const val ENGLISH_BIGRAM_LOG2_LO = -21.575549864188368
-    private const val ENGLISH_BIGRAM_LOG2_HI = -5.5498046909575915
-    private const val ENGLISH_BIGRAM_LEVELS = 91
-
-    // ENGLISH_BIGRAM_TABLE 문자 → 양자화 단계(0..90). 코드포인트 33..126 중 " \ $ 를 건너뛴
-    // 순번이 곧 단계 번호(표를 만들 때 쓴 순서와 동일).
-    private val BIGRAM_DECODE_STEP: IntArray = IntArray(127).also { arr ->
-        var step = 0
-        for (code in 33..126) {
-            val ch = code.toChar()
-            if (ch == '"' || ch == '\\' || ch == '$') continue
-            arr[code] = step
-            step++
-        }
-    }
-
-    private fun decodeBigramLogProb(tableChar: Char): Double {
-        val step = BIGRAM_DECODE_STEP[tableChar.code]
-        val frac = step.toDouble() / (ENGLISH_BIGRAM_LEVELS - 1)
-        return ENGLISH_BIGRAM_LOG2_LO + frac * (ENGLISH_BIGRAM_LOG2_HI - ENGLISH_BIGRAM_LOG2_LO)
-    }
-
-    /**
-     * 소문자 알파벳 문자열의 평균 bigram 로그확률("영어스러움" 점수). 알파벳이 2개 미만이면
-     * 신호가 없으므로 null(짧은 토큰은 이 안전망을 적용하지 않고 정확 일치 스톱워드에만 맡김).
-     */
-    private fun englishnessScore(lettersLower: String): Double? {
-        var sum = 0.0
-        var n = 0
-        for (i in 0 until lettersLower.length - 1) {
-            val a = lettersLower[i]
-            val b = lettersLower[i + 1]
-            if (a !in 'a'..'z' || b !in 'a'..'z') continue
-            val idx = (a - 'a') * 26 + (b - 'a')
-            sum += decodeBigramLogProb(ENGLISH_BIGRAM_TABLE[idx])
-            n++
-        }
-        return if (n == 0) null else sum / n
-    }
 
     /** 소문자 QWERTY → 한국어 자모 (두벌식) */
     private val ENG_TO_JAMO: Map<Char, Char> = mapOf(
@@ -366,19 +216,27 @@ object HangulConverter {
         // 비율 계산용) + 매핑 가능 글자 수. [text] 와 [letters] 를 분리해 두는 이유: "1cm" 처럼
         // 숫자가 붙으면 원문 그대로는 사전(cm)과 일치하지 않아 억제가 무력화된다(2026-09 발견
         // — "1cm" 오탐).
-        data class LatinToken(val text: String, val letters: String, val mappable: Int)
+        data class LatinToken(
+            val text: String,
+            val letters: String,
+            val mappable: Int,
+            val allUpper: Boolean,
+        )
 
         val tokens = mutableListOf<LatinToken>()
         val tok = StringBuilder()
         val tokLetters = StringBuilder()
         var tokMappable = 0
+        var tokUpper = 0
         var anyLetter = false
         fun flushToken() {
             if (tok.isEmpty()) return
-            tokens.add(LatinToken(tok.toString(), tokLetters.toString(), tokMappable))
+            val letters = tokLetters.toString()
+            tokens.add(LatinToken(tok.toString(), letters, tokMappable, letters.isNotEmpty() && tokUpper == letters.length))
             tok.setLength(0)
             tokLetters.setLength(0)
             tokMappable = 0
+            tokUpper = 0
         }
         for (c in input) {
             val code = c.code
@@ -390,6 +248,7 @@ object HangulConverter {
             if (c.isLetter()) {
                 anyLetter = true
                 tokLetters.append(c.lowercaseChar())
+                if (c.isUpperCase()) tokUpper++
                 if (engToJamo(c) != null) tokMappable++
             }
             tok.append(c)
@@ -397,34 +256,24 @@ object HangulConverter {
         flushToken()
         if (!anyLetter) return Analysis(0f, input)
 
-        // 영어 상용어 억제: 두벌식에서 자음-모음-자음 배열이 되는 흔한 영단어는 한글로 "완벽히"
-        // 조합돼(the→솓, and→뭉, with→쟈소 …) 조합률만으로는 100% 가 나온다. 구조 신호로는
-        // 진짜 한영타와 구분되지 않으므로 토큰이 상용어 사전에 정확히 일치하면 그 토큰은 후보에서
-        // 제외한다(혼합 선택 "dkssud the" 에서 "the" 만 억제되고 "dkssud" 는 그대로 후보로 남음).
+        // 토큰마다 [TypoLanguageModel] 우도비로 판정하고 그 중 최댓값을 선택 전체의 신뢰도로
+        // 쓴다 — 혼합 선택("dkssud the")에서 "the" 는 낮은 점수로 자연히 탈락하고 "dkssud" 만
+        // 후보로 남는다. 스톱워드 정확 일치는 이제 안전망일 뿐이다(아래 [ENGLISH_STOPWORDS] 주석).
         var best = 0f
         for (t in tokens) {
             val letters = t.letters.length
-            if (letters == 0 || t.mappable == 0) continue
+            if (letters < TypoLanguageModel.MIN_LATIN_LENGTH || t.mappable == 0) continue
             if (t.letters in ENGLISH_STOPWORDS) continue
-            // 사전 밖의 미지의 영단어 안전망(englishnessScore 문서 참조) — 정확 일치 스톱워드와
-            // OR 조건.
-            val bigramScore = englishnessScore(t.letters)
-            if (bigramScore != null && bigramScore >= ENGLISH_BIGRAM_THRESHOLD) continue
-            val mapRatio = t.mappable.toFloat() / letters
+            // 전부 대문자인 토큰은 영어 약어(SNS/DLC/EJSM …)로 본다 — 한국어 문장 5천 개 검증에서
+            // 남은 오탐이 전부 이 형태였다. 두벌식에서 Shift 는 쌍자음/복합모음 7개에만 쓰여
+            // 진짜 한영타가 통째로 대문자가 되는 일은 사실상 없다(CapsLock 입력은 나머지 글자가
+            // 아예 매핑되지 않아 어차피 조합에 실패한다).
+            if (t.allUpper) continue
             val convertedTok = convertEngToKor(t.text)
-            var syllables = 0
-            var looseJamo = 0
-            for (ch in convertedTok) {
-                val code = ch.code
-                when {
-                    code in HANGUL_BASE..HANGUL_LAST -> syllables++
-                    code in COMPAT_JAMO_START..COMPAT_JAMO_END -> looseJamo++
-                }
-            }
-            val units = syllables + looseJamo
-            if (units == 0) continue
-            val composeRatio = syllables.toFloat() / units
-            val conf = composeRatio * mapRatio
+            val score = TypoLanguageModel.score(t.letters, convertedTok) ?: continue
+            // 매핑 불가 글자가 섞였으면(자판에 없는 문자) 그만큼 확신을 낮춘다.
+            val mapRatio = t.mappable.toFloat() / letters
+            val conf = TypoLanguageModel.confidence(score) * mapRatio
             if (conf > best) best = conf
         }
         if (best == 0f) return Analysis(0f, input)
