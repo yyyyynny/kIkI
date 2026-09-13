@@ -266,8 +266,9 @@ object HangulConverter {
 > (복합 중성 `ㅘ/ㅚ/ㅢ`, 복합 종성 `ㄺ/ㄼ/ㅄ`, 연음·도깨비불, 역변환 `convertKorToEng` 포함).
 > 안드로이드 의존성이 없는 순수 Kotlin 이라 JVM 단위 테스트로 검증된다(`HangulConverterTest`).
 > 2026-09 부터 `analyzeReverse()`(한글→영어 방향, `god`→`행` 류를 사전 완전일치로만 감지)도
-> 추가돼 `TextSelectionMonitor` 가 선택 문자 구성에 따라 정방향/역방향을 골라 쓴다
-> (CLAUDE.md Feature 4 참조).
+> 추가돼 `TextSelectionMonitor.pickAnalysis()` 가 정방향을 먼저 보고, 약하고 한글이 섞여
+> 있을 때만 역방향도 계산해 더 나은 쪽을 쓴다(혼합 선택도 놓치지 않기 위함 —
+> CLAUDE.md Feature 4 참조).
 
 ### TextSelectionMonitor 감지 로직
 

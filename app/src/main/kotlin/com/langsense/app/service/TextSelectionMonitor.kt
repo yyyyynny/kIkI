@@ -12,8 +12,9 @@ import com.langsense.app.util.HangulConverter
  * 건드리지 않으며(recycle 은 호출자 책임) false.
  *
  * 비용 원칙: 선택 변경은 드래그 중 초당 수십 회 오고 전부 메인 스레드다. 전체 텍스트를 복사하지
- * 않고(`CharSequence` 로 받아 선택 구간만 `subSequence`), 변환은 [HangulConverter.analyze] 로 1회만,
- * 전체 텍스트 `toString()` 은 실제로 칩을 띄우는 순간에만 한다.
+ * 않고(`CharSequence` 로 받아 선택 구간만 `subSequence`), 전체 텍스트 `toString()` 은 실제로 칩을
+ * 띄우는 순간에만 한다. 방향 판정([pickAnalysis])은 대부분 [HangulConverter.analyze] 1회로 끝나고,
+ * 정방향이 약하고 한글이 섞여 있을 때만 [HangulConverter.analyzeReverse] 도 계산한다.
  */
 class TextSelectionMonitor(
     private val confidencePercentProvider: () -> Int,
@@ -45,15 +46,9 @@ class TextSelectionMonitor(
         val selected = text.subSequence(selStart, selEnd).toString()
         if (selected.isBlank()) return false
 
-        // 선택에 한글이 섞여 있으면 "한글 자판으로 잘못 친 영어"(역방향)로, 아니면 기존처럼
-        // "영어 자판으로 잘못 친 한국어"(정방향)로 판정한다 — 한 선택에 양방향을 다 계산하는
-        // 이중 변환을 피한다(저사양 원칙: 판정은 1회 변환만).
-        val analysis = if (HangulConverter.containsHangul(selected)) {
-            HangulConverter.analyzeReverse(selected)
-        } else {
-            HangulConverter.analyze(selected)
-        }
-        if (analysis.confidence * 100f < confidencePercentProvider()) return false
+        val threshold = confidencePercentProvider() / 100f
+        val analysis = pickAnalysis(selected, threshold)
+        if (analysis.confidence < threshold) return false
         if (analysis.converted == selected) return false // 변환 결과가 동일하면 의미 없음
 
         onDetected(node, text.toString(), selStart, selEnd, analysis.converted)
@@ -65,5 +60,26 @@ class TextSelectionMonitor(
 
         /** 한영타 교정이 의미 있는 선택 길이 상한(문자). 단어~짧은 문장 범위를 넉넉히 덮는다. */
         const val MAX_SELECTION = 200
+
+        /**
+         * 정방향/역방향 중 최종 판정을 고르는 순수 함수(안드로이드 의존성 없음 — 단위 테스트 대상).
+         *
+         * 정방향(영→한, [HangulConverter.analyze])을 먼저 본다 — 이 함수는 이미 섞인 텍스트를 잘
+         * 처리한다(`"저 dkssud"` 를 선택하면 이미 있는 한글 "저"는 그대로 두고 "dkssud" 만 조합
+         * 판정해 `"저 안녕"` 을 제안). 정방향이 [threshold] 에 못 미치고 선택에 한글이 섞여 있을
+         * 때만 역방향(한→영, [HangulConverter.analyzeReverse])도 추가로 계산해 더 나은 쪽을 쓴다 —
+         * 대부분의 실제 선택(순수 한영타/순수 정상 한글)은 정방향 1회로 끝나 저사양 원칙(이중 변환
+         * 방지)을 지키면서, `god`→`행` 처럼 정방향이 못 잡는 순수 역방향 케이스도 커버한다.
+         *
+         * ⚠️ 한때 "선택에 한글이 있으면 무조건 역방향만, 없으면 정방향만" 으로 양자택일했는데,
+         * 이러면 `"저 dkssud"` 처럼 이미 정상 한글과 진짜 한영타가 섞인 선택에서 역방향(사전
+         * 완전일치라는 엄격한 조건)만 타 감지가 아예 안 되는 회귀였다(2026-09 발견·수정).
+         */
+        fun pickAnalysis(selected: String, threshold: Float): HangulConverter.Analysis {
+            val forward = HangulConverter.analyze(selected)
+            if (forward.confidence >= threshold || !HangulConverter.containsHangul(selected)) return forward
+            val reverse = HangulConverter.analyzeReverse(selected)
+            return if (reverse.confidence > forward.confidence) reverse else forward
+        }
     }
 }
