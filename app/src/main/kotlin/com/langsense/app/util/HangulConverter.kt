@@ -29,12 +29,13 @@ object HangulConverter {
     private const val COMPAT_JAMO_END = 0x318F
 
     /**
-     * 한영타 오탐 차단용 영어 상용어 목록([detectEnglishToKorean] 참조).
+     * 고빈도 영단어 안전망([analyze] 참조). 두벌식에서 모음키와 자음키가 번갈아 오는 영단어는
+     * 한글 음절로 100% 조합돼(the→솓, and→뭉, work→재가 …) 조합률만 보던 옛 판정이 최고
+     * 신뢰도를 주던 부류다.
      *
-     * 두벌식에서 모음키(y u i o p h j k l b n m)와 자음키가 번갈아 오는 영단어는 한글 음절로
-     * 100% 조합되어(the→솓, and→뭉, for→랙, with→쟈소, work→재가 …) 조합률 기반 판정이
-     * 최고 신뢰도를 준다. 길이·음절수 같은 구조 신호로는 진짜 한영타(dkssud=안녕)와 분리되지
-     * 않으므로, 고빈도 영단어를 어휘로 직접 배제한다.
+     * ⚠️ [TypoLanguageModel] 도입(2026-09) 이후로는 **주 방어가 아니다** — 검증에서 이 171개는
+     * 임계값 3.0 기준 단 하나도 모델을 통과하지 못했다(즉 목록이 없어도 전부 억제된다). 사용자가
+     * 설정에서 임계값을 크게 낮췄을 때를 위한 보험으로만 남겨 둔다.
      */
     private val ENGLISH_STOPWORDS_BASE: Set<String> = setOf(
         "a", "i", "an", "am", "as", "at", "be", "by", "do", "go", "he", "if", "in", "is", "it",
@@ -172,12 +173,9 @@ object HangulConverter {
     // ---------------------------------------------------------------------
 
     /**
-     * 한영타 신뢰도 (0.0 ~ 1.0).
-     *
-     * 입력 영문을 두벌식으로 변환했을 때 "완성형 한글 음절"이 얼마나 잘 조합되는지로 판정한다.
-     * - 매핑 가능한 영문자 비율 (실제 영단어는 자판 밖 글자가 거의 없지만, 핵심 신호는 조합률)
-     * - 조합 결과 중 완성형 음절 vs 조합 실패해 남은 낱자모 비율
-     * 실제 영어 단어는 모음/자음 배열이 한글 조합 규칙과 어긋나 낱자모가 많이 남으므로 낮게 나온다.
+     * 한영타 신뢰도 (0.0 ~ 1.0). 판정은 [TypoLanguageModel] 의 우도비 — "이건 실제 영어다" 와
+     * "이건 한글을 영문 자판에서 친 것이다" 두 가설을 함께 저울질한다. 자세한 근거와 성능은
+     * [analyze] 및 [TypoLanguageModel] 문서 참조.
      */
     fun detectEnglishToKorean(input: String): Float = analyze(input).confidence
 
@@ -188,27 +186,23 @@ object HangulConverter {
      * 한영타 판정 + 변환을 한 번에. 선택 변경 이벤트는 드래그 중 초당 수십 회 오고 전부 메인
      * 스레드에서 처리되므로, 정규식·중간 리스트·이중 변환 없이 단일 패스로 끝낸다.
      *
-     * ⚠️ 이미 완성형 한글/호환 자모인 문자는 신뢰도 계산(매핑 비율·조합 성공률·스톱워드 토큰화
-     * 전부)에서 제외한다(대량 검증으로 발견, 2026-09). 포함시켰을 때 세 가지 문제가 있었다:
-     * ① 긴 정상 한글 문장에 짧은 한영타 조각이 섞이면 전체 글자 수 대비 매핑 비율(`mapRatio`)이
-     * 희석돼 신뢰도가 임계값 밑으로 떨어져 감지를 놓친다("저 dkssud" 처럼 아주 짧을 때만 우연히
-     * 통과) ② 라틴 부분이 순수 상용어("work")뿐이어도 섞인 한글 토큰 때문에 "선택 전체가
-     * 상용어만은 아님" 판정이 돼 스톱워드 억제가 무력화된다 ③ (mapRatio 만 좁혔을 때 새로 발견)
-     * 긴 문장 속 진짜 영어 두문자어("SF", "OO", "CG")가 조합 실패(낱자모)해도, 이미 있던 한글
-     * 음절이 압도적으로 많아 조합 성공률(`composeRatio`)이 희석 없이 여전히 높게 나와 실제
-     * 오탐이 발생했다(네이버 영화리뷰 20만 문장 대량 검증). 그래서 한글이 아닌 문자만 이어붙인
-     * [latinOnly] 를 따로 만들어 매핑 비율·조합 성공률·스톱워드 토큰화를 **전부** 그 문자열
-     * 기준으로 계산한다 — 최종 [Analysis.converted] 만 원본 전체([convertEngToKor] 가 이미
-     * 한글을 보존)를 쓴다. ④ (①~③ 수정 뒤 대량 검증에서 새로 발견, 2026-09) 위 ③처럼 전체
-     * 선택을 하나로 합쳐 판정하면, 진짜 한영타 옆에 조합 실패하는 **다른** 라틴 조각(다른 두문자어
-     * "SF"/"TV"/"CG"/"OO", `dvd`, `ost`, `well made movie` 같은 여러 개의 진짜 영단어, URL 등)가
-     * 함께 있을 때 그 조각들의 조합 실패가 진짜 한영타 신호를 희석시켜 신뢰도가 임계값 밑으로
-     * 떨어진다(실제 문장 뒤에 `dkssud` 를 붙인 500건 검증 중 31건 미탐, 원인 규명). 이번엔 반대로
-     * 한 선택 안에 "여러 후보가 섞여 있을 수 있다"는 게 문제이므로, 라틴 조각을 공백/한글 경계로
-     * **토큰화**해 토큰마다 mapRatio·composeRatio·스톱워드 여부를 **개별** 계산하고 그 중
-     * 최댓값을 선택 전체의 신뢰도로 쓴다 — 진짜 한영타 토큰 하나만 있어도 다른 토큰들의 조합
-     * 실패에 묻히지 않는다(스톱워드 억제도 토큰 단위라 "선택 전체가 상용어로만 이뤄지면 0" 규칙이
-     * 자동으로 성립해 옛 `allStop` 전역 플래그가 불필요해졌다).
+     * 선택 전체를 한 덩어리로 보지 않고 **공백/한글 경계로 토큰화해 토큰마다 따로 판정한 뒤
+     * 최댓값**을 쓴다. 한 선택 안에 여러 후보가 섞일 수 있기 때문이다 — 진짜 한영타 옆에 다른
+     * 라틴 조각(두문자어 "SF"/"TV", `dvd`/`ost` 같은 실제 영단어, URL 등)이 있으면, 합쳐서 보던
+     * 시절엔 그 조각들 때문에 신호가 희석돼 감지를 놓쳤다(실제 문장 뒤에 `dkssud` 를 붙인 500건
+     * 중 31건 미탐 → 토큰별 판정으로 100% 감지, 2026-09).
+     *
+     * 토큰 하나의 판정은 [TypoLanguageModel.score] 의 우도비가 담당하고, 여기서는 그 모델이
+     * 구조적으로 약한 지점만 좁게 보완한다:
+     * - 라틴 3글자 미만([TypoLanguageModel.MIN_LATIN_LENGTH]) 토큰은 판정하지 않는다.
+     * - 전부 대문자인 토큰은 영어 약어(SNS/DLC/EJSM)로 본다.
+     * - 첫 글자 외 대문자는 두벌식 Shift(쌍자음·복합모음) 흔적이라 모델에 신호로 넘긴다.
+     * - 자판에 없는 글자가 섞인 만큼(mapRatio) 신뢰도를 낮춘다.
+     * - [ENGLISH_STOPWORDS] 정확 일치는 마지막 안전망(모델이 놓치는 소수 예외 전용).
+     *
+     * ⚠️ 이미 완성형 한글/호환 자모인 문자는 토큰화에서 경계로 취급해 판정에서 제외한다 —
+     * 포함시키면 긴 정상 한글 문장에 짧은 한영타 조각이 섞였을 때 신호가 묻힌다.
+     * [Analysis.converted] 만 원본 전체를 쓴다([convertEngToKor] 가 한글을 그대로 보존).
      */
     fun analyze(input: String): Analysis {
         // 라틴 토큰(공백/한글로 구분되는 조각) 하나 = 원문 텍스트([text], 구두점/숫자 포함 —
@@ -221,6 +215,8 @@ object HangulConverter {
             val letters: String,
             val mappable: Int,
             val allUpper: Boolean,
+            /** 첫 글자 외의 대문자 유무 — 두벌식 쌍자음/복합모음(Shift) 흔적. */
+            val innerUpper: Boolean,
         )
 
         val tokens = mutableListOf<LatinToken>()
@@ -228,15 +224,18 @@ object HangulConverter {
         val tokLetters = StringBuilder()
         var tokMappable = 0
         var tokUpper = 0
+        var tokInnerUpper = false
         var anyLetter = false
         fun flushToken() {
             if (tok.isEmpty()) return
             val letters = tokLetters.toString()
-            tokens.add(LatinToken(tok.toString(), letters, tokMappable, letters.isNotEmpty() && tokUpper == letters.length))
+            val allUpper = letters.isNotEmpty() && tokUpper == letters.length
+            tokens.add(LatinToken(tok.toString(), letters, tokMappable, allUpper, tokInnerUpper && !allUpper))
             tok.setLength(0)
             tokLetters.setLength(0)
             tokMappable = 0
             tokUpper = 0
+            tokInnerUpper = false
         }
         for (c in input) {
             val code = c.code
@@ -247,8 +246,11 @@ object HangulConverter {
             }
             if (c.isLetter()) {
                 anyLetter = true
+                if (c.isUpperCase()) {
+                    tokUpper++
+                    if (tokLetters.isNotEmpty()) tokInnerUpper = true // 첫 글자 대문자는 영어에서도 흔함
+                }
                 tokLetters.append(c.lowercaseChar())
-                if (c.isUpperCase()) tokUpper++
                 if (engToJamo(c) != null) tokMappable++
             }
             tok.append(c)
@@ -270,7 +272,7 @@ object HangulConverter {
             // 아예 매핑되지 않아 어차피 조합에 실패한다).
             if (t.allUpper) continue
             val convertedTok = convertEngToKor(t.text)
-            val score = TypoLanguageModel.score(t.letters, convertedTok) ?: continue
+            val score = TypoLanguageModel.score(t.letters, convertedTok, t.innerUpper) ?: continue
             // 매핑 불가 글자가 섞였으면(자판에 없는 문자) 그만큼 확신을 낮춘다.
             val mapRatio = t.mappable.toFloat() / letters
             val conf = TypoLanguageModel.confidence(score) * mapRatio
