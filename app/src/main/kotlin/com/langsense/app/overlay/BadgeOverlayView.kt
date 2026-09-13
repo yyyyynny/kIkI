@@ -4,10 +4,13 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
+import android.os.Handler
+import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import androidx.appcompat.widget.AppCompatTextView
 import kotlin.math.abs
@@ -16,6 +19,7 @@ import kotlin.math.roundToInt
 /**
  * 상시 언어 배지 (Feature 2). 화면 모서리에 현재 입력 언어를 항상 표시.
  * 드래그로 위치 변경 가능하며, 드래그 종료 시 위치를 콜백으로 저장한다.
+ * 길게 누르면(롱프레스) [onLongPress] 로 즉시 언어 전환 요청을 알린다(추가 기능, 2026-09).
  */
 @SuppressLint("ViewConstructor")
 class BadgeOverlayView(
@@ -23,6 +27,7 @@ class BadgeOverlayView(
     private val windowManager: WindowManager,
     private val params: WindowManager.LayoutParams,
     private val onTap: () -> Unit,
+    private val onLongPress: () -> Unit,
     private val onPositionSaved: (x: Int, y: Int) -> Unit
 ) : AppCompatTextView(context) {
 
@@ -31,6 +36,23 @@ class BadgeOverlayView(
     private var startX = 0
     private var startY = 0
     private var dragging = false
+
+    /** 롱프레스가 이미 발동됐으면 ACTION_UP 에서 탭(performClick)으로 또 처리하지 않는다. */
+    private var longPressTriggered = false
+    private val longPressHandler = Handler(Looper.getMainLooper())
+
+    /** 시스템 설정(접근성의 "터치 및 잡기 스타일" 등)을 존중해 하드코딩 대신 이 값을 쓴다.
+     * (static API — `ViewConfiguration.get(context)` 의 인스턴스 메서드가 아니다.) */
+    private val longPressTimeoutMs: Long
+        get() = ViewConfiguration.getLongPressTimeout().toLong()
+
+    private val longPressRunnable = Runnable {
+        if (!dragging) {
+            longPressTriggered = true
+            pulse()
+            runCatching { onLongPress() }
+        }
+    }
 
     init {
         gravity = Gravity.CENTER
@@ -49,6 +71,12 @@ class BadgeOverlayView(
         super.performClick()
         onTap()
         return true
+    }
+
+    /** 창이 떼어진 뒤(배지 숨김/서비스 정리) 예약된 롱프레스 콜백이 실행되지 않게 정리. */
+    override fun onDetachedFromWindow() {
+        longPressHandler.removeCallbacksAndMessages(null)
+        super.onDetachedFromWindow()
     }
 
     /**
@@ -141,25 +169,36 @@ class BadgeOverlayView(
                     startX = params.x
                     startY = params.y
                     dragging = false
+                    longPressTriggered = false
+                    longPressHandler.postDelayed(longPressRunnable, longPressTimeoutMs)
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - downRawX).roundToInt()
                     val dy = (event.rawY - downRawY).roundToInt()
-                    if (abs(dx) > touchSlop || abs(dy) > touchSlop) dragging = true
+                    if (!dragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                        dragging = true
+                        longPressHandler.removeCallbacks(longPressRunnable)
+                    }
                     params.x = clampX(startX + dx)
                     params.y = clampY(startY + dy)
                     runCatching { windowManager.updateViewLayout(this, params) }
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    // 드래그면 위치 저장, 단순 탭이면 간편 메뉴 열기.
-                    if (dragging) onPositionSaved(params.x, params.y) else performClick()
+                    longPressHandler.removeCallbacks(longPressRunnable)
+                    // 드래그면 위치 저장, 롱프레스가 이미 발동했으면 탭으로 또 처리하지 않는다,
+                    // 그 외 단순 탭이면 간편 메뉴 열기(또는 배지 탭 커스텀 동작).
+                    when {
+                        dragging -> onPositionSaved(params.x, params.y)
+                        !longPressTriggered -> performClick()
+                    }
                     true
                 }
                 // 드래그 중 시스템이 제스처를 가로채면 CANCEL 로 끝난다 — 여기서 저장하지 않으면
                 // 옮긴 위치가 유실돼 다음 표시 때 예전 자리로 돌아간다.
                 MotionEvent.ACTION_CANCEL -> {
+                    longPressHandler.removeCallbacks(longPressRunnable)
                     if (dragging) onPositionSaved(params.x, params.y)
                     dragging = false
                     true

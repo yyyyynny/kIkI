@@ -112,6 +112,20 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
   - 배경색·글씨색: 플래시와 동일한 공용 색 선택 UI(32색 팔레트 + #RRGGBB 입력) 재사용.
     배경은 `BADGE_BG_ALPHA`(0.8) 적용 → 기본값이면 기존 `#CC000000` 과 동일, 둥근 모서리 6dp.
 - 표시 내용: `한` / `EN` (기타 언어는 locale 앞 2자리 대문자) — ~~`日`~~ [일본어 비활성화]
+- **롱프레스 → 입력기 선택 창(2026-09 추가)**: 배지를 길게 누르면
+  `InputMethodManager.showInputMethodPicker()` 로 입력기 선택 다이얼로그를 바로 연다.
+  ⚠️ 처음엔 "즉시 자동 전환"(`InputMethodManager.switchToNextInputMethod(token, onlyCurrentIme)`)
+  을 시도했으나, 그 `token` 은 **IME(InputMethodService) 자신에게만** 발급되는 것이라 일반 앱은
+  물론 접근성 서비스도 호출할 수 없다(빌드 실패로 발견 — `AccessibilityService` 에는 애초에 이
+  메서드 자체가 없다). 안드로이드에 "제3자 앱이 입력기를 강제 전환"하는 공식 API가 없어(외부
+  키보드 대응 앱들도 전부 이 한계를 인정하고 선택 창만 띄운다) 실현 가능한 선까지 타협했다 —
+  탭 한 번 더 필요하지만, 키보드에서 전환 키를 찾을 필요 없이 배지에서 바로 진입할 수 있다.
+  `BadgeOverlayView` 가 `ViewConfiguration.getLongPressTimeout()`(시스템 접근성 설정 존중,
+  하드코딩 금지 — static API 이지 인스턴스 메서드가 아님에 주의)만큼 눌려 있고 그 사이 드래그로
+  전환되지 않았을 때만 발동 — 드래그 시작 판정(`touchSlop`)과 동일한 타이밍에 롱프레스 타이머를
+  취소해 "드래그하려 했는데 선택 창이 뜨는" 오발동을 막는다. 발동하면 그 탭은 일반 탭
+  (`performClick`/메뉴 열기)으로 이어지지 않는다. `OverlayManager.setBadgeLongPressHandler` 로
+  서비스가 1회 주입(`badgeTapHandler` 와 동일한 패턴).
 
 ### Feature 3: 포커스 없는 상태 키 입력 경고
 

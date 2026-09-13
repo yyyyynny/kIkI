@@ -49,6 +49,8 @@
     <string name="settings_badge_size_large">대</string>
     <string name="settings_badge_bg_color">배지 배경색</string>
     <string name="settings_badge_text_color">배지 글씨색</string>
+    <string name="settings_badge_long_press_desc">배지를 길게 누르면 입력기 선택 창이 바로 열려요. 거기서 원하는 언어(서브타입)를 골라 전환할 수 있어요.</string>
+    <string name="badge_long_press_switch_failed">지금은 입력기 선택 창을 열 수 없어요</string>
     <string name="settings_nofocus">포커스 없는 키 입력 경고</string>
     <string name="settings_nofocus_enabled">경고 켜기</string>
     <string name="settings_nofocus_threshold">경고 임계 횟수</string>

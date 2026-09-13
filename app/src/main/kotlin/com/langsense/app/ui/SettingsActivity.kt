@@ -140,6 +140,7 @@ class SettingsActivity : AppCompatActivity() {
             addView(colorPickerRow(getString(R.string.settings_badge_text_color), prefs.badgeTextColorHex) {
                 prefs.badgeTextColorHex = it
             })
+            addView(descRow(getString(R.string.settings_badge_long_press_desc)))
         })
 
         // --- 플로팅 메뉴(배지 탭) ---

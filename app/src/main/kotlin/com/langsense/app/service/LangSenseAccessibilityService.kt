@@ -14,6 +14,7 @@ import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import com.langsense.app.R
 import com.langsense.app.overlay.OverlayManager
@@ -178,6 +179,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
             }
             overlay.setQuickMenuItems(buildQuickMenuItems())
             overlay.setBadgeTapHandler(::handleBadgeTap)
+            overlay.setBadgeLongPressHandler(::handleBadgeLongPress)
             syncKeyEvalThread()
             syncKeyboardDetector()
             prefs.register(this)
@@ -538,6 +540,28 @@ class LangSenseAccessibilityService : AccessibilityService(),
             }
         }
         overlay.toggleQuickMenu()
+    }
+
+    /**
+     * 배지 롱프레스: 입력기 선택 창을 즉시 연다(추가 기능, 2026-09). 배지는 "지금 언어가 뭔지
+     * 보여주기만" 했는데, 여기에 빠른 진입점을 추가했다.
+     *
+     * ⚠️ 실제로 시도했던 "즉시 자동 전환"은 안드로이드에 그런 API가 없어 포기했다:
+     * `InputMethodManager.switchToNextInputMethod(token, onlyCurrentIme)` 가 유일한 후보인데
+     * deprecated 이고, 그 `token` 은 **IME(InputMethodService) 자신에게만** 발급되는 것이라
+     * 일반 앱은 물론 접근성 서비스도 호출할 수 없다(공식 문서/External Keyboard Helper 류
+     * 유사 앱도 전부 이 한계를 그대로 인정하고 선택 다이얼로그만 띄운다). 그래서 실현 가능한
+     * `InputMethodManager.showInputMethodPicker()` 로 타협했다 — 한 번 더 탭해야 하지만,
+     * 키보드에서 전환 키를 찾을 필요 없이 배지에서 바로 진입할 수 있다.
+     */
+    private fun handleBadgeLongPress() {
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
+        if (imm == null) {
+            toastMsg(getString(R.string.badge_long_press_switch_failed))
+            return
+        }
+        runCatching { imm.showInputMethodPicker() }
+            .onFailure { toastMsg(getString(R.string.badge_long_press_switch_failed)) }
     }
 
     private fun launchActivity(cls: Class<*>) {

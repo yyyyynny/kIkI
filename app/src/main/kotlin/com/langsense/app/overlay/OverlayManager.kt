@@ -60,6 +60,12 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
      * 미주입 상태(null)면 기존처럼 [toggleQuickMenu] 로 폴백.
      */
     private var badgeTapHandler: (() -> Unit)? = null
+    /**
+     * 서비스가 1회 주입하는 배지 롱프레스 훅(배지 롱프레스로 즉시 언어 전환, 2026-09 추가).
+     * [badgeTapHandler] 와 동일한 이유로 `var` 필드 참조 람다로 연결한다. 미주입 상태(null)면
+     * [BadgeOverlayView] 가 아무것도 하지 않는다(안전한 no-op).
+     */
+    private var badgeLongPressHandler: (() -> Unit)? = null
     /** 닫힌 메뉴(WebView)의 유휴 캐시. [QUICK_MENU_CACHE_MS] 뒤 또는 메모리 압박 시 폐기. */
     private var cachedQuickMenu: QuickMenuOverlayView? = null
     private val quickMenuCacheExpire = Runnable { trimQuickMenuCache() }
@@ -206,6 +212,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
             val view = BadgeOverlayView(
                 context, wm, params,
                 onTap = { (badgeTapHandler ?: this::toggleQuickMenu).invoke() },
+                onLongPress = { badgeLongPressHandler?.invoke() },
                 onPositionSaved = { x, y -> prefs.setBadgePosition(x, y) }
             )
             badgeStyleSig = null // 새 뷰에는 반드시 적용
@@ -293,6 +300,11 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     /** 서비스가 배지 탭 디스패치 로직을 주입(배지 탭 동작 커스터마이즈 — [badgeTapHandler] 참조). */
     fun setBadgeTapHandler(handler: () -> Unit) {
         badgeTapHandler = handler
+    }
+
+    /** 서비스가 배지 롱프레스 로직을 주입(즉시 언어 전환 — [badgeLongPressHandler] 참조). */
+    fun setBadgeLongPressHandler(handler: () -> Unit) {
+        badgeLongPressHandler = handler
     }
 
     /** 배지 탭 피드백 펄스를 외부(직접 액션 실행 경로)에서도 재사용할 수 있게 공개. */
