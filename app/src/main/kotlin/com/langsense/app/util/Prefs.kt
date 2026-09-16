@@ -118,6 +118,32 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_KEYBOARD_CONNECT_NOTIFY, true)
         set(v) = sp.edit().putBoolean(KEY_KEYBOARD_CONNECT_NOTIFY, v).apply()
 
+    // ---- 추가 기능 3: 전환 원인 진단 ----
+    /**
+     * ON 이면 실제 언어 전환이 감지된 시점에 최근 눌린 물리 키 조합을 [lastSwitchTriggerKeys] 로
+     * 남긴다 — One UI 물리 키보드 설정에 숨어 있는 "언어 전환 바로가기"처럼 원인 모를 자동 전환을
+     * 사용자가 직접 찾아낼 수 있게(2026-09 추가). 기본 OFF: 켜져 있으면 이 기능과 무관하게 모든
+     * 물리 키가 시스템→앱 필터를 한 번 더 거쳐야 해서(`FLAG_REQUEST_FILTER_KEY_EVENTS`, 키당
+     * Binder 왕복) 상시 비용이 있다 — 평소엔 꺼두고 원인 모를 전환이 반복될 때만 잠깐 켜서
+     * 확인한 뒤 다시 끄는 용도.
+     */
+    var diagnosticKeyLoggingEnabled: Boolean
+        get() = sp.getBoolean(KEY_DIAGNOSTIC_KEY_LOGGING, false)
+        set(v) = sp.edit().putBoolean(KEY_DIAGNOSTIC_KEY_LOGGING, v).apply()
+
+    /** 마지막으로 캡처된 전환 직전 키 조합(예: "SHIFT_LEFT + SPACE"). 없으면 빈 문자열. */
+    var lastSwitchTriggerKeys: String
+        get() = sp.getString(KEY_LAST_TRIGGER_KEYS, "") ?: ""
+        set(v) = sp.edit().putString(KEY_LAST_TRIGGER_KEYS, v).apply()
+
+    /** [lastSwitchTriggerKeys] 를 캡처한 시각(epoch ms, 화면 표시용). 0 이면 아직 캡처된 적 없음. */
+    var lastSwitchTriggerAt: Long
+        get() = sp.getLong(KEY_LAST_TRIGGER_AT, 0L)
+        set(v) = sp.edit().putLong(KEY_LAST_TRIGGER_AT, v).apply()
+
+    fun clearLastSwitchTrigger() =
+        sp.edit().remove(KEY_LAST_TRIGGER_KEYS).remove(KEY_LAST_TRIGGER_AT).apply()
+
     // ---- 플로팅 메뉴(배지 탭 래디얼 메뉴) ----
     /**
      * 저사양(움직임 줄이기) 모드. ON 이면 메뉴를 펼친 뒤의 연속 애니메이션(오브 morph/부유/별/먼지/
@@ -277,6 +303,9 @@ class Prefs(context: Context) {
         const val KEY_REPLACE_CONFIDENCE = "replace_confidence"
         const val KEY_EXCLUDE_TOUCH_KEYBOARD = "exclude_touch_keyboard"
         const val KEY_KEYBOARD_CONNECT_NOTIFY = "keyboard_connect_notify"
+        const val KEY_DIAGNOSTIC_KEY_LOGGING = "diagnostic_key_logging"
+        const val KEY_LAST_TRIGGER_KEYS = "last_switch_trigger_keys"
+        const val KEY_LAST_TRIGGER_AT = "last_switch_trigger_at"
         const val KEY_RADIAL_REDUCE_MOTION = "radial_reduce_motion"
         const val KEY_QUICK_MENU_ORDER = "quick_menu_order"
         const val KEY_BADGE_TAP_ACTION = "badge_tap_action"

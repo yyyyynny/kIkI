@@ -382,6 +382,38 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
   이 옵션만 켜져 있어도(터치 키보드 제외는 OFF) 감지기가 생성되지만, `refreshSoftKeyboardState()`
   자체가 "터치 키보드 제외" OFF 를 가드하므로 그쪽 로직에는 영향이 없다.
 
+### 추가 기능 3: 전환 원인 진단 (2026-09 추가)
+
+원인 모를 자동 한/영 전환(예: 키보드 자체가 아니라 **One UI 물리 키보드 설정에 숨어 있는
+"언어 전환 바로가기"**가 Space + 다른 키 조합에서 의도치 않게 발동하는 경우 — 실사용 중 발견된
+사례)을 사용자가 감으로 추측하지 않고 스스로 찾을 수 있게, **실제 전환이 감지된 순간 직전에
+눌려 있던 물리 키**를 기록해 설정 화면에 보여주는 진단 도구(설정, 독립 옵션, 기본 **OFF**).
+
+- **동작**: 토글을 켜면 `LangSenseAccessibilityService.onKeyEvent`가 모든 물리 키 다운 이벤트를
+  (모디파이어 포함) 작은 원형 버퍼(`KeyTriggerDiagnostics.BUFFER_SIZE`=8칸)에 기록한다.
+  `ImeStateDetector`가 실제 언어 전환을 확정해 `onLanguageChanged`를 부르면, 그 시점 기준
+  `CORRELATE_WINDOW_MS`(2초 — detector 자체의 신호 합치기+백오프+역행 재확인 지연을 넉넉히
+  덮는 값) 안에 눌렸던 키들을 순서 보존·중복 제거해 사람이 읽을 수 있는 이름으로 합치고
+  (`KeyEvent.keyCodeToString` → `KEYCODE_` 접두사 제거, 예: `"SHIFT_LEFT + SPACE"`),
+  `Prefs.lastSwitchTriggerKeys`/`lastSwitchTriggerAt`에 저장한다. 설정 화면이 이 값을 "최근 감지:
+  {키} · {상대 시각}" 형태로 보여주고, 지우기 버튼으로 리셋할 수 있다.
+- **순수 로직 분리**: 원형 버퍼 상관관계 계산(`KeyTriggerDiagnostics.recentKeyNames`)은 Android
+  의존성 없는 순수 함수로 분리해 JVM 단위 테스트 대상(`KeyTriggerDiagnosticsTest`) — 오프셋 계산이
+  틀리기 쉬운 원형 버퍼 순회 로직이라 특히 중요.
+- **기본 OFF인 이유**: 켜져 있으면 이 기능만을 위해 **모든** 물리 키가 시스템→앱 필터
+  (`FLAG_REQUEST_FILTER_KEY_EVENTS`, 키당 Binder 동기 왕복)를 거쳐야 한다(`syncServiceInfo()`가
+  `noFocusEnabled || diagnosticKeyLoggingEnabled` 일 때만 이 플래그를 구독 — Feature 3과 동일한
+  저사양 게이트를 공유). 평소엔 꺼두고 원인 모를 전환이 반복될 때만 잠깐 켜서 확인한 뒤 다시 끄는
+  용도.
+- **모디파이어 키를 포함해야 하는 이유**: `KeyEventMonitor.isTypingCandidate`(Feature 3 이 쓰는
+  1차 게이트)는 Shift/Ctrl/Alt 같은 모디파이어 키를 걸러내는데, 이 진단 기능은 정확히 그
+  모디파이어가 필요하다(One UI 단축키는 대개 모디파이어+문자키 조합). 그래서 `onKeyEvent`에서
+  그 필터보다 **먼저**, 독립적으로 기록한다.
+- **한계(설정 설명 문구에도 명시)**: 시스템이 그 키 조합을 이 서비스보다 더 이른 단계에서
+  가로채면(일부 OS 전역 단축키 처리 경로) 진단 결과가 비거나("감지된 키 없음") 무관한 키만 보일
+  수 있다 — 이 경우도 "적어도 이 앱이 감지 못하는 경로로 전환됐다"는 정보이므로 빈 결과 자체를
+  안내 문구로 남긴다.
+
 ---
 
 ## 권한 목록
@@ -420,6 +452,8 @@ util/
   ├── HangulConverter          — 두벌식↔QWERTY 변환 + 한영타 신뢰도 판정 (순수 Kotlin)
   ├── TypoLanguageModel        — 한영타 판정용 통계 언어 모델(한국어 음절 + 영어 trigram 우도비,
   │                              실제 글로 학습한 확률표 내장, 외부 의존성 없음)
+  ├── KeyTriggerDiagnostics    — 전환 원인 진단(추가 기능 3) 원형 버퍼 상관관계 계산 (순수 Kotlin)
+  ├── HardwareKeyboardDetector — 외장 키보드 연결 실시간 감지
   ├── ImeLocaleParser          — locale 파싱 + One UI 팝업 패턴 매핑 (ja 분기는 주석 비활성화)
   ├── Prefs                    — SharedPreferences 래퍼(모든 설정 단일 진입점, 변경 즉시 적용)
   └── PermissionHelper         — 권한 안내 흐름
@@ -566,6 +600,7 @@ langsense/
 │   │   │   └── util/
 │   │   │       ├── HangulConverter.kt    ← 두벌식↔QWERTY 변환 핵심 (순수 Kotlin)
 │   │   │       ├── TypoLanguageModel.kt  ← 한영타 판정 통계 모델(우도비 + 확률표)
+│   │   │       ├── KeyTriggerDiagnostics.kt ← 전환 원인 진단 순수 로직(원형 버퍼 상관관계)
 │   │   │       ├── ImeLocaleParser.kt    ← locale/팝업 파싱 (ja 분기 주석 비활성화)
 │   │   │       ├── Prefs.kt              ← 설정 단일 진입점(SharedPreferences)
 │   │   │       └── PermissionHelper.kt

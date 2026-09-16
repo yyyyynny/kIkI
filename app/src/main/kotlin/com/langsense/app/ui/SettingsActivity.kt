@@ -62,7 +62,12 @@ class SettingsActivity : AppCompatActivity() {
      * (액티비티가 계속 포그라운드라 호출되지 않아) 스위치가 stale 로 남는다.
      */
     private val prefsListener =
-        android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> syncToggles() }
+        android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+            syncToggles(); refreshDiagnosticResult()
+        }
+
+    /** [diagnosticResultRow] 가 채우는, 최근 캡처된 전환 키를 보여주는 텍스트. */
+    private lateinit var diagnosticResultText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -191,6 +196,15 @@ class SettingsActivity : AppCompatActivity() {
             )
         })
 
+        // --- 전환 원인 진단 (추가 기능 3) ---
+        content.addView(sectionCard(getString(R.string.settings_diagnostic)).apply {
+            addView(descRow(getString(R.string.settings_diagnostic_desc)))
+            addView(switchRow(getString(R.string.settings_diagnostic_enabled), prefs.diagnosticKeyLoggingEnabled) {
+                prefs.diagnosticKeyLoggingEnabled = it; markSaved()
+            })
+            addView(diagnosticResultRow())
+        })
+
         // --- 한영타 교체 ---
         content.addView(sectionCard(getString(R.string.settings_replace)).apply {
             addView(boundSwitchRow(getString(R.string.settings_replace_enabled), { prefs.replaceEnabled }) {
@@ -259,6 +273,8 @@ class SettingsActivity : AppCompatActivity() {
         super.onResume()
         // 외부(래디얼 메뉴)에서 바뀐 토글 값을 현재 prefs 기준으로 다시 맞춘다(stale 표시 방지).
         syncToggles()
+        // 서비스가 백그라운드에서 캡처했을 수 있는 최신 진단 결과를 반영.
+        refreshDiagnosticResult()
         prefs.register(prefsListener)
     }
 
@@ -283,6 +299,58 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun markSaved() {
         savedHint.text = getString(R.string.settings_saved)
+    }
+
+    /**
+     * 전환 원인 진단(추가 기능 3) 결과 행: 최근 캡처된 키 조합(또는 "없음" 안내) + 상대 시각,
+     * 오른쪽에 지우기 버튼. 서비스가 백그라운드에서 [Prefs.lastSwitchTriggerKeys] 를 갱신하므로
+     * onResume/prefsListener 양쪽에서 [refreshDiagnosticResult] 로 다시 그린다.
+     */
+    private fun diagnosticResultRow(): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(6), 0, 0)
+        }
+        diagnosticResultText = TextView(this).apply {
+            textSize = 13f
+            setTextColor(getColor(R.color.ui_on_surface))
+            setLineSpacing(dp(2).toFloat(), 1f)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .also { it.weight = 1f }
+        }
+        val clear = TextView(this).apply {
+            text = getString(R.string.settings_diagnostic_clear)
+            textSize = 13f
+            setTextColor(getColor(R.color.ui_accent))
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(dp(12), dp(4), dp(4), dp(4))
+            isClickable = true
+            isFocusable = true
+            background = rippleCircleBackground()
+            setOnClickListener {
+                prefs.clearLastSwitchTrigger()
+                refreshDiagnosticResult()
+            }
+        }
+        row.addView(diagnosticResultText)
+        row.addView(clear)
+        refreshDiagnosticResult()
+        return row
+    }
+
+    private fun refreshDiagnosticResult() {
+        if (!::diagnosticResultText.isInitialized) return
+        val keys = prefs.lastSwitchTriggerKeys
+        val at = prefs.lastSwitchTriggerAt
+        diagnosticResultText.text = if (keys.isEmpty() || at == 0L) {
+            getString(R.string.settings_diagnostic_result_empty)
+        } else {
+            val relative = android.text.format.DateUtils.getRelativeTimeSpanString(
+                at, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS
+            )
+            getString(R.string.settings_diagnostic_result_label, keys, relative)
+        }
     }
 
     // ---------------------------------------------------------------------

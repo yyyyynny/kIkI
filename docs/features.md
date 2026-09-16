@@ -397,6 +397,35 @@ WindowManager flags:
 
 ---
 
+## 추가 기능 3: 전환 원인 진단 (2026-09 추가)
+
+원인 모를 자동 한/영 전환(실사용 중 발견된 사례: 키보드가 아니라 One UI 물리 키보드 설정의
+"언어 전환 바로가기"가 Space + 다른 키 조합에서 의도치 않게 발동 — 사용자는 정확히 어떤 키인지
+몰랐다)을 스스로 찾을 수 있게, 실제 전환이 감지된 직전에 눌린 물리 키를 기록해 설정 화면에
+보여주는 진단 도구(`SettingsActivity` → "전환 원인 진단", 기본 **OFF**).
+
+### 동작
+- `LangSenseAccessibilityService.onKeyEvent`가 (토글 ON 일 때만) 모든 물리 키 다운을 작은
+  원형 버퍼(`KeyTriggerDiagnostics.BUFFER_SIZE`=8)에 기록 — `KeyEventMonitor.isTypingCandidate`가
+  모디파이어 키를 걸러내는 것과 **독립적으로**, 그 필터보다 먼저 기록한다(One UI 단축키는 대개
+  모디파이어+문자키 조합이라 모디파이어 자체가 진단에 필요).
+- `ImeStateDetector`가 전환을 확정해 `onLanguageChanged`를 부르면, 그 시점 기준
+  `KeyTriggerDiagnostics.CORRELATE_WINDOW_MS`(2초 — detector 자체의 신호 합치기+백오프+역행
+  재확인 지연을 덮는 값) 안에 눌렸던 키들을 `KeyTriggerDiagnostics.recentKeyNames`(순수 함수,
+  원형 버퍼를 오래된→최신 순으로 훑어 순서 보존·중복 제거)로 뽑아 `KeyEvent.keyCodeToString` 으로
+  이름 붙이고, `Prefs.lastSwitchTriggerKeys`/`lastSwitchTriggerAt` 에 저장한다.
+- 설정 화면이 "최근 감지: {키 조합} · {상대 시각}" 으로 표시(`DateUtils.getRelativeTimeSpanString`),
+  지우기 버튼으로 리셋 가능. 감지된 키가 없으면("감지된 키 없음") 그 자체도 유의미한 정보로 안내한다
+  — 시스템이 이 서비스보다 먼저 키를 가로챈 경우일 수 있다는 한계를 설정 설명 문구에 명시.
+
+### 저사양 원칙
+`syncServiceInfo()`가 `noFocusEnabled || diagnosticKeyLoggingEnabled` 일 때만
+`FLAG_REQUEST_FILTER_KEY_EVENTS`(키당 Binder 동기 왕복)를 구독 — Feature 3 과 게이트를 공유하므로
+둘 다 꺼져 있으면(둘 다 기본이 아니므로 일반적) 순수 오버헤드가 없다. 원형 버퍼 자체 연산은
+배열 인덱싱뿐이라 디스패치 스레드에서도 무시할 만한 비용.
+
+---
+
 ## ImeLocaleParser 유틸리티
 
 ```kotlin
@@ -451,6 +480,10 @@ object ImeLocaleParser {
 | 포커스 없음 임계값 | 3회 | Int 1~5 | |
 | 한영타 교체 기능 | ON | Boolean | |
 | 한영타 신뢰도 임계값 | 70% | Int 50~90 (step 5) | **인라인 설명 추가 [4]** |
+| **전환 원인 진단(키 기록)** | OFF | Boolean | 신규(추가 기능 3), 키당 Binder 왕복 비용 있어 기본 꺼짐 |
+
+> 이 표는 초기 구현 시점 항목 위주라 "터치 키보드 제외"/"퀵메뉴 항목"/"배지 탭 동작"/"플로팅
+> 메뉴" 등 이후 추가된 설정은 CLAUDE.md 해당 Feature 절을 참조(코드가 진실).
 
 > 색 선택 UI(32색 팔레트 + #RRGGBB 입력)는 `colorPickerRow` 공용 컴포넌트로 추출되어
 > 플래시 색 설정과 배지 색 설정이 동일 코드를 공유한다(복붙 방지).

@@ -23,13 +23,14 @@ import com.langsense.app.ui.MainActivity
 import com.langsense.app.ui.SettingsActivity
 import com.langsense.app.util.HardwareKeyboardDetector
 import com.langsense.app.util.ImeLocaleParser
+import com.langsense.app.util.KeyTriggerDiagnostics
 import com.langsense.app.util.Prefs
 
 /**
  * kIkI 접근성 서비스 — 모든 감지의 진입점. (클래스명은 식별자라 LangSenseAccessibilityService 유지)
  *
  * - onAccessibilityEvent: 윈도우 상태 변경(언어 전환) / 텍스트 선택(한영타)
- * - onKeyEvent: 포커스 없는 키 입력 카운트 (절대 소비하지 않음)
+ * - onKeyEvent: 포커스 없는 키 입력 카운트 + 전환 원인 진단(추가 기능 3, 기본 OFF) (절대 소비하지 않음)
  *
  * ### 생존성 원칙
  * 접근성 서비스에서 uncaught exception 이 나면 프로세스가 죽고, 시스템 재바인드에만 의존하게 된다
@@ -138,6 +139,14 @@ class LangSenseAccessibilityService : AccessibilityService(),
         SystemClock.uptimeMillis() - lastEditableActivityAt < RECENT_INPUT_MS
     }
 
+    /**
+     * 전환 원인 진단(추가 기능 3, 기본 OFF) 링 버퍼 — [KeyTriggerDiagnostics] 문서 참조.
+     * `onKeyEvent` (메인/디스패치 스레드)에서만 쓰고 언어 전환 시점에만 읽으므로 동기화 불필요.
+     */
+    private val diagKeyCodes = IntArray(KeyTriggerDiagnostics.BUFFER_SIZE)
+    private val diagKeyAtUptime = LongArray(KeyTriggerDiagnostics.BUFFER_SIZE)
+    private var diagKeyWriteIndex = 0
+
     // ---------------------------------------------------------------------
     // 생명주기
     // ---------------------------------------------------------------------
@@ -231,6 +240,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
         lastEditCheckAt = 0L
         lastFocusProbeAt = 0L
         lastFocusProbeResult = false
+        diagKeyWriteIndex = 0
     }
 
     /**
@@ -258,14 +268,16 @@ class LangSenseAccessibilityService : AccessibilityService(),
      *   (이 이벤트는 시스템 전역의 창 생성/소멸마다 와서 초당 수십 건이다).
      * - `TYPE_VIEW_TEXT_SELECTION_CHANGED`: 한영타 교체 또는 포커스 경고(입력 실착 근거) ON 일 때.
      * - `TYPE_VIEW_TEXT_CHANGED` + `FLAG_REQUEST_FILTER_KEY_EVENTS`(+윈도우 순회 플래그): 포커스 경고
-     *   ON 일 때만 — 키 필터는 모든 키가 포커스 앱으로 가기 전에 이 서비스 메인 스레드를 동기로
-     *   경유하게 하므로(키당 Binder 왕복 2회) 꺼진 사용자에겐 순수 낭비다.
+     *   또는 전환 원인 진단(추가 기능 3) 이 ON 일 때만 — 키 필터는 모든 키가 포커스 앱으로 가기
+     *   전에 이 서비스 메인 스레드를 동기로 경유하게 하므로(키당 Binder 왕복 2회) 둘 다 꺼진
+     *   사용자에겐 순수 낭비다.
      */
     private fun syncServiceInfo() {
         val info = serviceInfo ?: run { Log.w(TAG, "serviceInfo unavailable"); return }
         val noFocus = prefs.noFocusEnabled
         val replace = prefs.replaceEnabled
         val excl = prefs.excludeTouchKeyboard
+        val diag = prefs.diagnosticKeyLoggingEnabled
 
         var types = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
         if (excl) types = types or AccessibilityEvent.TYPE_WINDOWS_CHANGED
@@ -276,7 +288,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
             AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
         var flags = info.flags and managed.inv() // 시스템이 붙인 다른 비트는 보존
         if (noFocus || excl) flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-        if (noFocus) flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+        if (noFocus || diag) flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
 
         if (info.eventTypes == types && info.flags == flags &&
             info.notificationTimeout == NOTIFICATION_TIMEOUT_MS
@@ -600,10 +612,35 @@ class LangSenseAccessibilityService : AccessibilityService(),
 
     private fun onLanguageChanged(lang: String) {
         currentLang = lang
+        // 전환 원인 진단(추가 기능 3): featuresEnabled() 게이트와 무관하게 항상 캡처한다 —
+        // "왜 전환됐는지"는 오버레이 표시 여부와 별개의 관심사.
+        if (prefs.diagnosticKeyLoggingEnabled) captureDiagnosticTrigger()
         // 터치 키보드 제외 ON + 소프트 키보드 표시 중 → 플래시/배지 모두 비활성(추가 기능 2).
         if (!featuresEnabled()) return
         overlay.showFlash(lang)
         overlay.updateBadge(lang)
+    }
+
+    /** [diagKeyCodes]/[diagKeyAtUptime] 링 버퍼에 키 다운 1건을 기록(디스패치 스레드, 배열 쓰기만). */
+    private fun recordDiagnosticKeyPress(keyCode: Int) {
+        val size = KeyTriggerDiagnostics.BUFFER_SIZE
+        diagKeyCodes[diagKeyWriteIndex] = keyCode
+        diagKeyAtUptime[diagKeyWriteIndex] = SystemClock.uptimeMillis()
+        diagKeyWriteIndex = (diagKeyWriteIndex + 1) % size
+    }
+
+    /**
+     * 언어 전환이 감지된 시점의 최근 키 조합을 [Prefs.lastSwitchTriggerKeys] 에 남긴다. 감지된 키가
+     * 없으면(시스템이 이 서비스보다 먼저 키를 가로챘거나, 키 없이 소프트웨어적으로 전환된 경우 등)
+     * 그 사실을 안내하는 문구를 남긴다 — "빈 결과"도 유의미한 진단 정보.
+     */
+    private fun captureDiagnosticTrigger() {
+        val names = KeyTriggerDiagnostics.recentKeyNames(
+            diagKeyCodes, diagKeyAtUptime, diagKeyWriteIndex, SystemClock.uptimeMillis()
+        ) { code -> KeyEvent.keyCodeToString(code).removePrefix("KEYCODE_") }
+        prefs.lastSwitchTriggerKeys =
+            KeyTriggerDiagnostics.describe(names) ?: getString(R.string.diag_no_key_captured)
+        prefs.lastSwitchTriggerAt = System.currentTimeMillis()
     }
 
     // ---------------------------------------------------------------------
@@ -686,6 +723,12 @@ class LangSenseAccessibilityService : AccessibilityService(),
         val e = event ?: return false
         if (!initialized) return false
         guarded("onKeyEvent") {
+            // 전환 원인 진단(추가 기능 3, 기본 OFF): 아래 isTypingCandidate 는 Shift/Ctrl/Alt 같은
+            // 모디파이어 키를 걸러내지만, 진단은 그 모디파이어야말로 필요하므로(One UI 단축키는
+            // 대개 모디파이어+문자키 조합) 독립적으로 먼저 기록한다. 배열 쓰기 1회라 저비용.
+            if (prefs.diagnosticKeyLoggingEnabled && e.action == KeyEvent.ACTION_DOWN) {
+                recordDiagnosticKeyPress(e.keyCode)
+            }
             // (Bug 1) 메인(디스패치) 스레드에서는 키 이벤트 속성만 보는 저비용 판정만 동기로 하고 즉시
             // 반환한다. 무거운 포커스 조회(노드 트리 IPC)는 백그라운드 스레드로 넘긴다.
             if (!keyMonitor.isTypingCandidate(e)) return false
@@ -807,6 +850,8 @@ class LangSenseAccessibilityService : AccessibilityService(),
                 }
                 // 감지기 생성/해제 여부만 바뀐다("터치 키보드 제외"와 무관한 독립 옵션).
                 Prefs.KEY_KEYBOARD_CONNECT_NOTIFY -> syncKeyboardDetector()
+                // 전환 원인 진단(추가 기능 3) 토글 — 키 필터 구독 여부만 바뀐다.
+                Prefs.KEY_DIAGNOSTIC_KEY_LOGGING -> syncServiceInfo()
                 // 배지 크기/색은 표시 중인 배지에 즉시 재적용(꺼져 있으면 다음 표시 때 반영).
                 Prefs.KEY_BADGE_SIZE, Prefs.KEY_BADGE_BG_COLOR, Prefs.KEY_BADGE_TEXT_COLOR -> {
                     if (prefs.badgeEnabled && featuresEnabled()) overlay.updateBadge(currentLang)
