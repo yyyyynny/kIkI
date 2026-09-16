@@ -75,7 +75,7 @@
 
     <!-- 전환 원인 진단 (추가 기능 3) -->
     <string name="settings_diagnostic">전환 원인 진단</string>
-    <string name="settings_diagnostic_desc">원인 모를 한/영 자동 전환이 반복될 때 켜보세요. 실제 전환이 감지된 순간 직전에 눌려 있던 물리 키를 기록해 아래에 보여줍니다(예: 삼성 태블릿의 "물리적 키보드 → 언어 전환 바로가기" 설정처럼, 키보드가 아니라 One UI 자체 단축키가 범인인 경우가 많아요). 다만 시스템이 그 키를 이 앱보다 먼저 가로채면 잡히지 않을 수도 있고, 평소 켜두면 배터리를 조금 더 씁니다 — 원인을 찾았으면 다시 꺼주세요.</string>
+    <string name="settings_diagnostic_desc">원인 모를 한/영 자동 전환이 반복될 때 켜보세요. 실제 전환이 감지된 순간 직전에 눌려 있던 물리 키를 기록해 아래에 보여줍니다(예: 삼성 태블릿의 "물리적 키보드 → 언어 전환 바로가기" 설정처럼, 키보드가 아니라 One UI 자체 단축키가 범인인 경우가 많아요). 여러 키가 함께 뜨면 그 순간 타이핑 중이던 다른 키가 섞인 것일 수 있어요 — 그중 의심 가는 키를 하나씩 눌러보며 범인을 좁혀보세요. 다만 시스템이 그 키를 이 앱보다 먼저 가로채면 잡히지 않을 수도 있고, 평소 켜두면 배터리를 조금 더 씁니다 — 원인을 찾았으면 다시 꺼주세요.</string>
     <string name="settings_diagnostic_enabled">전환 키 기록 켜기</string>
     <string name="settings_diagnostic_result_label">최근 감지: %1$s · %2$s</string>
     <string name="settings_diagnostic_result_empty">아직 기록된 전환이 없어요</string>

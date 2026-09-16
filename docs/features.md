@@ -406,7 +406,7 @@ WindowManager flags:
 
 ### 동작
 - `LangSenseAccessibilityService.onKeyEvent`가 (토글 ON 일 때만) 모든 물리 키 다운을 작은
-  원형 버퍼(`KeyTriggerDiagnostics.BUFFER_SIZE`=8)에 기록 — `KeyEventMonitor.isTypingCandidate`가
+  원형 버퍼(`KeyTriggerDiagnostics.BUFFER_SIZE`=16, 반복 이벤트는 애초에 기록 제외)에 기록 — `KeyEventMonitor.isTypingCandidate`가
   모디파이어 키를 걸러내는 것과 **독립적으로**, 그 필터보다 먼저 기록한다(One UI 단축키는 대개
   모디파이어+문자키 조합이라 모디파이어 자체가 진단에 필요).
 - `ImeStateDetector`가 전환을 확정해 `onLanguageChanged`를 부르면, 그 시점 기준

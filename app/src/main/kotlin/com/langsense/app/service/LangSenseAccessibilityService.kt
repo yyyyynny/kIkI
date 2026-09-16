@@ -726,7 +726,10 @@ class LangSenseAccessibilityService : AccessibilityService(),
             // 전환 원인 진단(추가 기능 3, 기본 OFF): 아래 isTypingCandidate 는 Shift/Ctrl/Alt 같은
             // 모디파이어 키를 걸러내지만, 진단은 그 모디파이어야말로 필요하므로(One UI 단축키는
             // 대개 모디파이어+문자키 조합) 독립적으로 먼저 기록한다. 배열 쓰기 1회라 저비용.
-            if (prefs.diagnosticKeyLoggingEnabled && e.action == KeyEvent.ACTION_DOWN) {
+            // repeatCount > 0(키를 누르고 있어 반복 발생)은 기록하지 않는다 — 안 그러면 아무 키나
+            // 길게 누르고 있는 것만으로 짧은 링 버퍼가 반복 이벤트로 가득 차, 그 직후 실제 전환을
+            // 일으킨 키가 밀려나 사라진다(2026-09 발견).
+            if (prefs.diagnosticKeyLoggingEnabled && e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0) {
                 recordDiagnosticKeyPress(e.keyCode)
             }
             // (Bug 1) 메인(디스패치) 스레드에서는 키 이벤트 속성만 보는 저비용 판정만 동기로 하고 즉시
