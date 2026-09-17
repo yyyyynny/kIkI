@@ -270,10 +270,21 @@ class SettingsActivity : AppCompatActivity() {
         return bar
     }
 
-    /** 테마의 원형(borderless) 리플 배경 — 톱바 뒤로가기 버튼용. */
-    private fun rippleCircleBackground(): android.graphics.drawable.Drawable? {
+    /** 테마의 원형(borderless) 리플 배경 — 정사각형 아이콘 버튼용. */
+    private fun rippleCircleBackground(): android.graphics.drawable.Drawable? =
+        themeRipple(android.R.attr.selectableItemBackgroundBorderless)
+
+    /**
+     * 테마의 경계 있는(bounded) 리플 배경 — 가로로 긴 텍스트 버튼용. borderless 리플은 뷰
+     * 크기와 무관하게 원형으로 퍼져 나가 폭이 넓은 라벨에 쓰면 터치 지점이 아니라 엉뚱한
+     * 범위가 번지는 것처럼 보인다.
+     */
+    private fun rippleBoundedBackground(): android.graphics.drawable.Drawable? =
+        themeRipple(android.R.attr.selectableItemBackground)
+
+    private fun themeRipple(attr: Int): android.graphics.drawable.Drawable? {
         val tv = TypedValue()
-        theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, tv, true)
+        theme.resolveAttribute(attr, tv, true)
         return ContextCompat.getDrawable(this, tv.resourceId)
     }
 
@@ -335,7 +346,7 @@ class SettingsActivity : AppCompatActivity() {
             setPadding(dp(12), dp(4), dp(4), dp(4))
             isClickable = true
             isFocusable = true
-            background = rippleCircleBackground()
+            background = rippleBoundedBackground()
             setOnClickListener {
                 prefs.clearLastSwitchTrigger()
                 refreshDiagnosticResult()

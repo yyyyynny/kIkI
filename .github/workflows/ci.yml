@@ -44,6 +44,12 @@ jobs:
 
       - name: Android SDK 설치
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          # 이 액션의 packages 기본값은 "tools platform-tools" 인데, 구글이 구형 SDK Tools
+          # (`tools`) 패키지를 저장소에서 내려 "Failed to find package 'tools'" 로 설치가
+          # 실패한다(액션 자체가 exit 1 → 잡 전체 실패). 실제로 필요한 패키지는 바로 다음
+          # 스텝에서 직접 지정해 설치하므로 여기선 아무것도 설치하지 않는다.
+          packages: ""
 
       - name: 필요한 SDK 패키지 설치
         run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
@@ -104,6 +110,8 @@ jobs:
 
       - name: Android SDK 설치
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: ""   # 위 잡과 동일 — 구글이 내린 `tools` 패키지 자동 설치 회피
 
       - name: 필요한 SDK 패키지 설치
         run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"

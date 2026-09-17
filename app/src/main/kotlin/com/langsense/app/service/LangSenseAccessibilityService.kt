@@ -635,7 +635,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
 
     /** [diagKeyCodes]/[diagKeyAtUptime] 링 버퍼에 키 다운 1건을 기록(디스패치 스레드, 배열 쓰기만). */
     private fun recordDiagnosticKeyPress(keyCode: Int) {
-        val size = KeyTriggerDiagnostics.BUFFER_SIZE
+        val size = diagKeyCodes.size   // 배열 길이를 진실로 — 상수와 어긋날 여지를 없앤다
         diagKeyCodes[diagKeyWriteIndex] = keyCode
         diagKeyAtUptime[diagKeyWriteIndex] = SystemClock.uptimeMillis()
         diagKeyWriteIndex = (diagKeyWriteIndex + 1) % size
