@@ -105,6 +105,14 @@ class SettingsActivity : AppCompatActivity() {
             addView(switchRow(getString(R.string.settings_keyboard_connect_notify), prefs.keyboardConnectNotify) {
                 prefs.keyboardConnectNotify = it; markSaved()
             })
+            // "터치 키보드 제외"의 하위 옵션(전환 원인 진단이 켜져 있을 때만 의미가 있음, 2026-09 추가).
+            addView(descRow(getString(R.string.settings_diagnostic_pause_with_touch_kb_desc)))
+            addView(
+                switchRow(
+                    getString(R.string.settings_diagnostic_pause_with_touch_kb),
+                    prefs.diagnosticPausedByTouchKeyboardExclude
+                ) { prefs.diagnosticPausedByTouchKeyboardExclude = it; markSaved() }
+            )
         })
 
         // --- 전환 플래시 ---
@@ -339,19 +347,26 @@ class SettingsActivity : AppCompatActivity() {
         return row
     }
 
+    /**
+     * [Prefs.lastSwitchTriggerKeys]/[Prefs.lastSwitchTriggerAt] 이 나타낼 수 있는 세 가지 상태를
+     * 각각 다른 문구로 보여준다 — 서비스는 "값이 없다"(at==0L, 한 번도 캡처된 적 없음)와 "캡처는
+     * 됐는데 키를 못 찾았다"(keys=="", at!=0L)를 원문 그대로(빈 값)만 남기고, 그 뜻을 문장으로
+     * 풀어내는 건 여기(화면)의 몫으로 나눠 뒀다.
+     */
     private fun refreshDiagnosticResult() {
         if (!::diagnosticResultText.isInitialized) return
         val keys = prefs.lastSwitchTriggerKeys
         val at = prefs.lastSwitchTriggerAt
-        diagnosticResultText.text = if (keys.isEmpty() || at == 0L) {
-            getString(R.string.settings_diagnostic_result_empty)
-        } else {
-            val relative = android.text.format.DateUtils.getRelativeTimeSpanString(
-                at, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS
-            )
-            getString(R.string.settings_diagnostic_result_label, keys, relative)
+        diagnosticResultText.text = when {
+            at == 0L -> getString(R.string.settings_diagnostic_result_empty)
+            keys.isEmpty() -> getString(R.string.settings_diagnostic_result_unknown, relativeTime(at))
+            else -> getString(R.string.settings_diagnostic_result_label, keys, relativeTime(at))
         }
     }
+
+    private fun relativeTime(at: Long): CharSequence = android.text.format.DateUtils.getRelativeTimeSpanString(
+        at, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS
+    )
 
     // ---------------------------------------------------------------------
     // UI 빌더

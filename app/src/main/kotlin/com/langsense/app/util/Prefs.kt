@@ -118,6 +118,18 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_KEYBOARD_CONNECT_NOTIFY, true)
         set(v) = sp.edit().putBoolean(KEY_KEYBOARD_CONNECT_NOTIFY, v).apply()
 
+    /**
+     * "터치 키보드 제외" 하위 옵션(2026-09 추가) — 전환 원인 진단(추가 기능 3)이 켜져 있을 때,
+     * 터치 키보드가 떠 있는 동안엔 그 진단 기록도 함께 멈출지. 기본 **OFF**: 진단은 "왜
+     * 전환됐는가"를 밝히는 별개의 관심사라 보고, 터치 키보드 제외 여부와 무관하게 계속 기록한다
+     * (즉 기본값 그대로면 터치 키보드 제외를 켜도 진단은 계속 동작). "터치 키보드 제외" 자체가
+     * OFF 면 이 옵션은 아무 효과가 없다(`LangSenseAccessibilityService.featuresEnabled()` 가
+     * 항상 true 라서).
+     */
+    var diagnosticPausedByTouchKeyboardExclude: Boolean
+        get() = sp.getBoolean(KEY_DIAGNOSTIC_PAUSED_BY_TOUCH_EXCLUDE, false)
+        set(v) = sp.edit().putBoolean(KEY_DIAGNOSTIC_PAUSED_BY_TOUCH_EXCLUDE, v).apply()
+
     // ---- 추가 기능 3: 전환 원인 진단 ----
     /**
      * ON 이면 실제 언어 전환이 감지된 시점에 최근 눌린 물리 키 조합을 [lastSwitchTriggerKeys] 로
@@ -303,6 +315,7 @@ class Prefs(context: Context) {
         const val KEY_REPLACE_CONFIDENCE = "replace_confidence"
         const val KEY_EXCLUDE_TOUCH_KEYBOARD = "exclude_touch_keyboard"
         const val KEY_KEYBOARD_CONNECT_NOTIFY = "keyboard_connect_notify"
+        const val KEY_DIAGNOSTIC_PAUSED_BY_TOUCH_EXCLUDE = "diagnostic_paused_by_touch_exclude"
         const val KEY_DIAGNOSTIC_KEY_LOGGING = "diagnostic_key_logging"
         const val KEY_LAST_TRIGGER_KEYS = "last_switch_trigger_keys"
         const val KEY_LAST_TRIGGER_AT = "last_switch_trigger_at"

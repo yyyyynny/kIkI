@@ -406,7 +406,7 @@ WindowManager flags:
 
 ### 동작
 - `LangSenseAccessibilityService.onKeyEvent`가 (토글 ON 일 때만) 모든 물리 키 다운을 작은
-  원형 버퍼(`KeyTriggerDiagnostics.BUFFER_SIZE`=16, 반복 이벤트는 애초에 기록 제외)에 기록 — `KeyEventMonitor.isTypingCandidate`가
+  원형 버퍼(`KeyTriggerDiagnostics.BUFFER_SIZE`=32, 반복 이벤트는 애초에 기록 제외)에 기록 — `KeyEventMonitor.isTypingCandidate`가
   모디파이어 키를 걸러내는 것과 **독립적으로**, 그 필터보다 먼저 기록한다(One UI 단축키는 대개
   모디파이어+문자키 조합이라 모디파이어 자체가 진단에 필요).
 - `ImeStateDetector`가 전환을 확정해 `onLanguageChanged`를 부르면, 그 시점 기준
@@ -415,8 +415,15 @@ WindowManager flags:
   원형 버퍼를 오래된→최신 순으로 훑어 순서 보존·중복 제거)로 뽑아 `KeyEvent.keyCodeToString` 으로
   이름 붙이고, `Prefs.lastSwitchTriggerKeys`/`lastSwitchTriggerAt` 에 저장한다.
 - 설정 화면이 "최근 감지: {키 조합} · {상대 시각}" 으로 표시(`DateUtils.getRelativeTimeSpanString`),
-  지우기 버튼으로 리셋 가능. 감지된 키가 없으면("감지된 키 없음") 그 자체도 유의미한 정보로 안내한다
-  — 시스템이 이 서비스보다 먼저 키를 가로챈 경우일 수 있다는 한계를 설정 설명 문구에 명시.
+  지우기 버튼으로 리셋 가능. **저장값 자체는 문장이 아니라 데이터**다 — 키를 찾았으면 조합
+  문자열, 캡처는 됐는데 못 찾았으면 `Prefs.lastSwitchTriggerKeys` 에 빈 문자열(`lastSwitchTriggerAt`
+  =0L 인 "한 번도 캡처된 적 없음"과 구분)만 남기고, "어떤 문장으로 보여줄지"는
+  `SettingsActivity.refreshDiagnosticResult()` 가 세 상태(없음/키 있음/캡처됐지만 못 찾음)를
+  나눠 판단한다 — 시스템이 이 서비스보다 먼저 키를 가로챈 경우 등, 못 찾은 것도 유의미한 정보다.
+- **"터치 키보드 제외"(추가 기능 2) 하위 옵션**: `Prefs.diagnosticPausedByTouchKeyboardExclude`
+  (기본 OFF)가 꺼져 있으면 터치 키보드 제외 여부와 무관하게 항상 캡처하고, 켠 사용자만 터치
+  키보드가 떠 있는 동안 진단도 함께 멈춘다(`LangSenseAccessibilityService.diagnosticActive()`).
+  "터치 키보드 제외" 자체가 OFF 면 이 하위 옵션은 효과가 없다.
 
 ### 저사양 원칙
 `syncServiceInfo()`가 `noFocusEnabled || diagnosticKeyLoggingEnabled` 일 때만

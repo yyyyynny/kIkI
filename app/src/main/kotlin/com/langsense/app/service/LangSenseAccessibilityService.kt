@@ -368,6 +368,17 @@ class LangSenseAccessibilityService : AccessibilityService(),
     private fun featuresEnabled(): Boolean =
         !prefs.excludeTouchKeyboard || !softKeyboardVisible
 
+    /**
+     * 전환 원인 진단(추가 기능 3)이 지금 캡처를 해야 하는지. "터치 키보드 제외" 하위 옵션
+     * ([Prefs.diagnosticPausedByTouchKeyboardExclude], 기본 OFF)이 꺼져 있으면 [featuresEnabled]
+     * 와 무관하게 항상 캡처한다(기존 동작) — "왜 전환됐는가"는 오버레이 표시 여부와 별개의
+     * 관심사라는 게 기본 입장이다. 그 하위 옵션을 켠 사용자만 터치 키보드가 떠 있는 동안엔
+     * ([featuresEnabled] 가 false 인 동안엔) 진단도 함께 멈춘다.
+     */
+    private fun diagnosticActive(): Boolean =
+        prefs.diagnosticKeyLoggingEnabled &&
+            (featuresEnabled() || !prefs.diagnosticPausedByTouchKeyboardExclude)
+
     /** IME 창 높이 측정 재사용 버퍼(메인 스레드 전용 — windows 콜백/이벤트가 모두 메인). */
     private val imeBoundsBuf = android.graphics.Rect()
 
@@ -612,9 +623,10 @@ class LangSenseAccessibilityService : AccessibilityService(),
 
     private fun onLanguageChanged(lang: String) {
         currentLang = lang
-        // 전환 원인 진단(추가 기능 3): featuresEnabled() 게이트와 무관하게 항상 캡처한다 —
-        // "왜 전환됐는지"는 오버레이 표시 여부와 별개의 관심사.
-        if (prefs.diagnosticKeyLoggingEnabled) captureDiagnosticTrigger()
+        // 전환 원인 진단(추가 기능 3): 기본은 featuresEnabled() 게이트와 무관하게 항상 캡처한다
+        // ("왜 전환됐는지"는 오버레이 표시 여부와 별개의 관심사) — 단, 하위 옵션을 켠 사용자는
+        // 터치 키보드가 떠 있는 동안 진단도 함께 멈춘다([diagnosticActive] 참조).
+        if (diagnosticActive()) captureDiagnosticTrigger()
         // 터치 키보드 제외 ON + 소프트 키보드 표시 중 → 플래시/배지 모두 비활성(추가 기능 2).
         if (!featuresEnabled()) return
         overlay.showFlash(lang)
@@ -632,14 +644,16 @@ class LangSenseAccessibilityService : AccessibilityService(),
     /**
      * 언어 전환이 감지된 시점의 최근 키 조합을 [Prefs.lastSwitchTriggerKeys] 에 남긴다. 감지된 키가
      * 없으면(시스템이 이 서비스보다 먼저 키를 가로챘거나, 키 없이 소프트웨어적으로 전환된 경우 등)
-     * 그 사실을 안내하는 문구를 남긴다 — "빈 결과"도 유의미한 진단 정보.
+     * **빈 문자열을 그대로 저장한다** — "빈 결과"도 유의미한 진단 정보이지만, 그 뜻을 사람이 읽을
+     * 안내 문구로 바꾸는 건 데이터가 아니라 화면(`SettingsActivity.refreshDiagnosticResult`)의
+     * 몫이다. 여기서 문구까지 박아 넣으면 "값이 없다"와 "값이 이 특정 문장이다"를 구분할 수 없어,
+     * 나중에 문구를 다듬거나 다른 화면에서 다르게 보여주고 싶을 때 저장된 과거 값까지 꼬인다.
      */
     private fun captureDiagnosticTrigger() {
         val names = KeyTriggerDiagnostics.recentKeyNames(
             diagKeyCodes, diagKeyAtUptime, diagKeyWriteIndex, SystemClock.uptimeMillis()
         ) { code -> KeyEvent.keyCodeToString(code).removePrefix("KEYCODE_") }
-        prefs.lastSwitchTriggerKeys =
-            KeyTriggerDiagnostics.describe(names) ?: getString(R.string.diag_no_key_captured)
+        prefs.lastSwitchTriggerKeys = KeyTriggerDiagnostics.describe(names) ?: ""
         prefs.lastSwitchTriggerAt = System.currentTimeMillis()
     }
 
@@ -729,7 +743,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
             // repeatCount > 0(키를 누르고 있어 반복 발생)은 기록하지 않는다 — 안 그러면 아무 키나
             // 길게 누르고 있는 것만으로 짧은 링 버퍼가 반복 이벤트로 가득 차, 그 직후 실제 전환을
             // 일으킨 키가 밀려나 사라진다(2026-09 발견).
-            if (prefs.diagnosticKeyLoggingEnabled && e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0) {
+            if (e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0 && diagnosticActive()) {
                 recordDiagnosticKeyPress(e.keyCode)
             }
             // (Bug 1) 메인(디스패치) 스레드에서는 키 이벤트 속성만 보는 저비용 판정만 동기로 하고 즉시
