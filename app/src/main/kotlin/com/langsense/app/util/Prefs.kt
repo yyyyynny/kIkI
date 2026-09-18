@@ -302,6 +302,47 @@ class Prefs(context: Context) {
             try { Color.parseColor(default) } catch (e2: IllegalArgumentException) { Color.GRAY }
         }
 
+    // ---- 화면 테마 (앱 화면 전용 — 오버레이는 각자의 색 설정을 쓴다) ----
+
+    /**
+     * 사용자가 고른 앱 화면 테마 id([UI_THEME_IDS] 중 하나, 기본 [THEME_SYSTEM]).
+     * 저장값이 손상되거나 모르는 값이면 조용히 기본으로 폴백한다([badgeTapAction] 과 같은 패턴).
+     */
+    var uiTheme: String
+        get() = (sp.getString(KEY_UI_THEME, THEME_SYSTEM) ?: THEME_SYSTEM)
+            .let { if (it in UI_THEME_IDS) it else THEME_SYSTEM }
+        set(v) = sp.edit().putString(KEY_UI_THEME, if (v in UI_THEME_IDS) v else THEME_SYSTEM).apply()
+
+    // ---- "NEW" 배지 / "이사 갔어요" 안내의 자동 만료 ----
+
+    /**
+     * 사용자가 이미 열어 봐서 NEW 표시를 끌 마커 id 집합.
+     *
+     * ⚠️ `getStringSet` 이 돌려주는 Set 은 **그대로 수정하면 안 된다**(문서상 미정의 동작).
+     * 항상 복사본을 만들어 다시 넣는다.
+     */
+    private var seenMarkers: Set<String>
+        get() = sp.getStringSet(KEY_SEEN_MARKERS, emptySet())?.toSet() ?: emptySet()
+        set(v) = sp.edit().putStringSet(KEY_SEEN_MARKERS, v).apply()
+
+    /** [markerId] 를 이미 본 것으로 기록(멱등). */
+    fun markSeen(markerId: String) {
+        val cur = seenMarkers
+        if (markerId in cur) return
+        seenMarkers = cur + markerId
+    }
+
+    /**
+     * 지금 [markerId] 에 NEW(또는 이사 안내)를 보여야 하는가.
+     *
+     * 두 겹으로 **저절로** 사라진다 — 릴리스마다 손으로 지우는 코드가 없어야 잊지 않는다:
+     *  1. 사용자가 그 화면을 한 번 열면 [markSeen] 으로 기록돼 그 사람에겐 즉시 사라진다.
+     *  2. 안 열어 본 사람에게도, 표시를 도입한 버전에서 [MARKER_LIFESPAN_VERSIONS] 만큼 지나면
+     *     [isMarkerFresh] 가 false 가 되어 코드가 알아서 안 보여준다.
+     */
+    fun shouldShowMarker(markerId: String, sinceVersion: Int, currentVersion: Int): Boolean =
+        isMarkerFresh(sinceVersion, currentVersion) && markerId !in seenMarkers
+
     fun register(listener: SharedPreferences.OnSharedPreferenceChangeListener) =
         sp.registerOnSharedPreferenceChangeListener(listener)
 
@@ -372,6 +413,56 @@ class Prefs(context: Context) {
         const val KEY_BADGE_TAP_ACTION = "badge_tap_action"
         const val KEY_RADIAL_ACCENT_COLOR = "radial_accent_color"
         const val KEY_RADIAL_GLOW_COLOR = "radial_glow_color"
+        const val KEY_UI_THEME = "ui_theme"
+        const val KEY_SEEN_MARKERS = "seen_markers"
+
+        // ---- 화면 테마 id ----
+        /** 기기의 밝게/어둡게 설정을 따라간다(기본). 자체 팔레트가 아니라 라이트/다크로 해석된다. */
+        const val THEME_SYSTEM = "system"
+        const val THEME_LIGHT = "light"
+        const val THEME_DARK = "dark"
+        const val THEME_BEIGE = "beige"
+        const val THEME_CYBER = "cyber"
+        const val THEME_HIGH_CONTRAST = "high_contrast"
+
+        /** 설정 화면에 보여줄 순서 그대로. 기본값(system)이 맨 앞. */
+        val UI_THEME_IDS = listOf(
+            THEME_SYSTEM, THEME_LIGHT, THEME_DARK, THEME_BEIGE, THEME_CYBER, THEME_HIGH_CONTRAST
+        )
+
+        // ---- NEW / 이사 안내 마커 ----
+
+        /**
+         * 마커를 도입한 버전에서 이만큼 지나면 아무도 안 봤어도 표시를 멈춘다.
+         *
+         * 이 숫자가 있는 이유: "다음 릴리스에서 NEW 를 지운다"는 수동 절차는 **반드시 잊어버려서**
+         * 1년 전 기능에 NEW 가 붙어 있게 된다. 마커를 달 때 도입 버전만 적어 두면 만료는 코드가 한다.
+         */
+        const val MARKER_LIFESPAN_VERSIONS = 3
+
+        /** 마커 id — 새 마커를 추가할 땐 여기 상수 + [MARKER_SINCE] 한 줄만 적으면 된다. */
+        const val MARKER_THEME = "theme"
+        const val MARKER_FLASH_OPACITY = "flash_opacity"
+        const val MARKER_BADGE_OPACITY = "badge_opacity"
+        const val MARKER_MOVED_DIAG_PAUSE = "moved_diag_pause"
+        const val MARKER_MOVED_QUICK_MENU = "moved_quick_menu"
+
+        /** 각 마커가 도입된 versionCode. 만료 계산의 유일한 입력. */
+        val MARKER_SINCE = mapOf(
+            MARKER_THEME to 2,
+            MARKER_FLASH_OPACITY to 2,
+            MARKER_BADGE_OPACITY to 2,
+            MARKER_MOVED_DIAG_PAUSE to 2,
+            MARKER_MOVED_QUICK_MENU to 2
+        )
+
+        /**
+         * 마커가 아직 유효한 기간 안인가(순수 함수 — JVM 단위 테스트 대상).
+         *
+         * 도입 버전보다 이전 버전에서는 보여주지 않는다(마커를 미리 심어 둘 수 있게).
+         */
+        fun isMarkerFresh(sinceVersion: Int, currentVersion: Int): Boolean =
+            currentVersion in sinceVersion until (sinceVersion + MARKER_LIFESPAN_VERSIONS)
 
         /** 원본 HTML 의 은은한 하늘색/짙은 파랑(CLAUDE.md Feature 5 참조) — 커스터마이즈 기본값. */
         const val DEFAULT_RADIAL_ACCENT = "#CDEEFF"

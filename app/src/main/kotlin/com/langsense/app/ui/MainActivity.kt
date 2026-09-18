@@ -9,6 +9,8 @@ import androidx.appcompat.app.AppCompatActivity
 import com.langsense.app.R
 import com.langsense.app.databinding.ActivityMainBinding
 import com.langsense.app.util.PermissionHelper
+import com.langsense.app.util.Prefs
+import com.langsense.app.util.ThemeManager
 import com.langsense.app.util.themeColor
 
 /**
@@ -19,7 +21,17 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
 
+    /**
+     * 이 화면에 실제로 적용한 테마. 설정에서 테마를 바꾸고 돌아오면 [onResume] 에서 이 값과
+     * 비교해 다시 그린다 — 팔레트 변경은 시스템 구성 변경이 아니라 앱 내부 상태 변경이라
+     * 백스택에 멈춰 있던 이 화면은 저절로 갱신되지 않는다.
+     */
+    private var appliedTheme: String = Prefs.THEME_SYSTEM
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // ⚠️ setTheme 은 super.onCreate 보다 먼저(ThemeManager.apply 문서 참조).
+        appliedTheme = Prefs(this).uiTheme
+        ThemeManager.apply(this, appliedTheme)
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -47,6 +59,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 설정에서 테마를 바꾸고 돌아온 경우: 이 화면은 아직 이전 팔레트라 다시 만든다.
+        // (라이트/다크만 바뀐 경우는 AppCompat 이 이미 재생성해 주므로 여기서 값이 같아 통과한다.)
+        if (appliedTheme != Prefs(this).uiTheme) {
+            recreate()
+            return
+        }
         refreshStatus()
     }
 

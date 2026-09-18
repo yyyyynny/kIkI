@@ -40,4 +40,119 @@
         <item name="uiRippleOnTonal">#332563EB</item>
         <item name="uiStrokeWidth">1dp</item>
     </style>
+
+    <!--
+        ══════════════════════════════════════════════════════════════════
+        고정 팔레트 테마 3종 (베이지 / 사이버펑크 / 고대비)
+
+        ⚠️ 부모가 DayNight 가 **아니다**(Theme.AppCompat[.Light].NoActionBar).
+        이 세 벌은 라이트/다크 개념이 없는 '고정' 팔레트라, DayNight 를 상속하면
+        values-night 한정자가 끼어들 여지가 생긴다(지금은 Theme.LangSense 만
+        values-night 에 있지만, 나중에 누가 values-night 에 같은 이름을 만들면
+        조용히 색이 뒤집힌다). 부모 단계에서 아예 차단해 둔다.
+        · 베이지는 밝은 바탕 → Light 계열 부모 + windowLightStatusBar=true
+        · 사이버펑크/고대비는 어두운 바탕 → 일반(다크) 부모 + false
+          (이걸 잘못 주면 상태바 아이콘이 배경에 묻혀 안 보인다)
+
+        night mode 자체는 `ThemeManager.apply()` 가 팔레트와 같은 쪽으로 고정한다
+        (AppCompat 내부 위젯 리소스 — 다이얼로그/커서/오버플로 — 를 맞추기 위함).
+
+        각 테마는 attrs.xml 의 17개 attr 을 **전부** 자기 팔레트로 바인딩한다
+        (하나라도 빠지면 부모 AppCompat 에 그 attr 이 없어 런타임에 색이 깨진다).
+        ══════════════════════════════════════════════════════════════════
+    -->
+
+    <!-- ── 베이지(따뜻한 종이) ────────────────────────────────────────── -->
+    <style name="Theme.LangSense.Beige" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="colorPrimary">@color/beige_accent</item>
+        <item name="colorPrimaryDark">@color/beige_bg</item>
+        <item name="colorAccent">@color/beige_accent</item>
+        <item name="android:windowBackground">@color/beige_bg</item>
+        <item name="android:statusBarColor">@color/beige_bg</item>
+        <item name="android:navigationBarColor">@color/beige_bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:textColorPrimary">@color/beige_on_surface</item>
+        <item name="android:textColorSecondary">@color/beige_on_surface_muted</item>
+
+        <item name="uiBg">@color/beige_bg</item>
+        <item name="uiSurface">@color/beige_surface</item>
+        <item name="uiOnSurface">@color/beige_on_surface</item>
+        <item name="uiOnSurfaceMuted">@color/beige_on_surface_muted</item>
+        <item name="uiAccent">@color/beige_accent</item>
+        <item name="uiOnAccent">@color/beige_on_accent</item>
+        <item name="uiAccentContainer">@color/beige_accent_container</item>
+        <item name="uiOnAccentContainer">@color/beige_on_accent_container</item>
+        <item name="uiDivider">@color/beige_divider</item>
+        <item name="uiMuted">@color/beige_muted</item>
+        <item name="statusOk">@color/beige_status_ok</item>
+        <item name="statusOkContainer">@color/beige_status_ok_container</item>
+        <item name="statusNeed">@color/beige_status_need</item>
+        <item name="statusNeedContainer">@color/beige_status_need_container</item>
+        <item name="uiRippleOnAccent">@color/beige_ripple_on_accent</item>
+        <item name="uiRippleOnTonal">@color/beige_ripple_on_tonal</item>
+        <item name="uiStrokeWidth">1dp</item>
+    </style>
+
+    <!-- ── 사이버펑크 ─────────────────────────────────────────────────── -->
+    <style name="Theme.LangSense.Cyber" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">@color/cyber_accent</item>
+        <item name="colorPrimaryDark">@color/cyber_bg</item>
+        <item name="colorAccent">@color/cyber_accent</item>
+        <item name="android:windowBackground">@color/cyber_bg</item>
+        <item name="android:statusBarColor">@color/cyber_bg</item>
+        <item name="android:navigationBarColor">@color/cyber_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:textColorPrimary">@color/cyber_on_surface</item>
+        <item name="android:textColorSecondary">@color/cyber_on_surface_muted</item>
+
+        <item name="uiBg">@color/cyber_bg</item>
+        <item name="uiSurface">@color/cyber_surface</item>
+        <item name="uiOnSurface">@color/cyber_on_surface</item>
+        <item name="uiOnSurfaceMuted">@color/cyber_on_surface_muted</item>
+        <item name="uiAccent">@color/cyber_accent</item>
+        <item name="uiOnAccent">@color/cyber_on_accent</item>
+        <item name="uiAccentContainer">@color/cyber_accent_container</item>
+        <item name="uiOnAccentContainer">@color/cyber_on_accent_container</item>
+        <item name="uiDivider">@color/cyber_divider</item>
+        <item name="uiMuted">@color/cyber_muted</item>
+        <item name="statusOk">@color/cyber_status_ok</item>
+        <item name="statusOkContainer">@color/cyber_status_ok_container</item>
+        <item name="statusNeed">@color/cyber_status_need</item>
+        <item name="statusNeedContainer">@color/cyber_status_need_container</item>
+        <item name="uiRippleOnAccent">@color/cyber_ripple_on_accent</item>
+        <item name="uiRippleOnTonal">@color/cyber_ripple_on_tonal</item>
+        <item name="uiStrokeWidth">1dp</item>
+    </style>
+
+    <!-- ── 고대비 ─────────────────────────────────────────────────────── -->
+    <style name="Theme.LangSense.HighContrast" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">@color/hc_accent</item>
+        <item name="colorPrimaryDark">@color/hc_bg</item>
+        <item name="colorAccent">@color/hc_accent</item>
+        <item name="android:windowBackground">@color/hc_bg</item>
+        <item name="android:statusBarColor">@color/hc_bg</item>
+        <item name="android:navigationBarColor">@color/hc_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:textColorPrimary">@color/hc_on_surface</item>
+        <item name="android:textColorSecondary">@color/hc_on_surface_muted</item>
+
+        <item name="uiBg">@color/hc_bg</item>
+        <item name="uiSurface">@color/hc_surface</item>
+        <item name="uiOnSurface">@color/hc_on_surface</item>
+        <item name="uiOnSurfaceMuted">@color/hc_on_surface_muted</item>
+        <item name="uiAccent">@color/hc_accent</item>
+        <item name="uiOnAccent">@color/hc_on_accent</item>
+        <item name="uiAccentContainer">@color/hc_accent_container</item>
+        <item name="uiOnAccentContainer">@color/hc_on_accent_container</item>
+        <item name="uiDivider">@color/hc_divider</item>
+        <item name="uiMuted">@color/hc_muted</item>
+        <item name="statusOk">@color/hc_status_ok</item>
+        <item name="statusOkContainer">@color/hc_status_ok_container</item>
+        <item name="statusNeed">@color/hc_status_need</item>
+        <item name="statusNeedContainer">@color/hc_status_need_container</item>
+        <item name="uiRippleOnAccent">@color/hc_ripple_on_accent</item>
+        <item name="uiRippleOnTonal">@color/hc_ripple_on_tonal</item>
+        <!-- 채움이 전부 순흑이라 테두리가 유일한 구분 수단 → 2dp -->
+        <item name="uiStrokeWidth">2dp</item>
+    </style>
 </resources>

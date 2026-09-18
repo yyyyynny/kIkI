@@ -13,8 +13,10 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.CompoundButton
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -27,6 +29,7 @@ import androidx.core.content.ContextCompat
 import com.langsense.app.R
 import com.langsense.app.util.ImeLocaleParser
 import com.langsense.app.util.Prefs
+import com.langsense.app.util.ThemeManager
 import com.langsense.app.util.themeColor
 import kotlin.math.roundToInt
 
@@ -77,214 +80,725 @@ class SettingsActivity : AppCompatActivity() {
      */
     private val previewRefreshers = mutableListOf<() -> Unit>()
 
+
+    /** 지금 열려 있는 그룹 id. */
+    private var currentGroup: String = GROUP_FLASH
+
+    /** 검색어(비면 검색 중 아님). */
+    private var query: String = ""
+
+    /** 태블릿 폭이면 목록+상세를 나란히(2단), 좁으면 목록→상세로 들어가는 1단. */
+    private var twoPane: Boolean = false
+
+    /** 테마 변경은 화면을 다시 만들어야 반영되므로, 지금 적용된 테마를 기억해 뒀다 비교한다. */
+    private var appliedTheme: String = Prefs.THEME_SYSTEM
+
+    private lateinit var railRoot: View
+    private lateinit var railList: LinearLayout
+    private lateinit var detailScroll: ScrollView
+    private lateinit var detailContainer: LinearLayout
+
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+        // ⚠️ setTheme 은 반드시 super.onCreate 보다 먼저 — windowBackground 는 super.onCreate 안에서
+        // Window 가 붙을 때 확정되므로, 나중에 부르면 배경만 이전 테마로 남는다.
         prefs = Prefs(this)
+        appliedTheme = prefs.uiTheme
+        ThemeManager.apply(this, appliedTheme)
+        super.onCreate(savedInstanceState)
 
-        val content = LinearLayout(this).apply {
+        twoPane = resources.configuration.screenWidthDp >= TWO_PANE_MIN_WIDTH_DP
+
+        railList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        railRoot = buildRail()
+
+        detailContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(4), dp(20), dp(28))
+            setPadding(dp(18), dp(4), dp(18), dp(28))
         }
-
-        savedHint = TextView(this).apply {
-            text = getString(R.string.settings_apply)
-            setTextColor(themeColor(R.attr.uiOnSurfaceMuted))
-            textSize = 12f
-            setPadding(dp(2), 0, 0, dp(4))
-        }
-        content.addView(savedHint)
-
-        // --- 지원 언어 ---
-        content.addView(sectionCard(getString(R.string.settings_languages)).apply {
-            addView(langSwitch(ImeLocaleParser.KO, R.string.settings_lang_ko))
-            addView(langSwitch(ImeLocaleParser.EN, R.string.settings_lang_en))
-            // [일본어 비활성화] 일본어 토글 주석(추후 재도입 위해 보존).
-            // addView(langSwitch(ImeLocaleParser.JA, R.string.settings_lang_ja))
-        })
-
-        // --- 터치 키보드 제외 (추가 기능 2) ---
-        content.addView(sectionCard(getString(R.string.settings_exclude_touch_kb)).apply {
-            addView(descRow(getString(R.string.settings_exclude_touch_kb_desc)))
-            addView(switchRow(getString(R.string.settings_exclude_touch_kb_enabled), prefs.excludeTouchKeyboard) {
-                prefs.excludeTouchKeyboard = it; markSaved()
-            })
-            // 위 옵션과 독립적인 옵션 — 외장 키보드 연결/해제를 토스트로 안내(2026-09 추가).
-            addView(descRow(getString(R.string.settings_keyboard_connect_notify_desc)))
-            addView(switchRow(getString(R.string.settings_keyboard_connect_notify), prefs.keyboardConnectNotify) {
-                prefs.keyboardConnectNotify = it; markSaved()
-            })
-            // "터치 키보드 제외"의 하위 옵션(전환 원인 진단이 켜져 있을 때만 의미가 있음, 2026-09 추가).
-            addView(descRow(getString(R.string.settings_diagnostic_pause_with_touch_kb_desc)))
-            addView(
-                switchRow(
-                    getString(R.string.settings_diagnostic_pause_with_touch_kb),
-                    prefs.diagnosticPausedByTouchKeyboardExclude
-                ) { prefs.diagnosticPausedByTouchKeyboardExclude = it; markSaved() }
-            )
-        })
-
-        // --- 전환 플래시 ---
-        content.addView(sectionCard(getString(R.string.settings_flash)).apply {
-            addView(boundSwitchRow(getString(R.string.settings_flash_enabled), { prefs.flashEnabled }) {
-                prefs.flashEnabled = it; markSaved()
-            })
-            // 깜박임 속도 100~500ms
-            addView(
-                sliderRow(
-                    label = getString(R.string.settings_flash_duration),
-                    min = 100, max = 500, step = 50, value = prefs.flashDurationMs, suffix = "ms"
-                ) { prefs.flashDurationMs = it; markSaved() }
-            )
-            // 깜박임 횟수 1~5
-            addView(
-                sliderRow(
-                    label = getString(R.string.settings_flash_count),
-                    min = 1, max = 5, step = 1, value = prefs.flashCount, suffix = "회"
-                ) { prefs.flashCount = it; markSaved() }
-            )
-            // 불투명도(2026-09 추가) — 예전엔 Prefs.FLASH_ALPHA 로 85% 고정이었다.
-            addView(
-                sliderRow(
-                    label = getString(R.string.settings_flash_opacity),
-                    min = Prefs.MIN_OPACITY_PCT, max = 100, step = 5,
-                    value = prefs.flashOpacityPercent, suffix = "%"
-                ) { prefs.flashOpacityPercent = it; markSaved(); refreshPreviews() }
-            )
-            addView(descRow(getString(R.string.settings_flash_opacity_desc)))
-        })
-
-        // --- 언어별 플래시 색상 ---
-        content.addView(sectionCard(getString(R.string.settings_flash_colors)).apply {
-            addView(colorEditor(ImeLocaleParser.KO, getString(R.string.settings_lang_ko)))
-            addView(colorEditor(ImeLocaleParser.EN, getString(R.string.settings_lang_en)))
-            // [일본어 비활성화] 일본어 색상 편집기 주석(추후 재도입 위해 보존).
-            // addView(colorEditor(ImeLocaleParser.JA, getString(R.string.settings_lang_ja)))
-        })
-
-        // --- 상시 배지 ---
-        content.addView(sectionCard(getString(R.string.settings_badge)).apply {
-            addView(boundSwitchRow(getString(R.string.settings_badge_enabled), { prefs.badgeEnabled }) {
-                prefs.badgeEnabled = it; markSaved()
-            })
-            // [5] 크기 3단계(소/중/대)
-            addView(badgeSizeRow())
-            // [5] 배경색/글씨색 — 플래시 색상과 동일한 공용 색 선택 컴포넌트 재사용
-            addView(
-                colorPickerRow(
-                    getString(R.string.settings_badge_bg_color), prefs.badgeBgColorHex,
-                    opacityPct = { prefs.badgeBgOpacityPercent }
-                ) { prefs.badgeBgColorHex = it }
-            )
-            // 불투명도(2026-09 추가) — 예전엔 Prefs.BADGE_BG_ALPHA 로 80% 고정이었다.
-            addView(
-                sliderRow(
-                    label = getString(R.string.settings_badge_bg_opacity),
-                    min = Prefs.MIN_OPACITY_PCT, max = 100, step = 5,
-                    value = prefs.badgeBgOpacityPercent, suffix = "%"
-                ) { prefs.badgeBgOpacityPercent = it; markSaved(); refreshPreviews() }
-            )
-            // 글씨색은 불투명도 설정이 없다(항상 불투명) — 배경이 흐려도 글자는 읽혀야 하므로.
-            addView(colorPickerRow(getString(R.string.settings_badge_text_color), prefs.badgeTextColorHex) {
-                prefs.badgeTextColorHex = it
-            })
-            addView(descRow(getString(R.string.settings_badge_long_press_desc)))
-        })
-
-        // --- 플로팅 메뉴(배지 탭) ---
-        content.addView(sectionCard(getString(R.string.settings_radial)).apply {
-            addView(descRow(getString(R.string.settings_radial_reduce_motion_desc)))
-            addView(switchRow(getString(R.string.settings_radial_reduce_motion), prefs.radialReduceMotion) {
-                prefs.radialReduceMotion = it; markSaved()
-            })
-            // 메뉴 강조색 2종 — 배지 색상과 동일한 공용 색 선택 컴포넌트 재사용.
-            addView(descRow(getString(R.string.settings_radial_colors_desc)))
-            addView(colorPickerRow(getString(R.string.settings_radial_accent_color), prefs.radialAccentColorHex) {
-                prefs.radialAccentColorHex = it
-            })
-            addView(colorPickerRow(getString(R.string.settings_radial_glow_color), prefs.radialGlowColorHex) {
-                prefs.radialGlowColorHex = it
-            })
-        })
-
-        // --- 배지 탭 동작 ---
-        content.addView(sectionCard(getString(R.string.settings_badge_tap)).apply {
-            addView(descRow(getString(R.string.settings_badge_tap_desc)))
-            addView(badgeTapActionRow())
-            addView(descRow(getString(R.string.settings_badge_tap_hide_warning)))
-        })
-
-        // --- 퀵메뉴 항목 순서 ---
-        content.addView(sectionCard(getString(R.string.settings_quick_menu_order)).apply {
-            addView(descRow(getString(R.string.settings_quick_menu_order_desc)))
-            addView(quickMenuOrderSection())
-        })
-
-        // --- 포커스 없는 키 입력 경고 ---
-        content.addView(sectionCard(getString(R.string.settings_nofocus)).apply {
-            addView(descRow(getString(R.string.settings_nofocus_desc))) // [3] 기능 설명
-            addView(switchRow(getString(R.string.settings_nofocus_enabled), prefs.noFocusEnabled) {
-                prefs.noFocusEnabled = it; markSaved()
-            })
-            addView(
-                sliderRow(
-                    label = getString(R.string.settings_nofocus_threshold),
-                    min = 1, max = 5, step = 1, value = prefs.noFocusThreshold, suffix = "회"
-                ) { prefs.noFocusThreshold = it; markSaved() }
-            )
-        })
-
-        // --- 전환 원인 진단 (추가 기능 3) ---
-        content.addView(sectionCard(getString(R.string.settings_diagnostic)).apply {
-            addView(descRow(getString(R.string.settings_diagnostic_desc)))
-            addView(switchRow(getString(R.string.settings_diagnostic_enabled), prefs.diagnosticKeyLoggingEnabled) {
-                prefs.diagnosticKeyLoggingEnabled = it; markSaved()
-            })
-            addView(diagnosticResultRow())
-        })
-
-        // --- 한영타 교체 ---
-        content.addView(sectionCard(getString(R.string.settings_replace)).apply {
-            addView(boundSwitchRow(getString(R.string.settings_replace_enabled), { prefs.replaceEnabled }) {
-                prefs.replaceEnabled = it; markSaved()
-            })
-            addView(
-                sliderRow(
-                    label = getString(R.string.settings_replace_confidence),
-                    min = 50, max = 90, step = 5, value = prefs.replaceConfidence, suffix = "%"
-                ) { prefs.replaceConfidence = it; markSaved() }
-            )
-            addView(descRow(getString(R.string.settings_replace_confidence_desc))) // [4] 신뢰도 설명
-        })
-
-        val scroll = ScrollView(this).apply {
+        detailScroll = ScrollView(this).apply {
+            id = R.id.settings_detail_scroll   // 스크롤 위치를 테마 변경(recreate) 너머로 보존
             isVerticalScrollBarEnabled = false
-            addView(content)
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0
-            ).also { it.weight = 1f }
+            addView(detailContainer)
+        }
+
+        val body: ViewGroup = if (twoPane) {
+            LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(railRoot, LinearLayout.LayoutParams(dp(300), ViewGroup.LayoutParams.MATCH_PARENT))
+                addView(
+                    View(this@SettingsActivity).apply {
+                        setBackgroundColor(themeColor(R.attr.uiDivider))
+                    },
+                    LinearLayout.LayoutParams(dp(1), ViewGroup.LayoutParams.MATCH_PARENT)
+                )
+                addView(
+                    detailScroll,
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT).also { it.weight = 1f }
+                )
+            }
+        } else {
+            // 1단: 같은 자리에 겹쳐 두고 보이는 쪽만 바꾼다(목록 ↔ 상세).
+            FrameLayout(this).apply {
+                addView(railRoot)
+                addView(detailScroll)
+            }
         }
 
         val screen = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(topBar())
-            addView(scroll)
+            addView(
+                body,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0).also { it.weight = 1f }
+            )
         }
         setContentView(screen)
+
+        renderRail()
+        renderDetail()
+        if (!twoPane) showList()
+
+        // 1단에서 상세를 보고 있으면 뒤로가기는 앱 종료가 아니라 목록으로.
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (!twoPane && detailScroll.visibility == View.VISIBLE) showList() else finish()
+            }
+        })
     }
 
-    /** 커스텀 톱바: 뒤로가기 + 화면 제목 (NoActionBar 테마 대응). */
+    // ── 좌측 레일(검색 + 그룹 목록) ──────────────────────────────────────────────
+
+    private fun buildRail(): View {
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(6), dp(12), dp(20))
+        }
+        column.addView(searchRow())
+        column.addView(railList)
+        return ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            addView(column)
+        }
+    }
+
+    /** 설정 이름뿐 아니라 설명 문구까지 함께 찾는 검색칸. */
+    private fun searchRow(): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), themeColor(R.attr.uiDivider))
+            }
+            setPadding(dp(11), 0, dp(11), 0)
+            minimumHeight = dp(44)
+        }
+        row.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_search)
+            imageTintList = android.content.res.ColorStateList.valueOf(themeColor(R.attr.uiOnSurfaceMuted))
+            layoutParams = LinearLayout.LayoutParams(dp(18), dp(18))
+        })
+        row.addView(EditText(this).apply {
+            setText(query)
+            hint = getString(R.string.settings_search_hint)
+            textSize = 14f
+            setSingleLine()
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            imeOptions = EditorInfo.IME_ACTION_SEARCH
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .also { it.weight = 1f; it.marginStart = dp(6) }
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    query = s?.toString().orEmpty()
+                    renderRail()
+                }
+            })
+        })
+        return row
+    }
+
+    private fun renderRail() {
+        railList.removeAllViews()
+        val q = query.trim()
+        if (q.isEmpty()) {
+            groupDefs().forEach { railList.addView(groupRow(it)) }
+            return
+        }
+        val hits = searchIndex().filter { it.matches(q) }
+        if (hits.isEmpty()) {
+            railList.addView(descRow(getString(R.string.settings_search_empty, q)))
+            return
+        }
+        railList.addView(subsectionTitleText(getString(R.string.settings_search_result, hits.size)))
+        hits.forEach { hit -> railList.addView(searchResultRow(hit)) }
+    }
+
+    /** 그룹 한 줄: 아이콘 + 이름 + 현재 상태 요약(+ 아직 안 본 새 기능이면 NEW). */
+    private fun groupRow(g: GroupDef): View {
+        val selected = twoPane && query.isBlank() && g.id == currentGroup
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(11), dp(10), dp(11), dp(10))
+            isClickable = true
+            background = if (selected) {
+                GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dp(10).toFloat()
+                    setColor(themeColor(R.attr.uiAccentContainer))
+                }
+            } else {
+                rippleBoundedBackground()
+            }
+            setOnClickListener { showGroup(g.id) }
+        }
+        val fg = if (selected) themeColor(R.attr.uiOnAccentContainer) else themeColor(R.attr.uiOnSurface)
+        val sub = if (selected) themeColor(R.attr.uiOnAccentContainer) else themeColor(R.attr.uiOnSurfaceMuted)
+        row.addView(ImageView(this).apply {
+            setImageResource(g.iconRes)
+            imageTintList = android.content.res.ColorStateList.valueOf(fg)
+            layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
+        })
+        val texts = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .also { it.weight = 1f; it.marginStart = dp(11) }
+        }
+        val titleLine = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        titleLine.addView(TextView(this).apply {
+            text = getString(g.titleRes)
+            textSize = 14.5f
+            setTextColor(fg)
+            if (selected) setTypeface(typeface, Typeface.BOLD)
+        })
+        if (showMarker(g.newMarker)) titleLine.addView(newChip())
+        texts.addView(titleLine)
+        texts.addView(TextView(this).apply {
+            text = g.summary()
+            textSize = 12f
+            setTextColor(sub)
+        })
+        row.addView(texts)
+        if (!selected) {
+            row.addView(ImageView(this).apply {
+                setImageResource(R.drawable.ic_chevron)
+                imageTintList = android.content.res.ColorStateList.valueOf(themeColor(R.attr.uiOnSurfaceMuted))
+                layoutParams = LinearLayout.LayoutParams(dp(16), dp(16))
+            })
+        }
+        return row
+    }
+
+    /** "NEW" 칩 — [Prefs.shouldShowMarker] 가 참일 때만 붙고, 저절로 사라진다. */
+    private fun newChip(): View = TextView(this).apply {
+        text = getString(R.string.settings_new_badge)
+        textSize = 9.5f
+        setTypeface(typeface, Typeface.BOLD)
+        setTextColor(themeColor(R.attr.uiOnAccentContainer))
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(5).toFloat()
+            setColor(themeColor(R.attr.uiAccentContainer))
+        }
+        setPadding(dp(5), dp(1), dp(5), dp(1))
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).also { it.marginStart = dp(6) }
+    }
+
+    private fun searchResultRow(hit: SearchEntry): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(11), dp(9), dp(11), dp(9))
+            isClickable = true
+            background = rippleBoundedBackground()
+            setOnClickListener { showGroup(hit.group) }
+        }
+        row.addView(TextView(this).apply {
+            text = hit.name
+            textSize = 14f
+            setTextColor(themeColor(R.attr.uiOnSurface))
+        })
+        row.addView(TextView(this).apply {
+            text = hit.path
+            textSize = 11.5f
+            setTextColor(themeColor(R.attr.uiOnSurfaceMuted))
+        })
+        return row
+    }
+
+    // ── 우측 상세 ────────────────────────────────────────────────────────────────
+
+    private fun showGroup(id: String) {
+        currentGroup = id
+        // 그룹을 한 번 열면 그 NEW 표시는 이 사용자에게서 사라진다.
+        groupDefs().firstOrNull { it.id == id }?.newMarker?.let { prefs.markSeen(it) }
+        renderRail()
+        renderDetail()
+        if (!twoPane) {
+            railRoot.visibility = View.GONE
+            detailScroll.visibility = View.VISIBLE
+        }
+        detailScroll.scrollTo(0, 0)
+    }
+
+    private fun showList() {
+        railRoot.visibility = View.VISIBLE
+        detailScroll.visibility = View.GONE
+    }
+
+    private fun renderDetail() {
+        detailContainer.removeAllViews()
+        val g = groupDefs().firstOrNull { it.id == currentGroup } ?: return
+        detailContainer.addView(TextView(this).apply {
+            text = getString(g.titleRes)
+            textSize = 21f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(themeColor(R.attr.uiOnSurface))
+            setPadding(dp(2), dp(6), 0, 0)
+        })
+        detailContainer.addView(descRow(getString(g.descRes)))
+        movedNoticesFor(g.id).forEach { detailContainer.addView(movedRow(it)) }
+        g.build(detailContainer)
+    }
+
+    /**
+     * "이사 갔어요" 안내 — 원래 이 그룹 자리에 있던 설정이 어디로 갔는지 알려주고 눌러서 이동한다.
+     * NEW 와 같은 규칙으로 저절로 만료된다([Prefs.shouldShowMarker]).
+     */
+    private fun movedRow(m: MovedNotice): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            isClickable = true
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(14).toFloat()
+                // 점선 테두리 — 이건 설정이 아니라 이정표라는 뜻.
+                setStroke(dp(1), themeColor(R.attr.uiDivider), dp(4).toFloat(), dp(3).toFloat())
+            }
+            setOnClickListener { prefs.markSeen(m.marker); showGroup(m.toGroup) }
+        }
+        row.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_moved)
+            imageTintList = android.content.res.ColorStateList.valueOf(themeColor(R.attr.uiOnSurfaceMuted))
+            layoutParams = LinearLayout.LayoutParams(dp(19), dp(19))
+        })
+        val texts = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .also { it.weight = 1f; it.marginStart = dp(11) }
+        }
+        texts.addView(TextView(this).apply {
+            text = getString(R.string.settings_moved_format, getString(m.whatRes), getString(m.whereRes))
+            textSize = 13.5f
+            setTextColor(themeColor(R.attr.uiOnSurface))
+        })
+        texts.addView(TextView(this).apply {
+            text = getString(R.string.settings_moved_hint)
+            textSize = 11.5f
+            setTextColor(themeColor(R.attr.uiOnSurfaceMuted))
+        })
+        row.addView(texts)
+        row.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_chevron)
+            imageTintList = android.content.res.ColorStateList.valueOf(themeColor(R.attr.uiOnSurfaceMuted))
+            layoutParams = LinearLayout.LayoutParams(dp(16), dp(16))
+        })
+        val lp = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).also { it.topMargin = dp(12) }
+        row.layoutParams = lp
+        return row
+    }
+
+    private fun movedNoticesFor(group: String): List<MovedNotice> = MOVED_NOTICES
+        .filter { it.fromGroup == group && showMarker(it.marker) }
+
+    private fun showMarker(markerId: String?): Boolean {
+        if (markerId == null) return false
+        val since = Prefs.MARKER_SINCE[markerId] ?: return false
+        return prefs.shouldShowMarker(markerId, since, appVersionCode())
+    }
+
+    /**
+     * 현재 앱 versionCode. `BuildConfig` 는 이 프로젝트가 생성하지 않으므로(빌드 기능 미활성)
+     * PackageManager 로 읽는다 — 이것 하나 때문에 BuildConfig 생성을 켜면 빌드 산출물만 늘어난다.
+     * 조회 실패는 있을 수 없지만, 실패하면 마커를 보여주지 않는 쪽(0)이 안전하다.
+     */
+    private fun appVersionCode(): Int = runCatching {
+        packageManager.getPackageInfo(packageName, 0).longVersionCode.toInt()
+    }.getOrDefault(0)
+
+    // ── 그룹 정의 ────────────────────────────────────────────────────────────────
+
+    private class GroupDef(
+        val id: String,
+        val titleRes: Int,
+        val descRes: Int,
+        val iconRes: Int,
+        val newMarker: String?,
+        val summary: () -> String,
+        val build: (LinearLayout) -> Unit
+    )
+
+    private class MovedNotice(
+        val marker: String,
+        val fromGroup: String,
+        val toGroup: String,
+        val whatRes: Int,
+        val whereRes: Int
+    )
+
+    private class SearchEntry(val name: String, val path: String, val group: String, val kw: String) {
+        fun matches(q: String): Boolean {
+            val needle = q.lowercase()
+            return name.lowercase().contains(needle) ||
+                path.lowercase().contains(needle) ||
+                kw.lowercase().contains(needle)
+        }
+    }
+
+    private fun onOff(v: Boolean): String =
+        getString(if (v) R.string.quick_state_on else R.string.quick_state_off)
+
+    private fun groupDefs(): List<GroupDef> = listOf(
+        GroupDef(
+            GROUP_FLASH, R.string.settings_group_flash, R.string.settings_group_flash_desc,
+            R.drawable.ic_grp_flash, Prefs.MARKER_FLASH_OPACITY,
+            summary = {
+                "${onOff(prefs.flashEnabled)} · ${prefs.flashDurationMs}ms · " +
+                    "${prefs.flashCount}회 · ${prefs.flashOpacityPercent}%"
+            }
+        ) { c ->
+            c.addView(sectionCard(getString(R.string.settings_flash)).apply {
+                addView(boundSwitchRow(getString(R.string.settings_flash_enabled), { prefs.flashEnabled }) {
+                    prefs.flashEnabled = it; markSaved(); renderRail()
+                })
+                addView(
+                    sliderRow(
+                        label = getString(R.string.settings_flash_duration),
+                        min = 100, max = 500, step = 50, value = prefs.flashDurationMs, suffix = "ms"
+                    ) { prefs.flashDurationMs = it; markSaved(); renderRail() }
+                )
+                addView(
+                    sliderRow(
+                        label = getString(R.string.settings_flash_count),
+                        min = 1, max = 5, step = 1, value = prefs.flashCount, suffix = "회"
+                    ) { prefs.flashCount = it; markSaved(); renderRail() }
+                )
+                addView(
+                    sliderRow(
+                        label = getString(R.string.settings_flash_opacity),
+                        min = Prefs.MIN_OPACITY_PCT, max = 100, step = 5,
+                        value = prefs.flashOpacityPercent, suffix = "%"
+                    ) { prefs.flashOpacityPercent = it; markSaved(); refreshPreviews(); renderRail() }
+                )
+                addView(descRow(getString(R.string.settings_flash_opacity_desc)))
+            })
+            c.addView(sectionCard(getString(R.string.settings_languages)).apply {
+                addView(descRow(getString(R.string.settings_languages_desc)))
+                addView(langSwitch(ImeLocaleParser.KO, R.string.settings_lang_ko))
+                addView(langSwitch(ImeLocaleParser.EN, R.string.settings_lang_en))
+                // [일본어 비활성화] 일본어 토글 주석(추후 재도입 위해 보존).
+                // addView(langSwitch(ImeLocaleParser.JA, R.string.settings_lang_ja))
+            })
+            c.addView(sectionCard(getString(R.string.settings_flash_colors)).apply {
+                addView(colorEditor(ImeLocaleParser.KO, getString(R.string.settings_lang_ko)))
+                addView(colorEditor(ImeLocaleParser.EN, getString(R.string.settings_lang_en)))
+                // [일본어 비활성화] 일본어 색상 편집기 주석(추후 재도입 위해 보존).
+                // addView(colorEditor(ImeLocaleParser.JA, getString(R.string.settings_lang_ja)))
+            })
+        },
+
+        GroupDef(
+            GROUP_BADGE, R.string.settings_group_badge, R.string.settings_group_badge_desc,
+            R.drawable.ic_grp_badge, Prefs.MARKER_BADGE_OPACITY,
+            summary = {
+                val size = resources.getStringArray(R.array.badge_size_labels)
+                    .getOrElse(prefs.badgeSize) { "" }
+                "${onOff(prefs.badgeEnabled)} · $size · ${prefs.badgeBgOpacityPercent}%"
+            }
+        ) { c ->
+            c.addView(sectionCard(getString(R.string.settings_badge)).apply {
+                addView(boundSwitchRow(getString(R.string.settings_badge_enabled), { prefs.badgeEnabled }) {
+                    prefs.badgeEnabled = it; markSaved(); renderRail()
+                })
+                addView(badgeSizeRow())
+                addView(
+                    colorPickerRow(
+                        getString(R.string.settings_badge_bg_color), prefs.badgeBgColorHex,
+                        opacityPct = { prefs.badgeBgOpacityPercent }
+                    ) { prefs.badgeBgColorHex = it }
+                )
+                addView(
+                    sliderRow(
+                        label = getString(R.string.settings_badge_bg_opacity),
+                        min = Prefs.MIN_OPACITY_PCT, max = 100, step = 5,
+                        value = prefs.badgeBgOpacityPercent, suffix = "%"
+                    ) { prefs.badgeBgOpacityPercent = it; markSaved(); refreshPreviews(); renderRail() }
+                )
+                // 글씨색은 불투명도 설정이 없다(항상 불투명) — 배경이 흐려도 글자는 읽혀야 하므로.
+                addView(colorPickerRow(getString(R.string.settings_badge_text_color), prefs.badgeTextColorHex) {
+                    prefs.badgeTextColorHex = it
+                })
+            })
+            c.addView(sectionCard(getString(R.string.settings_badge_tap)).apply {
+                addView(descRow(getString(R.string.settings_badge_tap_desc)))
+                addView(badgeTapActionRow())
+                addView(descRow(getString(R.string.settings_badge_tap_hide_warning)))
+                addView(descRow(getString(R.string.settings_badge_long_press_desc)))
+            })
+        },
+
+        GroupDef(
+            GROUP_MENU, R.string.settings_group_menu, R.string.settings_group_menu_desc,
+            R.drawable.ic_grp_menu, null,
+            summary = {
+                getString(R.string.settings_group_menu_summary, prefs.quickMenuOrder.size) +
+                    " · " + onOff(prefs.radialReduceMotion)
+            }
+        ) { c ->
+            c.addView(sectionCard(getString(R.string.settings_quick_menu_order)).apply {
+                addView(descRow(getString(R.string.settings_quick_menu_order_desc)))
+                addView(quickMenuOrderSection())
+            })
+            c.addView(sectionCard(getString(R.string.settings_radial)).apply {
+                addView(descRow(getString(R.string.settings_radial_colors_desc)))
+                addView(colorPickerRow(getString(R.string.settings_radial_accent_color), prefs.radialAccentColorHex) {
+                    prefs.radialAccentColorHex = it
+                })
+                addView(colorPickerRow(getString(R.string.settings_radial_glow_color), prefs.radialGlowColorHex) {
+                    prefs.radialGlowColorHex = it
+                })
+                addView(descRow(getString(R.string.settings_radial_reduce_motion_desc)))
+                addView(switchRow(getString(R.string.settings_radial_reduce_motion), prefs.radialReduceMotion) {
+                    prefs.radialReduceMotion = it; markSaved(); renderRail()
+                })
+            })
+        },
+
+        GroupDef(
+            GROUP_REPLACE, R.string.settings_group_replace, R.string.settings_group_replace_desc,
+            R.drawable.ic_grp_replace, null,
+            summary = { "${onOff(prefs.replaceEnabled)} · ${prefs.replaceConfidence}%" }
+        ) { c ->
+            c.addView(sectionCard(getString(R.string.settings_replace)).apply {
+                addView(boundSwitchRow(getString(R.string.settings_replace_enabled), { prefs.replaceEnabled }) {
+                    prefs.replaceEnabled = it; markSaved(); renderRail()
+                })
+                addView(
+                    sliderRow(
+                        label = getString(R.string.settings_replace_confidence),
+                        min = 50, max = 90, step = 5, value = prefs.replaceConfidence, suffix = "%"
+                    ) { prefs.replaceConfidence = it; markSaved(); renderRail() }
+                )
+                addView(descRow(getString(R.string.settings_replace_confidence_desc)))
+            })
+        },
+
+        GroupDef(
+            GROUP_NOFOCUS, R.string.settings_group_nofocus, R.string.settings_group_nofocus_desc,
+            R.drawable.ic_grp_warn, null,
+            summary = { "${onOff(prefs.noFocusEnabled)} · ${prefs.noFocusThreshold}회" }
+        ) { c ->
+            c.addView(sectionCard(getString(R.string.settings_nofocus)).apply {
+                addView(descRow(getString(R.string.settings_nofocus_desc)))
+                addView(switchRow(getString(R.string.settings_nofocus_enabled), prefs.noFocusEnabled) {
+                    prefs.noFocusEnabled = it; markSaved(); renderRail()
+                })
+                addView(
+                    sliderRow(
+                        label = getString(R.string.settings_nofocus_threshold),
+                        min = 1, max = 5, step = 1, value = prefs.noFocusThreshold, suffix = "회"
+                    ) { prefs.noFocusThreshold = it; markSaved(); renderRail() }
+                )
+            })
+        },
+
+        GroupDef(
+            GROUP_KEYBOARD, R.string.settings_group_keyboard, R.string.settings_group_keyboard_desc,
+            R.drawable.ic_grp_keyboard, null,
+            summary = {
+                getString(R.string.settings_group_keyboard_summary,
+                    onOff(prefs.excludeTouchKeyboard), onOff(prefs.keyboardConnectNotify))
+            }
+        ) { c ->
+            c.addView(sectionCard(getString(R.string.settings_exclude_touch_kb)).apply {
+                addView(descRow(getString(R.string.settings_exclude_touch_kb_desc)))
+                addView(switchRow(getString(R.string.settings_exclude_touch_kb_enabled), prefs.excludeTouchKeyboard) {
+                    prefs.excludeTouchKeyboard = it; markSaved(); renderRail()
+                })
+            })
+            c.addView(sectionCard(getString(R.string.settings_keyboard_connect_notify)).apply {
+                addView(descRow(getString(R.string.settings_keyboard_connect_notify_desc)))
+                addView(switchRow(getString(R.string.settings_keyboard_connect_notify), prefs.keyboardConnectNotify) {
+                    prefs.keyboardConnectNotify = it; markSaved(); renderRail()
+                })
+            })
+        },
+
+        GroupDef(
+            GROUP_DIAG, R.string.settings_group_diag, R.string.settings_group_diag_desc,
+            R.drawable.ic_grp_diag, null,
+            summary = { onOff(prefs.diagnosticKeyLoggingEnabled) }
+        ) { c ->
+            c.addView(sectionCard(getString(R.string.settings_diagnostic)).apply {
+                addView(descRow(getString(R.string.settings_diagnostic_desc)))
+                addView(switchRow(getString(R.string.settings_diagnostic_enabled), prefs.diagnosticKeyLoggingEnabled) {
+                    prefs.diagnosticKeyLoggingEnabled = it; markSaved(); renderRail()
+                })
+                addView(diagnosticResultRow())
+                // 하위 옵션 — 부모("전환 키 기록")와 같은 카드에 들여쓰기로 종속 관계를 보인다.
+                addView(subsectionTitle(R.string.settings_diagnostic_sub_title))
+                addView(descRow(getString(R.string.settings_diagnostic_pause_with_touch_kb_desc)))
+                addView(
+                    switchRow(
+                        getString(R.string.settings_diagnostic_pause_with_touch_kb),
+                        prefs.diagnosticPausedByTouchKeyboardExclude
+                    ) { prefs.diagnosticPausedByTouchKeyboardExclude = it; markSaved() }
+                )
+            })
+        },
+
+        GroupDef(
+            GROUP_THEME, R.string.settings_group_theme, R.string.settings_group_theme_desc,
+            R.drawable.ic_grp_theme, Prefs.MARKER_THEME,
+            summary = { getString(themeLabelRes(prefs.uiTheme)) }
+        ) { c ->
+            c.addView(sectionCard(getString(R.string.settings_group_theme)).apply {
+                addView(themePicker())
+            })
+            c.addView(sectionCard(getString(R.string.settings_theme_scope_title)).apply {
+                addView(descRow(getString(R.string.settings_theme_scope_desc)))
+            })
+        }
+    )
+
+    private fun themeLabelRes(id: String): Int = when (id) {
+        Prefs.THEME_LIGHT -> R.string.settings_theme_light
+        Prefs.THEME_DARK -> R.string.settings_theme_dark
+        Prefs.THEME_BEIGE -> R.string.settings_theme_beige
+        Prefs.THEME_CYBER -> R.string.settings_theme_cyber
+        Prefs.THEME_HIGH_CONTRAST -> R.string.settings_theme_high_contrast
+        else -> R.string.settings_theme_system
+    }
+
+    /** 테마 카드 6개(2열). 고르면 즉시 [recreate] 로 다시 그린다. */
+    private fun themePicker(): View {
+        val grid = GridLayout(this).apply {
+            columnCount = 2
+            setPadding(0, dp(8), 0, dp(4))
+        }
+        Prefs.UI_THEME_IDS.forEach { id ->
+            val selected = prefs.uiTheme == id
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(11), dp(12), dp(11))
+                isClickable = true
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dp(12).toFloat()
+                    setStroke(
+                        dp(if (selected) 2 else 1),
+                        if (selected) themeColor(R.attr.uiAccent) else themeColor(R.attr.uiDivider)
+                    )
+                }
+                setOnClickListener {
+                    if (prefs.uiTheme == id) return@setOnClickListener
+                    prefs.uiTheme = id
+                    markSaved()
+                    recreate()
+                }
+            }
+            card.addView(TextView(this).apply {
+                text = getString(themeLabelRes(id))
+                textSize = 14f
+                setTextColor(themeColor(R.attr.uiOnSurface))
+                if (selected) setTypeface(typeface, Typeface.BOLD)
+            })
+            card.addView(TextView(this).apply {
+                text = getString(themeDescRes(id))
+                textSize = 11.5f
+                setTextColor(themeColor(R.attr.uiOnSurfaceMuted))
+                setPadding(0, dp(3), 0, 0)
+            })
+            card.layoutParams = GridLayout.LayoutParams().apply {
+                width = 0
+                height = ViewGroup.LayoutParams.WRAP_CONTENT
+                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                setMargins(dp(3), dp(3), dp(3), dp(3))
+            }
+            grid.addView(card)
+        }
+        return grid
+    }
+
+    private fun themeDescRes(id: String): Int = when (id) {
+        Prefs.THEME_LIGHT -> R.string.settings_theme_light_desc
+        Prefs.THEME_DARK -> R.string.settings_theme_dark_desc
+        Prefs.THEME_BEIGE -> R.string.settings_theme_beige_desc
+        Prefs.THEME_CYBER -> R.string.settings_theme_cyber_desc
+        Prefs.THEME_HIGH_CONTRAST -> R.string.settings_theme_high_contrast_desc
+        else -> R.string.settings_theme_system_desc
+    }
+
+    /** 검색 색인 — 설정 이름·경로·동의어(keyword)를 함께 훑는다. */
+    private fun searchIndex(): List<SearchEntry> {
+        fun e(nameRes: Int, pathRes: Int, group: String, kw: String) =
+            SearchEntry(getString(nameRes), getString(pathRes), group, kw)
+        return listOf(
+            e(R.string.settings_flash_enabled, R.string.settings_group_flash, GROUP_FLASH, "번쩍 플래시 전환"),
+            e(R.string.settings_flash_duration, R.string.settings_group_flash, GROUP_FLASH, "속도 시간 빠르게"),
+            e(R.string.settings_flash_count, R.string.settings_group_flash, GROUP_FLASH, "횟수 번"),
+            e(R.string.settings_flash_opacity, R.string.settings_group_flash, GROUP_FLASH, "투명 불투명 알파 흐리게 진하게"),
+            e(R.string.settings_flash_colors, R.string.settings_group_flash, GROUP_FLASH, "색 컬러 빨강 파랑"),
+            e(R.string.settings_languages, R.string.settings_group_flash, GROUP_FLASH, "한국어 영어 언어"),
+            e(R.string.settings_badge_enabled, R.string.settings_group_badge, GROUP_BADGE, "배지 표시"),
+            e(R.string.settings_badge_size, R.string.settings_group_badge, GROUP_BADGE, "크기 소 중 대"),
+            e(R.string.settings_badge_bg_color, R.string.settings_group_badge, GROUP_BADGE, "색 컬러 배경"),
+            e(R.string.settings_badge_bg_opacity, R.string.settings_group_badge, GROUP_BADGE, "투명 불투명 알파"),
+            e(R.string.settings_badge_text_color, R.string.settings_group_badge, GROUP_BADGE, "색 컬러 글씨"),
+            e(R.string.settings_badge_tap, R.string.settings_group_badge, GROUP_BADGE, "탭 눌렀을 때 동작"),
+            e(R.string.settings_quick_menu_order, R.string.settings_group_menu, GROUP_MENU, "퀵메뉴 항목 순서 드래그"),
+            e(R.string.settings_radial_accent_color, R.string.settings_group_menu, GROUP_MENU, "색 컬러 강조"),
+            e(R.string.settings_radial_glow_color, R.string.settings_group_menu, GROUP_MENU, "색 컬러 발광 빛"),
+            e(R.string.settings_radial_reduce_motion, R.string.settings_group_menu, GROUP_MENU, "저사양 움직임 애니메이션"),
+            e(R.string.settings_replace_enabled, R.string.settings_group_replace, GROUP_REPLACE, "한영타 교체 dkssud"),
+            e(R.string.settings_replace_confidence, R.string.settings_group_replace, GROUP_REPLACE, "신뢰도 정확도"),
+            e(R.string.settings_nofocus_enabled, R.string.settings_group_nofocus, GROUP_NOFOCUS, "포커스 경고 선택되지않음"),
+            e(R.string.settings_nofocus_threshold, R.string.settings_group_nofocus, GROUP_NOFOCUS, "임계 횟수"),
+            e(R.string.settings_exclude_touch_kb, R.string.settings_group_keyboard, GROUP_KEYBOARD, "터치 키보드 제외 외장"),
+            e(R.string.settings_keyboard_connect_notify, R.string.settings_group_keyboard, GROUP_KEYBOARD, "블루투스 연결 알림 배터리"),
+            e(R.string.settings_diagnostic_enabled, R.string.settings_group_diag, GROUP_DIAG, "진단 범인 원인 단축키"),
+            e(R.string.settings_diagnostic_pause_with_touch_kb, R.string.settings_group_diag, GROUP_DIAG, "진단 일시정지 터치 키보드"),
+            e(R.string.settings_group_theme, R.string.settings_group_theme, GROUP_THEME, "테마 다크 라이트 베이지 사이버펑크 고대비 색")
+        )
+    }
+
+    /** 커스텀 톱바: 뒤로가기 + 화면 제목 + 저장 안내(변경 피드백이 화면 밖으로 밀리지 않게 상단 고정). */
     private fun topBar(): View {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), dp(10), dp(20), dp(6))
+            setPadding(dp(8), dp(10), dp(16), dp(6))
         }
         val back = ImageButton(this).apply {
             setImageResource(R.drawable.ic_back)
             contentDescription = getString(R.string.settings_back)
             background = rippleCircleBackground()
+            imageTintList = android.content.res.ColorStateList.valueOf(themeColor(R.attr.uiOnSurface))
             layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
-            setOnClickListener { finish() }
+            setOnClickListener {
+                if (!twoPane && detailScroll.visibility == View.VISIBLE) showList() else finish()
+            }
         }
         val title = TextView(this).apply {
             text = getString(R.string.settings_title)
@@ -294,8 +808,14 @@ class SettingsActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
                 .also { it.weight = 1f; it.marginStart = dp(8) }
         }
+        savedHint = TextView(this).apply {
+            text = getString(R.string.settings_apply)
+            setTextColor(themeColor(R.attr.uiOnSurfaceMuted))
+            textSize = 11.5f
+        }
         bar.addView(back)
         bar.addView(title)
+        bar.addView(savedHint)
         return bar
     }
 
@@ -705,6 +1225,15 @@ class SettingsActivity : AppCompatActivity() {
         return container
     }
 
+    /** 문자열을 직접 받는 소제목(검색 결과 머리말처럼 개수가 섞이는 경우). */
+    private fun subsectionTitleText(text: String): TextView = TextView(this).apply {
+        this.text = text
+        textSize = 12.5f
+        setTypeface(typeface, Typeface.BOLD)
+        setTextColor(themeColor(R.attr.uiOnSurfaceMuted))
+        setPadding(dp(11), dp(10), 0, dp(4))
+    }
+
     private fun subsectionTitle(textRes: Int): TextView = TextView(this).apply {
         text = getString(textRes)
         textSize = 12.5f
@@ -924,6 +1453,38 @@ class SettingsActivity : AppCompatActivity() {
     companion object {
         /** 퀵메뉴 "선택됨" 행의 고정 높이(dp) — 드래그 자리교체 판정/애니메이션 오프셋 기준. */
         private const val ROW_HEIGHT_DP = 52
+
+        /**
+         * 이 폭(dp) 이상이면 목록과 상세를 나란히 보여준다.
+         * 주 타겟인 Galaxy Tab S6 Lite 는 세로에서도 약 857dp 라 2단으로 열린다 — 한 줄짜리 카드가
+         * 세로로만 쌓이면 가로 공간을 통째로 버리면서 스크롤만 길어진다.
+         */
+        private const val TWO_PANE_MIN_WIDTH_DP = 720
+
+        // 설정 그룹 id — 기능 하나를 사용자가 찾는 이름 하나로 묶는 단위.
+        private const val GROUP_FLASH = "flash"
+        private const val GROUP_BADGE = "badge"
+        private const val GROUP_MENU = "menu"
+        private const val GROUP_REPLACE = "replace"
+        private const val GROUP_NOFOCUS = "nofocus"
+        private const val GROUP_KEYBOARD = "keyboard"
+        private const val GROUP_DIAG = "diag"
+        private const val GROUP_THEME = "theme"
+
+        /**
+         * "이사 갔어요" 안내 — 예전 배치에서 이 자리에 있던 설정이 어디로 갔는지.
+         * 마커라서 [Prefs.shouldShowMarker] 규칙으로 저절로 만료된다(지우는 작업 불필요).
+         */
+        private val MOVED_NOTICES = listOf(
+            MovedNotice(
+                Prefs.MARKER_MOVED_DIAG_PAUSE, GROUP_KEYBOARD, GROUP_DIAG,
+                R.string.settings_diagnostic_pause_with_touch_kb, R.string.settings_group_diag
+            ),
+            MovedNotice(
+                Prefs.MARKER_MOVED_QUICK_MENU, GROUP_BADGE, GROUP_MENU,
+                R.string.settings_quick_menu_order, R.string.settings_group_menu
+            )
+        )
 
         /** 32색 팔레트. */
         private val PALETTE = listOf(

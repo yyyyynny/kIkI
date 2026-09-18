@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        프로그래매틱으로 만든 ScrollView 에 붙이는 고정 id.
+        View 의 상태 저장(스크롤 위치)은 id 가 있어야 동작하는데, generateViewId() 는 재생성 때마다
+        값이 달라져 소용이 없다. 테마를 바꾸면 recreate() 가 일어나므로 이 id 가 없으면 매번
+        스크롤이 맨 위로 튄다.
+    -->
+    <item name="settings_detail_scroll" type="id" />
+</resources>

@@ -1,6 +1,7 @@
 package com.langsense.app.util
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -111,6 +112,42 @@ class PrefsTest {
     fun alphaFromPercent_outOfRange_clamped() {
         assertEquals(0, Prefs.alphaFromPercent(-40))
         assertEquals(255, Prefs.alphaFromPercent(1000))
+    }
+
+    // ── Prefs.isMarkerFresh — NEW / "이사 갔어요" 표시의 자동 만료 ────────────────
+
+    /**
+     * 이 기능의 핵심은 "릴리스마다 손으로 지우지 않아도 사라진다"이다.
+     * 도입 버전부터 [Prefs.MARKER_LIFESPAN_VERSIONS] 동안만 참이고, 그 뒤로는 영원히 거짓.
+     */
+    @Test
+    fun isMarkerFresh_expiresAfterLifespan() {
+        val since = 2
+        val last = since + Prefs.MARKER_LIFESPAN_VERSIONS - 1
+        for (v in since..last) {
+            assertTrue("version=$v 에서는 아직 보여야 한다", Prefs.isMarkerFresh(since, v))
+        }
+        assertFalse("수명이 끝난 다음 버전부터는 사라져야 한다", Prefs.isMarkerFresh(since, last + 1))
+        assertFalse(Prefs.isMarkerFresh(since, last + 50))
+    }
+
+    /** 도입 버전보다 이전 버전에서는 보여주지 않는다(마커를 미리 심어 둘 수 있게). */
+    @Test
+    fun isMarkerFresh_notShownBeforeIntroduced() {
+        assertFalse(Prefs.isMarkerFresh(5, 4))
+        assertFalse(Prefs.isMarkerFresh(5, 1))
+        assertTrue(Prefs.isMarkerFresh(5, 5))
+    }
+
+    /** 등록된 마커는 전부 도입 버전이 있어야 한다 — 빠뜨리면 그 마커는 조용히 안 뜬다. */
+    @Test
+    fun markerSince_coversEveryDeclaredMarker() {
+        val declared = listOf(
+            Prefs.MARKER_THEME, Prefs.MARKER_FLASH_OPACITY, Prefs.MARKER_BADGE_OPACITY,
+            Prefs.MARKER_MOVED_DIAG_PAUSE, Prefs.MARKER_MOVED_QUICK_MENU
+        )
+        declared.forEach { assertTrue("$it 의 도입 버전이 없다", Prefs.MARKER_SINCE.containsKey(it)) }
+        assertEquals(declared.size, Prefs.MARKER_SINCE.size)
     }
 
     /** %가 커지면 알파도 단조 증가해야 한다(슬라이더가 역행하거나 멈추지 않음). */

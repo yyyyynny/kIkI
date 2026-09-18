@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 상태 필(pill) 배경. 실제 색은 backgroundTint 로 상태(완료/필요)에 맞게 입힌다. -->
+<!--
+    상태 필(pill) 배경. 실제 채움색은 backgroundTint 로 상태(완료/필요)에 맞게 입힌다.
+
+    ⚠️ 테두리가 필요한 이유: 고대비 테마에서는 status_*_container 가 순흑(#000000)이라
+    채움만으로는 검정 배경 위 검정 필이 되어 완전히 사라진다. backgroundTint 는 solid 만
+    덮고 stroke 에는 적용되지 않으므로, 여기 stroke 를 둬야 그 테마에서 필이 보인다.
+    라이트/다크에서는 uiDivider 가 1dp 의 은은한 회색이라 외형이 사실상 그대로다.
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <solid android:color="?attr/uiAccentContainer" />
     <corners android:radius="999dp" />
+    <stroke android:width="?attr/uiStrokeWidth" android:color="?attr/uiDivider" />
 </shape>

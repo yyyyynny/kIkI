@@ -451,6 +451,43 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
   diagnosticKeyLoggingEnabled` 로만 결정된다(구독 자체를 상태 변화마다 껐다 켰다 하는 IPC 비용을
   피하려고 캡처 여부만 갈랐다).
 
+### 추가 기능 4: 화면 테마 6종 + 설정 화면 IA 재구성 (2026-09)
+
+**테마(앱 화면 전용)**: 시스템(기본)/라이트/다크/베이지/사이버펑크/고대비.
+`Prefs.uiTheme` 에 저장하고 `ThemeManager` 가 적용한다.
+
+- ⚠️ **두 축을 항상 함께** 설정한다: `AppCompatDelegate.setDefaultNightMode`(uiMode 밝기 비트) +
+  `Activity.setTheme`(고정 팔레트 스타일). 나이트모드만으로는 값이 둘뿐이라 베이지/사이버펑크/
+  고대비를 표현할 수 없고(리소스 한정자에 그런 축이 없다), 반대로 팔레트만 바꾸면 AppCompat 내부
+  위젯 리소스(다이얼로그·EditText 커서·오버플로)가 반대 밝기로 튄다.
+- ⚠️ `setTheme` 은 **`super.onCreate()` 보다 먼저** — `windowBackground` 은 그 안에서 Window 가
+  붙을 때 확정되므로 나중에 부르면 배경만 이전 테마로 남는다.
+- ⚠️ `Context.getColor(R.color.x)` 는 **테마를 안 본다**(리소스 id 로 리터럴을 읽을 뿐). 그래서 색은
+  전부 `?attr/ui*`(`res/values/attrs.xml`) 경유이고 코드는 `Context.themeColor(R.attr.x)` 를 쓴다.
+  SwitchCompat/SeekBar/RadioButton/EditText 틴트는 `colorAccent` 가 결정하므로 테마 말고는 칠할
+  방법이 아예 없다.
+- 고정 팔레트 3종의 부모는 DayNight 가 **아니다**(`Theme.AppCompat(.Light).NoActionBar`) — night
+  한정자가 개입할 여지를 구조적으로 없앤다.
+- 고대비는 surface=bg=container 가 전부 순흑이라 **면으로 구분되던 요소가 사라진다**. `uiStrokeWidth`
+  를 2dp 로 올리고 `bg_pill` 에 stroke 를 신설했다(`backgroundTint` 는 solid 만 덮고 stroke 엔 적용
+  안 됨). 리플도 노란 accent 위 흰색은 1.4:1 이라 검정 계열로 둔다.
+- **오버레이는 테마 비대상**: 플래시·배지·칩·퀵메뉴는 접근성 서비스 Context 로 생성돼 액티비티
+  테마를 타지 않고, 이미 각자의 사용자 색 설정을 쓴다. 설정 화면이 이 사실을 안내한다.
+- 테마 변경은 `recreate()` 로 적용하고, 백스택의 `MainActivity` 는 `onResume` 에서 `appliedTheme`
+  과 비교해 스스로 다시 만든다(팔레트 변경은 시스템 구성 변경이 아니라 앱 내부 상태 변경이라
+  자동 재생성이 일어나지 않는다).
+
+**설정 화면 IA**: 카드 11개 평면 스크롤(약 4,400dp = 태블릿 4.7화면) → **그룹 8개 2단**.
+흩어져 있던 배지 관련 4카드와 플래시 2카드를 합치고, "터치 키보드 제외" 카드에 섞여 있던 무관한
+설정(외장 키보드 연결 알림 / 진단 일시정지)을 제 그룹으로 옮겼다. 검색은 이름·경로·동의어를 함께
+훑는다.
+
+**NEW / "이사 갔어요" 표시의 자동 만료**: 릴리스마다 손으로 지우는 절차는 반드시 잊어버리므로
+(그래서 1년 전 기능에 NEW 가 붙어 있게 된다) 코드가 만료시킨다 — ① 그 그룹을 한 번 열면
+`Prefs.markSeen` 으로 그 사용자에게선 즉시 사라지고, ② 안 본 사람에게도 `Prefs.MARKER_SINCE` 의
+도입 버전에서 `MARKER_LIFESPAN_VERSIONS`(3) 만큼 지나면 `isMarkerFresh`(순수 함수, JVM 테스트)가
+false 가 된다. 마커를 달 땐 상수 1개 + 도입 버전 1줄만 적으면 되고 **지우는 작업은 없다**.
+
 ---
 
 ## 권한 목록
@@ -495,11 +532,14 @@ util/
   ├── Prefs                    — SharedPreferences 래퍼(모든 설정 단일 진입점, 변경 즉시 적용)
   └── PermissionHelper         — 권한 안내 흐름
 
-SettingsActivity
-  └── 지원 언어 토글, 플래시 색/속도/횟수, 배지(ON·크기·배경색·글씨색),
-      포커스 경고/한영타(설명 문구 포함) — 공용 colorPickerRow 로 색 UI 공유
-      (온보딩/설정 모두 카드형 모던 UI: Theme.AppCompat.DayNight.NoActionBar 기반,
-       values-night 다크모드 지원, SwitchCompat 토글 — 의존성 추가 없음)
+SettingsActivity  — 2단(목록+상세) IA, 2026-09 재구성
+  ├── 좌측 레일: 검색칸(이름+설명+동의어) + 그룹 8개(각 줄에 현재 상태 요약)
+  └── 우측 상세: 고른 그룹의 설정 전체 + "이사 갔어요" 안내
+      그룹: 언어 전환 플래시 / 상시 배지 / 빠른 메뉴 / 한영타 교체 / 입력 경고 /
+            키보드 / 전환 원인 진단 / 화면 테마
+      폭 720dp 이상이면 2단, 좁으면 목록→상세 드릴다운(뒤로가기로 목록 복귀)
+
+ThemeManager — 앱 화면 테마 6종 적용(setDefaultNightMode + setTheme 두 축)
 ```
 
 ---

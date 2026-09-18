@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 배지 크기 단계 라벨(Prefs.badgeSize 0=소,1=중,2=대 순서와 반드시 일치). -->
+    <string-array name="badge_size_labels">
+        <item>@string/settings_badge_size_small</item>
+        <item>@string/settings_badge_size_medium</item>
+        <item>@string/settings_badge_size_large</item>
+    </string-array>
+</resources>
