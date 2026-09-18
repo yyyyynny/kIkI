@@ -19,7 +19,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/onboarding_title"
-            android:textColor="@color/ui_on_surface"
+            android:textColor="?attr/uiOnSurface"
             android:textSize="28sp"
             android:letterSpacing="0.01"
             android:textStyle="bold" />
@@ -29,7 +29,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:text="@string/onboarding_desc"
-            android:textColor="@color/ui_on_surface_muted"
+            android:textColor="?attr/uiOnSurfaceMuted"
             android:textSize="14sp"
             android:lineSpacingExtra="2dp" />
 
@@ -69,7 +69,7 @@
                     android:background="@drawable/bg_step_chip"
                     android:gravity="center"
                     android:text="@string/step_no_1"
-                    android:textColor="@color/ui_on_accent_container"
+                    android:textColor="?attr/uiOnAccentContainer"
                     android:textSize="14sp"
                     android:textStyle="bold" />
 
@@ -79,7 +79,7 @@
                     android:layout_marginStart="12dp"
                     android:layout_weight="1"
                     android:text="@string/step_overlay"
-                    android:textColor="@color/ui_on_surface"
+                    android:textColor="?attr/uiOnSurface"
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
@@ -101,7 +101,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:text="@string/step_overlay_desc"
-                android:textColor="@color/ui_on_surface_muted"
+                android:textColor="?attr/uiOnSurfaceMuted"
                 android:textSize="13sp"
                 android:lineSpacingExtra="2dp" />
 
@@ -114,7 +114,7 @@
                 android:minHeight="48dp"
                 android:stateListAnimator="@null"
                 android:text="@string/btn_grant_overlay"
-                android:textColor="@color/ui_on_accent"
+                android:textColor="?attr/uiOnAccent"
                 android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -140,7 +140,7 @@
                     android:background="@drawable/bg_step_chip"
                     android:gravity="center"
                     android:text="@string/step_no_2"
-                    android:textColor="@color/ui_on_accent_container"
+                    android:textColor="?attr/uiOnAccentContainer"
                     android:textSize="14sp"
                     android:textStyle="bold" />
 
@@ -150,7 +150,7 @@
                     android:layout_marginStart="12dp"
                     android:layout_weight="1"
                     android:text="@string/step_accessibility"
-                    android:textColor="@color/ui_on_surface"
+                    android:textColor="?attr/uiOnSurface"
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
@@ -172,7 +172,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:text="@string/step_accessibility_desc"
-                android:textColor="@color/ui_on_surface_muted"
+                android:textColor="?attr/uiOnSurfaceMuted"
                 android:textSize="13sp"
                 android:lineSpacingExtra="2dp" />
 
@@ -185,7 +185,7 @@
                 android:minHeight="48dp"
                 android:stateListAnimator="@null"
                 android:text="@string/btn_open_accessibility"
-                android:textColor="@color/ui_on_accent"
+                android:textColor="?attr/uiOnAccent"
                 android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -211,7 +211,7 @@
                     android:background="@drawable/bg_step_chip"
                     android:gravity="center"
                     android:text="@string/step_no_3"
-                    android:textColor="@color/ui_on_accent_container"
+                    android:textColor="?attr/uiOnAccentContainer"
                     android:textSize="14sp"
                     android:textStyle="bold" />
 
@@ -221,7 +221,7 @@
                     android:layout_marginStart="12dp"
                     android:layout_weight="1"
                     android:text="@string/step_battery"
-                    android:textColor="@color/ui_on_surface"
+                    android:textColor="?attr/uiOnSurface"
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
@@ -243,7 +243,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:text="@string/step_battery_desc"
-                android:textColor="@color/ui_on_surface_muted"
+                android:textColor="?attr/uiOnSurfaceMuted"
                 android:textSize="13sp"
                 android:lineSpacingExtra="2dp" />
 
@@ -256,7 +256,7 @@
                 android:minHeight="48dp"
                 android:stateListAnimator="@null"
                 android:text="@string/btn_battery"
-                android:textColor="@color/ui_on_accent_container"
+                android:textColor="?attr/uiOnAccentContainer"
                 android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -271,7 +271,7 @@
             android:minHeight="52dp"
             android:stateListAnimator="@null"
             android:text="@string/btn_settings"
-            android:textColor="@color/ui_on_accent_container"
+            android:textColor="?attr/uiOnAccentContainer"
             android:textSize="15sp"
             android:textStyle="bold" />
 
@@ -281,7 +281,7 @@
             android:layout_marginTop="20dp"
             android:gravity="center"
             android:text="@string/privacy_note"
-            android:textColor="@color/ui_muted"
+            android:textColor="?attr/uiMuted"
             android:textSize="12sp"
             android:lineSpacingExtra="2dp" />
 

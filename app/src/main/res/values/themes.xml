@@ -4,6 +4,10 @@
         AppCompat 기반 (Material Components 의존성 없이 가볍게 — CLAUDE.md 최소 의존성 원칙).
         NoActionBar + 시맨틱 팔레트로 모던한 카드형 UI 를 구성한다. 다크모드 값은 values-night.
         colorAccent 가 SwitchCompat/SeekBar/RadioButton/EditText 등 위젯 tint 를 일괄 결정한다.
+
+        레이아웃/드로어블/코드는 색을 `@color/...` 가 아니라 `?attr/ui*` 로 참조한다(attrs.xml).
+        여기서 각 attr 을 기존 색 리소스에 바인딩하므로 현재 외형은 종전과 100% 동일하고,
+        나중에 팔레트만 다르게 바인딩한 테마를 추가하면 런타임 색 교체가 가능해진다.
     -->
     <style name="Theme.LangSense" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="colorPrimary">@color/ui_accent</item>
@@ -15,5 +19,25 @@
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:textColorPrimary">@color/ui_on_surface</item>
         <item name="android:textColorSecondary">@color/ui_on_surface_muted</item>
+
+        <!-- ── 시맨틱 팔레트 바인딩 (라이트) ────────────────────────── -->
+        <item name="uiBg">@color/ui_bg</item>
+        <item name="uiSurface">@color/ui_surface</item>
+        <item name="uiOnSurface">@color/ui_on_surface</item>
+        <item name="uiOnSurfaceMuted">@color/ui_on_surface_muted</item>
+        <item name="uiAccent">@color/ui_accent</item>
+        <item name="uiOnAccent">@color/ui_on_accent</item>
+        <item name="uiAccentContainer">@color/ui_accent_container</item>
+        <item name="uiOnAccentContainer">@color/ui_on_accent_container</item>
+        <item name="uiDivider">@color/ui_divider</item>
+        <item name="uiMuted">@color/ui_muted</item>
+        <item name="statusOk">@color/status_ok</item>
+        <item name="statusOkContainer">@color/status_ok_container</item>
+        <item name="statusNeed">@color/status_need</item>
+        <item name="statusNeedContainer">@color/status_need_container</item>
+        <!-- 리플: 기존 drawable 에 박혀 있던 리터럴 그대로(동작 불변) -->
+        <item name="uiRippleOnAccent">#33FFFFFF</item>
+        <item name="uiRippleOnTonal">#332563EB</item>
+        <item name="uiStrokeWidth">1dp</item>
     </style>
 </resources>

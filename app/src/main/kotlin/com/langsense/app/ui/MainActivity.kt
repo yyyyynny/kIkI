@@ -9,6 +9,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.langsense.app.R
 import com.langsense.app.databinding.ActivityMainBinding
 import com.langsense.app.util.PermissionHelper
+import com.langsense.app.util.themeColor
 
 /**
  * 온보딩 화면.
@@ -74,9 +75,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun tintPill(tv: TextView, ok: Boolean) {
-        tv.setTextColor(getColor(if (ok) R.color.status_ok else R.color.status_need))
+        tv.setTextColor(themeColor(if (ok) R.attr.statusOk else R.attr.statusNeed))
         tv.backgroundTintList = ColorStateList.valueOf(
-            getColor(if (ok) R.color.status_ok_container else R.color.status_need_container)
+            themeColor(if (ok) R.attr.statusOkContainer else R.attr.statusNeedContainer)
         )
     }
 

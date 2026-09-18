@@ -32,3 +32,6 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Kotlin 2.x 빌드 세션/에러 로그 (산출물)
+.kotlin/

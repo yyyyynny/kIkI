@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        시맨틱 UI 팔레트의 '테마 속성' 정의.
+
+        왜 필요한가: `Context.getColor(R.color.ui_accent)` 는 리소스 id 로 리터럴을 읽을 뿐이라
+        테마를 전혀 보지 않는다 — `setTheme()` 만으로는 앱 색이 바뀌지 않는다. 레이아웃/드로어블/
+        코드가 전부 `?attr/...` 를 거치게 해 두면, 나중에 팔레트만 다르게 바인딩한 테마를
+        추가하는 것으로 런타임 전체 색 교체가 가능해진다.
+
+        지금은 각 attr 이 기존 `@color/ui_*` / `@color/status_*` 를 그대로 가리키므로
+        (values / values-night 각각의 themes.xml) 라이트·다크 동작은 종전과 동일하다.
+    -->
+
+    <!-- 화면 배경 / 카드 표면 -->
+    <attr name="uiBg" format="color" />
+    <attr name="uiSurface" format="color" />
+    <!-- 본문/보조 텍스트 -->
+    <attr name="uiOnSurface" format="color" />
+    <attr name="uiOnSurfaceMuted" format="color" />
+    <!-- 강조색과 그 위 텍스트 -->
+    <attr name="uiAccent" format="color" />
+    <attr name="uiOnAccent" format="color" />
+    <!-- 강조 컨테이너(톤 버튼/스텝 칩)와 그 위 텍스트 -->
+    <attr name="uiAccentContainer" format="color" />
+    <attr name="uiOnAccentContainer" format="color" />
+    <!-- 구분선 / 보조(muted) 텍스트 별칭 -->
+    <attr name="uiDivider" format="color" />
+    <attr name="uiMuted" format="color" />
+
+    <!-- 상태 색(완료/필요) + 필(pill) 컨테이너 -->
+    <attr name="statusOk" format="color" />
+    <attr name="statusOkContainer" format="color" />
+    <attr name="statusNeed" format="color" />
+    <attr name="statusNeedContainer" format="color" />
+
+    <!-- 리플 색: 강조색 버튼 위 / 톤 버튼 위 (drawable 에 박혀 있던 리터럴을 테마로 승격) -->
+    <attr name="uiRippleOnAccent" format="color" />
+    <attr name="uiRippleOnTonal" format="color" />
+
+    <!-- 카드 등 외곽선 두께 -->
+    <attr name="uiStrokeWidth" format="dimension" />
+</resources>

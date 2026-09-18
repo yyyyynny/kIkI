@@ -27,6 +27,7 @@ import androidx.core.content.ContextCompat
 import com.langsense.app.R
 import com.langsense.app.util.ImeLocaleParser
 import com.langsense.app.util.Prefs
+import com.langsense.app.util.themeColor
 import kotlin.math.roundToInt
 
 /**
@@ -87,7 +88,7 @@ class SettingsActivity : AppCompatActivity() {
 
         savedHint = TextView(this).apply {
             text = getString(R.string.settings_apply)
-            setTextColor(getColor(R.color.ui_on_surface_muted))
+            setTextColor(themeColor(R.attr.uiOnSurfaceMuted))
             textSize = 12f
             setPadding(dp(2), 0, 0, dp(4))
         }
@@ -288,7 +289,7 @@ class SettingsActivity : AppCompatActivity() {
         val title = TextView(this).apply {
             text = getString(R.string.settings_title)
             textSize = 20f
-            setTextColor(getColor(R.color.ui_on_surface))
+            setTextColor(themeColor(R.attr.uiOnSurface))
             setTypeface(typeface, Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
                 .also { it.weight = 1f; it.marginStart = dp(8) }
@@ -366,7 +367,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         diagnosticResultText = TextView(this).apply {
             textSize = 13f
-            setTextColor(getColor(R.color.ui_on_surface))
+            setTextColor(themeColor(R.attr.uiOnSurface))
             setLineSpacing(dp(2).toFloat(), 1f)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
                 .also { it.weight = 1f }
@@ -374,7 +375,7 @@ class SettingsActivity : AppCompatActivity() {
         val clear = TextView(this).apply {
             text = getString(R.string.settings_diagnostic_clear)
             textSize = 13f
-            setTextColor(getColor(R.color.ui_accent))
+            setTextColor(themeColor(R.attr.uiAccent))
             setTypeface(typeface, Typeface.BOLD)
             setPadding(dp(12), dp(4), dp(4), dp(4))
             isClickable = true
@@ -427,7 +428,7 @@ class SettingsActivity : AppCompatActivity() {
         addView(TextView(this@SettingsActivity).apply {
             text = title
             textSize = 15f
-            setTextColor(getColor(R.color.ui_accent))
+            setTextColor(themeColor(R.attr.uiAccent))
             letterSpacing = 0.01f
             setTypeface(typeface, Typeface.BOLD)
             setPadding(0, 0, 0, dp(6))
@@ -438,7 +439,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun descRow(text: String): TextView = TextView(this).apply {
         this.text = text
         textSize = 12.5f
-        setTextColor(getColor(R.color.ui_on_surface_muted))
+        setTextColor(themeColor(R.attr.uiOnSurfaceMuted))
         setLineSpacing(dp(2).toFloat(), 1f)
         setPadding(0, dp(2), 0, dp(6))
     }
@@ -453,7 +454,7 @@ class SettingsActivity : AppCompatActivity() {
         SwitchCompat(this).apply {
             text = label
             textSize = 15f
-            setTextColor(getColor(R.color.ui_on_surface))
+            setTextColor(themeColor(R.attr.uiOnSurface))
             isChecked = initial
             minHeight = dp(44)
             layoutParams = LinearLayout.LayoutParams(
@@ -485,14 +486,14 @@ class SettingsActivity : AppCompatActivity() {
         header.addView(TextView(this).apply {
             text = label
             textSize = 14f
-            setTextColor(getColor(R.color.ui_on_surface))
+            setTextColor(themeColor(R.attr.uiOnSurface))
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
                 .also { it.weight = 1f }
         })
         val valueLabel = TextView(this).apply {
             text = getString(R.string.slider_value_short_format, value, suffix)
             textSize = 14f
-            setTextColor(getColor(R.color.ui_accent))
+            setTextColor(themeColor(R.attr.uiAccent))
             setTypeface(typeface, Typeface.BOLD)
         }
         header.addView(valueLabel)
@@ -595,7 +596,7 @@ class SettingsActivity : AppCompatActivity() {
         headerRow.addView(TextView(this).apply {
             text = label
             textSize = 14f
-            setTextColor(getColor(R.color.ui_on_surface))
+            setTextColor(themeColor(R.attr.uiOnSurface))
             layoutParams = LinearLayout.LayoutParams(dp(64), ViewGroup.LayoutParams.WRAP_CONTENT)
         })
         headerRow.addView(preview)
@@ -632,7 +633,7 @@ class SettingsActivity : AppCompatActivity() {
         container.addView(TextView(this).apply {
             text = getString(R.string.settings_badge_size)
             textSize = 14f
-            setTextColor(getColor(R.color.ui_on_surface))
+            setTextColor(themeColor(R.attr.uiOnSurface))
         })
         val group = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
         val labels = listOf(
@@ -708,7 +709,7 @@ class SettingsActivity : AppCompatActivity() {
         text = getString(textRes)
         textSize = 12.5f
         setTypeface(typeface, Typeface.BOLD)
-        setTextColor(getColor(R.color.ui_on_surface_muted))
+        setTextColor(themeColor(R.attr.uiOnSurfaceMuted))
         setPadding(0, dp(10), 0, dp(4))
     }
 
@@ -749,7 +750,7 @@ class SettingsActivity : AppCompatActivity() {
         row.addView(TextView(this).apply {
             text = "${index + 1}. ${getString(quickMenuActionLabelRes(id))}"
             textSize = 14f
-            setTextColor(getColor(R.color.ui_on_surface))
+            setTextColor(themeColor(R.attr.uiOnSurface))
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
                 .also { it.weight = 1f }
         })
@@ -794,7 +795,7 @@ class SettingsActivity : AppCompatActivity() {
             text = getString(quickMenuActionLabelRes(id))
             textSize = 14f
             alpha = 0.75f
-            setTextColor(getColor(R.color.ui_on_surface))
+            setTextColor(themeColor(R.attr.uiOnSurface))
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
                 .also { it.weight = 1f }
         })
@@ -907,7 +908,7 @@ class SettingsActivity : AppCompatActivity() {
                     Prefs.alphaFromPercent(opacityPct), Color.red(rgb), Color.green(rgb), Color.blue(rgb)
                 )
             )
-            setStroke(dp(1), getColor(R.color.ui_divider))
+            setStroke(dp(1), themeColor(R.attr.uiDivider))
         }
         if (opacityPct >= 100) return fill
         val base = GradientDrawable(

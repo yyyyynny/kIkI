@@ -11,5 +11,27 @@
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:textColorPrimary">@color/ui_on_surface</item>
         <item name="android:textColorSecondary">@color/ui_on_surface_muted</item>
+
+        <!-- ── 시맨틱 팔레트 바인딩 (다크) ──────────────────────────────
+             attr 이름은 라이트와 같고, 가리키는 @color/... 가 values-night/colors.xml 로
+             해석되므로 라이트/다크 분기는 지금까지와 똑같이 리소스 한정자가 처리한다. -->
+        <item name="uiBg">@color/ui_bg</item>
+        <item name="uiSurface">@color/ui_surface</item>
+        <item name="uiOnSurface">@color/ui_on_surface</item>
+        <item name="uiOnSurfaceMuted">@color/ui_on_surface_muted</item>
+        <item name="uiAccent">@color/ui_accent</item>
+        <item name="uiOnAccent">@color/ui_on_accent</item>
+        <item name="uiAccentContainer">@color/ui_accent_container</item>
+        <item name="uiOnAccentContainer">@color/ui_on_accent_container</item>
+        <item name="uiDivider">@color/ui_divider</item>
+        <item name="uiMuted">@color/ui_muted</item>
+        <item name="statusOk">@color/status_ok</item>
+        <item name="statusOkContainer">@color/status_ok_container</item>
+        <item name="statusNeed">@color/status_need</item>
+        <item name="statusNeedContainer">@color/status_need_container</item>
+        <!-- 리플: 기존 drawable 에 박혀 있던 리터럴 그대로(동작 불변) -->
+        <item name="uiRippleOnAccent">#33FFFFFF</item>
+        <item name="uiRippleOnTonal">#332563EB</item>
+        <item name="uiStrokeWidth">1dp</item>
     </style>
 </resources>
