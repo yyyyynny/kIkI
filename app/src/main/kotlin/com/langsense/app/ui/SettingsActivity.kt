@@ -67,7 +67,7 @@ class SettingsActivity : AppCompatActivity() {
      */
     private val prefsListener =
         android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
-            syncToggles(); refreshDiagnosticResult()
+            syncToggles(); refreshDiagnosticResult(); refreshRailSummaries()
         }
 
     /** [diagnosticResultRow] 가 채우는, 최근 캡처된 전환 키를 보여주는 텍스트. */
@@ -105,6 +105,15 @@ class SettingsActivity : AppCompatActivity() {
         appliedTheme = prefs.uiTheme
         ThemeManager.apply(this, appliedTheme)
         super.onCreate(savedInstanceState)
+
+        // 테마를 고르면 recreate() 가 돈다 — 복원하지 않으면 "화면 테마"에서 테마를 바꾸는 순간
+        // 첫 그룹으로 튕겨 나간다(화면 회전도 같다). 검색 중이었다면 검색어도 함께 살린다.
+        var restoredInDetail = false
+        savedInstanceState?.let {
+            currentGroup = it.getString(STATE_GROUP) ?: GROUP_FLASH
+            query = it.getString(STATE_QUERY).orEmpty()
+            restoredInDetail = it.getBoolean(STATE_IN_DETAIL, false)
+        }
 
         twoPane = resources.configuration.screenWidthDp >= TWO_PANE_MIN_WIDTH_DP
 
@@ -156,7 +165,15 @@ class SettingsActivity : AppCompatActivity() {
 
         renderRail()
         renderDetail()
-        if (!twoPane) showList()
+        // 1단에서는 목록이 기본이지만, 상세를 보던 중 재생성(테마 변경·회전)됐으면 그 자리로 돌아간다.
+        if (!twoPane) {
+            if (restoredInDetail) {
+                railRoot.visibility = View.GONE
+                detailScroll.visibility = View.VISIBLE
+            } else {
+                showList()
+            }
+        }
 
         // 1단에서 상세를 보고 있으면 뒤로가기는 앱 종료가 아니라 목록으로.
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
@@ -220,7 +237,20 @@ class SettingsActivity : AppCompatActivity() {
         return row
     }
 
+    /**
+     * 그룹 줄의 상태 요약 TextView. 설정을 바꿀 때 레일 8줄을 통째로 다시 만들지 않고
+     * 이 텍스트만 갱신한다 — 슬라이더 드래그 한 번에 최대 17회 호출되므로 저사양에서 차이가 크다.
+     */
+    private val railSummaries = mutableMapOf<String, TextView>()
+
+    /** 설정 변경·화면 재개 시 그룹 요약만 현재 값으로 다시 쓴다(검색 중이면 비어 있어 no-op). */
+    private fun refreshRailSummaries() {
+        if (railSummaries.isEmpty()) return
+        groupDefs().forEach { g -> railSummaries[g.id]?.text = g.summary() }
+    }
+
     private fun renderRail() {
+        railSummaries.clear()
         railList.removeAllViews()
         val q = query.trim()
         if (q.isEmpty()) {
@@ -244,6 +274,8 @@ class SettingsActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(11), dp(10), dp(11), dp(10))
             isClickable = true
+            // 이 앱의 사용자는 물리 키보드를 쓴다 — 탭/방향키로도 닿아야 한다.
+            isFocusable = true
             background = if (selected) {
                 GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
@@ -283,6 +315,7 @@ class SettingsActivity : AppCompatActivity() {
             text = g.summary()
             textSize = 12f
             setTextColor(sub)
+            railSummaries[g.id] = this
         })
         row.addView(texts)
         if (!selected) {
@@ -317,6 +350,7 @@ class SettingsActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(11), dp(9), dp(11), dp(9))
             isClickable = true
+            isFocusable = true
             background = rippleBoundedBackground()
             setOnClickListener { showGroup(hit.group) }
         }
@@ -354,6 +388,11 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun renderDetail() {
+        // ⚠️ 이 두 목록은 **지금 화면에 붙어 있는 뷰만** 담아야 한다. 그룹을 옮길 때마다 상세 뷰를
+        // 새로 만들므로, 비우지 않으면 이미 떨어져 나간 뷰가 계속 쌓여 syncToggles/refreshPreviews 가
+        // 죽은 뷰까지 훑고 참조를 붙들어 둔다(그룹을 오갈수록 무한히 증가).
+        boundToggles.clear()
+        previewRefreshers.clear()
         detailContainer.removeAllViews()
         val g = groupDefs().firstOrNull { it.id == currentGroup } ?: return
         detailContainer.addView(TextView(this).apply {
@@ -378,6 +417,7 @@ class SettingsActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), dp(12), dp(14), dp(12))
             isClickable = true
+            isFocusable = true
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(14).toFloat()
@@ -480,26 +520,26 @@ class SettingsActivity : AppCompatActivity() {
         ) { c ->
             c.addView(sectionCard(getString(R.string.settings_flash)).apply {
                 addView(boundSwitchRow(getString(R.string.settings_flash_enabled), { prefs.flashEnabled }) {
-                    prefs.flashEnabled = it; markSaved(); renderRail()
+                    prefs.flashEnabled = it; markSaved(); refreshRailSummaries()
                 })
                 addView(
                     sliderRow(
                         label = getString(R.string.settings_flash_duration),
                         min = 100, max = 500, step = 50, value = prefs.flashDurationMs, suffix = "ms"
-                    ) { prefs.flashDurationMs = it; markSaved(); renderRail() }
+                    ) { prefs.flashDurationMs = it; markSaved(); refreshRailSummaries() }
                 )
                 addView(
                     sliderRow(
                         label = getString(R.string.settings_flash_count),
                         min = 1, max = 5, step = 1, value = prefs.flashCount, suffix = "회"
-                    ) { prefs.flashCount = it; markSaved(); renderRail() }
+                    ) { prefs.flashCount = it; markSaved(); refreshRailSummaries() }
                 )
                 addView(
                     sliderRow(
                         label = getString(R.string.settings_flash_opacity),
                         min = Prefs.MIN_OPACITY_PCT, max = 100, step = 5,
                         value = prefs.flashOpacityPercent, suffix = "%"
-                    ) { prefs.flashOpacityPercent = it; markSaved(); refreshPreviews(); renderRail() }
+                    ) { prefs.flashOpacityPercent = it; markSaved(); refreshPreviews(); refreshRailSummaries() }
                 )
                 addView(descRow(getString(R.string.settings_flash_opacity_desc)))
             })
@@ -529,7 +569,7 @@ class SettingsActivity : AppCompatActivity() {
         ) { c ->
             c.addView(sectionCard(getString(R.string.settings_badge)).apply {
                 addView(boundSwitchRow(getString(R.string.settings_badge_enabled), { prefs.badgeEnabled }) {
-                    prefs.badgeEnabled = it; markSaved(); renderRail()
+                    prefs.badgeEnabled = it; markSaved(); refreshRailSummaries()
                 })
                 addView(badgeSizeRow())
                 addView(
@@ -543,7 +583,7 @@ class SettingsActivity : AppCompatActivity() {
                         label = getString(R.string.settings_badge_bg_opacity),
                         min = Prefs.MIN_OPACITY_PCT, max = 100, step = 5,
                         value = prefs.badgeBgOpacityPercent, suffix = "%"
-                    ) { prefs.badgeBgOpacityPercent = it; markSaved(); refreshPreviews(); renderRail() }
+                    ) { prefs.badgeBgOpacityPercent = it; markSaved(); refreshPreviews(); refreshRailSummaries() }
                 )
                 // 글씨색은 불투명도 설정이 없다(항상 불투명) — 배경이 흐려도 글자는 읽혀야 하므로.
                 addView(colorPickerRow(getString(R.string.settings_badge_text_color), prefs.badgeTextColorHex) {
@@ -580,7 +620,7 @@ class SettingsActivity : AppCompatActivity() {
                 })
                 addView(descRow(getString(R.string.settings_radial_reduce_motion_desc)))
                 addView(switchRow(getString(R.string.settings_radial_reduce_motion), prefs.radialReduceMotion) {
-                    prefs.radialReduceMotion = it; markSaved(); renderRail()
+                    prefs.radialReduceMotion = it; markSaved(); refreshRailSummaries()
                 })
             })
         },
@@ -592,13 +632,13 @@ class SettingsActivity : AppCompatActivity() {
         ) { c ->
             c.addView(sectionCard(getString(R.string.settings_replace)).apply {
                 addView(boundSwitchRow(getString(R.string.settings_replace_enabled), { prefs.replaceEnabled }) {
-                    prefs.replaceEnabled = it; markSaved(); renderRail()
+                    prefs.replaceEnabled = it; markSaved(); refreshRailSummaries()
                 })
                 addView(
                     sliderRow(
                         label = getString(R.string.settings_replace_confidence),
                         min = 50, max = 90, step = 5, value = prefs.replaceConfidence, suffix = "%"
-                    ) { prefs.replaceConfidence = it; markSaved(); renderRail() }
+                    ) { prefs.replaceConfidence = it; markSaved(); refreshRailSummaries() }
                 )
                 addView(descRow(getString(R.string.settings_replace_confidence_desc)))
             })
@@ -612,13 +652,13 @@ class SettingsActivity : AppCompatActivity() {
             c.addView(sectionCard(getString(R.string.settings_nofocus)).apply {
                 addView(descRow(getString(R.string.settings_nofocus_desc)))
                 addView(switchRow(getString(R.string.settings_nofocus_enabled), prefs.noFocusEnabled) {
-                    prefs.noFocusEnabled = it; markSaved(); renderRail()
+                    prefs.noFocusEnabled = it; markSaved(); refreshRailSummaries()
                 })
                 addView(
                     sliderRow(
                         label = getString(R.string.settings_nofocus_threshold),
                         min = 1, max = 5, step = 1, value = prefs.noFocusThreshold, suffix = "회"
-                    ) { prefs.noFocusThreshold = it; markSaved(); renderRail() }
+                    ) { prefs.noFocusThreshold = it; markSaved(); refreshRailSummaries() }
                 )
             })
         },
@@ -634,13 +674,13 @@ class SettingsActivity : AppCompatActivity() {
             c.addView(sectionCard(getString(R.string.settings_exclude_touch_kb)).apply {
                 addView(descRow(getString(R.string.settings_exclude_touch_kb_desc)))
                 addView(switchRow(getString(R.string.settings_exclude_touch_kb_enabled), prefs.excludeTouchKeyboard) {
-                    prefs.excludeTouchKeyboard = it; markSaved(); renderRail()
+                    prefs.excludeTouchKeyboard = it; markSaved(); refreshRailSummaries()
                 })
             })
             c.addView(sectionCard(getString(R.string.settings_keyboard_connect_notify)).apply {
                 addView(descRow(getString(R.string.settings_keyboard_connect_notify_desc)))
                 addView(switchRow(getString(R.string.settings_keyboard_connect_notify), prefs.keyboardConnectNotify) {
-                    prefs.keyboardConnectNotify = it; markSaved(); renderRail()
+                    prefs.keyboardConnectNotify = it; markSaved(); refreshRailSummaries()
                 })
             })
         },
@@ -653,7 +693,7 @@ class SettingsActivity : AppCompatActivity() {
             c.addView(sectionCard(getString(R.string.settings_diagnostic)).apply {
                 addView(descRow(getString(R.string.settings_diagnostic_desc)))
                 addView(switchRow(getString(R.string.settings_diagnostic_enabled), prefs.diagnosticKeyLoggingEnabled) {
-                    prefs.diagnosticKeyLoggingEnabled = it; markSaved(); renderRail()
+                    prefs.diagnosticKeyLoggingEnabled = it; markSaved(); refreshRailSummaries()
                 })
                 addView(diagnosticResultRow())
                 // 하위 옵션 — 부모("전환 키 기록")와 같은 카드에 들여쓰기로 종속 관계를 보인다.
@@ -703,6 +743,8 @@ class SettingsActivity : AppCompatActivity() {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(11), dp(12), dp(11))
                 isClickable = true
+                isFocusable = true
+                contentDescription = getString(themeLabelRes(id))
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = dp(12).toFloat()
@@ -750,8 +792,14 @@ class SettingsActivity : AppCompatActivity() {
         else -> R.string.settings_theme_system_desc
     }
 
+    /** 검색 색인 캐시 — 글자를 칠 때마다 25개 항목을 새로 만들 이유가 없다(저사양 원칙). */
+    private var searchIndexCache: List<SearchEntry>? = null
+
+    private fun searchIndex(): List<SearchEntry> =
+        searchIndexCache ?: buildSearchIndex().also { searchIndexCache = it }
+
     /** 검색 색인 — 설정 이름·경로·동의어(keyword)를 함께 훑는다. */
-    private fun searchIndex(): List<SearchEntry> {
+    private fun buildSearchIndex(): List<SearchEntry> {
         fun e(nameRes: Int, pathRes: Int, group: String, kw: String) =
             SearchEntry(getString(nameRes), getString(pathRes), group, kw)
         return listOf(
@@ -840,7 +888,9 @@ class SettingsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         // 외부(래디얼 메뉴)에서 바뀐 토글 값을 현재 prefs 기준으로 다시 맞춘다(stale 표시 방지).
+        // 배지 오버레이는 이 화면 위에도 떠 있어 보면서 메뉴로 토글할 수 있으므로 요약도 함께.
         syncToggles()
+        refreshRailSummaries()
         // 서비스가 백그라운드에서 캡처했을 수 있는 최신 진단 결과를 반영.
         refreshDiagnosticResult()
         prefs.register(prefsListener)
@@ -849,6 +899,13 @@ class SettingsActivity : AppCompatActivity() {
     override fun onPause() {
         prefs.unregister(prefsListener)
         super.onPause()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(STATE_GROUP, currentGroup)
+        outState.putString(STATE_QUERY, query)
+        outState.putBoolean(STATE_IN_DETAIL, !twoPane && detailScroll.visibility == View.VISIBLE)
     }
 
     private fun syncToggles() {
@@ -1490,6 +1547,11 @@ class SettingsActivity : AppCompatActivity() {
          * 세로로만 쌓이면 가로 공간을 통째로 버리면서 스크롤만 길어진다.
          */
         private const val TWO_PANE_MIN_WIDTH_DP = 720
+
+        // 재생성(테마 변경·회전) 너머로 살려야 하는 화면 상태.
+        private const val STATE_GROUP = "state_group"
+        private const val STATE_QUERY = "state_query"
+        private const val STATE_IN_DETAIL = "state_in_detail"
 
         // 설정 그룹 id — 기능 하나를 사용자가 찾는 이름 하나로 묶는 단위.
         private const val GROUP_FLASH = "flash"

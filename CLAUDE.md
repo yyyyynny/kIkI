@@ -680,10 +680,14 @@ langsense/
 │   │   │       ├── KeyTriggerDiagnostics.kt ← 전환 원인 진단 순수 로직(원형 버퍼 상관관계)
 │   │   │       ├── ImeLocaleParser.kt    ← locale/팝업 파싱 (ja 분기 주석 비활성화)
 │   │   │       ├── Prefs.kt              ← 설정 단일 진입점(SharedPreferences)
+│   │   │       ├── ThemeManager.kt       ← 화면 테마 6종 적용(nightMode + setTheme)
+│   │   │       ├── ThemeColors.kt        ← Context.themeColor(@AttrRes) — 색을 테마에서 해석
 │   │   │       └── PermissionHelper.kt
 │   │   └── res/
 │   │       ├── layout/
-│   │       ├── values/
+│   │       ├── values/               ← attrs.xml(테마 속성) · themes.xml(팔레트 4종) ·
+│   │       │                            colors.xml(라이트 + beige/cyber/hc) · ids.xml · arrays.xml
+│   │       ├── values-night/         ← 다크 팔레트(시스템/다크 테마가 한정자로 해석)
 │   │       └── xml/
 │   │           └── accessibility_service_config.xml
 └── build.gradle.kts

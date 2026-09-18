@@ -112,7 +112,6 @@
     <string name="settings_quick_menu_add">목록에 추가</string>
     <string name="settings_quick_menu_drag_handle">잡고 위아래로 움직여 순서 바꾸기</string>
     <string name="settings_quick_menu_limit_reached">최대 5개까지 선택할 수 있어요</string>
-    <string name="settings_quick_menu_min_required">최소 1개는 선택해야 해요</string>
 
     <!-- 간편 메뉴(비눗방울 래디얼) -->
     <string name="quick_app">앱</string>
