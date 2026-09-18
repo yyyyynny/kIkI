@@ -69,6 +69,13 @@ class SettingsActivity : AppCompatActivity() {
     /** [diagnosticResultRow] 가 채우는, 최근 캡처된 전환 키를 보여주는 텍스트. */
     private lateinit var diagnosticResultText: TextView
 
+    /**
+     * 색 미리보기 원들을 다시 그리는 람다 모음([colorPickerRow] 가 등록).
+     * 불투명도 슬라이더는 어느 색이 영향을 받는지 알 필요 없이 전부 한 번 갱신한다 — 최대 6개라
+     * 비용이 무시할 수준이고, 슬라이더와 색 피커를 일일이 배선하지 않아도 되어 단순하다.
+     */
+    private val previewRefreshers = mutableListOf<() -> Unit>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
@@ -134,6 +141,15 @@ class SettingsActivity : AppCompatActivity() {
                     min = 1, max = 5, step = 1, value = prefs.flashCount, suffix = "회"
                 ) { prefs.flashCount = it; markSaved() }
             )
+            // 불투명도(2026-09 추가) — 예전엔 Prefs.FLASH_ALPHA 로 85% 고정이었다.
+            addView(
+                sliderRow(
+                    label = getString(R.string.settings_flash_opacity),
+                    min = Prefs.MIN_OPACITY_PCT, max = 100, step = 5,
+                    value = prefs.flashOpacityPercent, suffix = "%"
+                ) { prefs.flashOpacityPercent = it; markSaved(); refreshPreviews() }
+            )
+            addView(descRow(getString(R.string.settings_flash_opacity_desc)))
         })
 
         // --- 언어별 플래시 색상 ---
@@ -152,9 +168,21 @@ class SettingsActivity : AppCompatActivity() {
             // [5] 크기 3단계(소/중/대)
             addView(badgeSizeRow())
             // [5] 배경색/글씨색 — 플래시 색상과 동일한 공용 색 선택 컴포넌트 재사용
-            addView(colorPickerRow(getString(R.string.settings_badge_bg_color), prefs.badgeBgColorHex) {
-                prefs.badgeBgColorHex = it
-            })
+            addView(
+                colorPickerRow(
+                    getString(R.string.settings_badge_bg_color), prefs.badgeBgColorHex,
+                    opacityPct = { prefs.badgeBgOpacityPercent }
+                ) { prefs.badgeBgColorHex = it }
+            )
+            // 불투명도(2026-09 추가) — 예전엔 Prefs.BADGE_BG_ALPHA 로 80% 고정이었다.
+            addView(
+                sliderRow(
+                    label = getString(R.string.settings_badge_bg_opacity),
+                    min = Prefs.MIN_OPACITY_PCT, max = 100, step = 5,
+                    value = prefs.badgeBgOpacityPercent, suffix = "%"
+                ) { prefs.badgeBgOpacityPercent = it; markSaved(); refreshPreviews() }
+            )
+            // 글씨색은 불투명도 설정이 없다(항상 불투명) — 배경이 흐려도 글자는 읽혀야 하므로.
             addView(colorPickerRow(getString(R.string.settings_badge_text_color), prefs.badgeTextColorHex) {
                 prefs.badgeTextColorHex = it
             })
@@ -315,6 +343,11 @@ class SettingsActivity : AppCompatActivity() {
     private fun boundSwitchRow(label: String, get: () -> Boolean, set: (Boolean) -> Unit): SwitchCompat =
         switchRow(label, get()) { if (!syncingToggles) set(it) }
             .also { boundToggles.add(it to get) }
+
+    /** 불투명도 슬라이더가 움직일 때 색 미리보기 원들을 현재 값으로 다시 그린다. */
+    private fun refreshPreviews() {
+        previewRefreshers.forEach { it() }
+    }
 
     private fun markSaved() {
         savedHint.text = getString(R.string.settings_saved)
@@ -491,7 +524,9 @@ class SettingsActivity : AppCompatActivity() {
 
     /** 언어별 플래시 색상 편집기 — 공용 [colorPickerRow] 를 prefs.colorHex 에 연결. */
     private fun colorEditor(lang: String, langLabel: String): View =
-        colorPickerRow(langLabel, prefs.colorHex(lang)) { hex -> prefs.setColorHex(lang, hex) }
+        colorPickerRow(
+            langLabel, prefs.colorHex(lang), opacityPct = { prefs.flashOpacityPercent }
+        ) { hex -> prefs.setColorHex(lang, hex) }
 
     /**
      * 공용 색 선택 컴포넌트: 라벨 + 원형 미리보기 + #RRGGBB 입력 + 32색 원형 팔레트.
@@ -501,6 +536,12 @@ class SettingsActivity : AppCompatActivity() {
     private fun colorPickerRow(
         label: String,
         initialHex: String,
+        /**
+         * 이 색에 적용되는 불투명도(%)를 **호출 시점에** 읽는 람다. 기본 100 이라 불투명도 설정이
+         * 없는 색(배지 글씨, 메뉴 강조/발광)은 기존과 동일하게 그려진다. 불투명도 슬라이더가
+         * 움직이면 [previewRefreshers] 를 통해 여기를 다시 읽어 미리보기가 따라온다.
+         */
+        opacityPct: () -> Int = { 100 },
         onPicked: (String) -> Unit
     ): View {
         // 마지막으로 확정된 유효 색. 잘못된 입력으로 commit 이 거부될 때 입력칸을 되돌리는 기준.
@@ -527,7 +568,9 @@ class SettingsActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(dp(130), ViewGroup.LayoutParams.WRAP_CONTENT)
                 .also { it.marginStart = dp(14) }
         }
-        applyPreview(preview, initialHex)
+        applyPreview(preview, initialHex, opacityPct())
+        // 불투명도 슬라이더가 움직일 때 이 미리보기도 함께 다시 그리도록 등록.
+        previewRefreshers.add { applyPreview(preview, currentHex, opacityPct()) }
 
         fun commit(raw: String) {
             // 파싱 실패 시 normalizeHex 는 기본 회색을 돌려준다 — 그대로 저장하면 입력 도중
@@ -540,7 +583,7 @@ class SettingsActivity : AppCompatActivity() {
             }
             currentHex = normalized
             hexInput.setText(normalized)
-            applyPreview(preview, normalized)
+            applyPreview(preview, normalized, opacityPct())
             onPicked(normalized)
             markSaved()
         }
@@ -846,14 +889,31 @@ class SettingsActivity : AppCompatActivity() {
         runCatching { android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show() }
     }
 
-    private fun applyPreview(view: View, hex: String) {
-        view.background = swatchDrawable(hex)
+    private fun applyPreview(view: View, hex: String, opacityPct: Int) {
+        view.background = swatchDrawable(hex, opacityPct)
     }
 
-    private fun swatchDrawable(hex: String): GradientDrawable = GradientDrawable().apply {
-        shape = GradientDrawable.OVAL
-        setColor(runCatching { Color.parseColor(hex) }.getOrDefault(Color.GRAY))
-        setStroke(dp(1), getColor(R.color.ui_divider))
+    /**
+     * 색 미리보기 원. [opacityPct] 가 100 미만이면 **밝음→어두움 그라데이션 바탕 위에** 반투명
+     * 색을 얹어, 그 바탕이 비쳐 보이는 정도로 불투명도를 눈으로 확인할 수 있게 한다.
+     * 카드 표면이 흰색이라 그냥 반투명 색만 칠하면 85%와 100%가 거의 구분되지 않는다.
+     */
+    private fun swatchDrawable(hex: String, opacityPct: Int = 100): android.graphics.drawable.Drawable {
+        val rgb = runCatching { Color.parseColor(hex) }.getOrDefault(Color.GRAY)
+        val fill = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(
+                Color.argb(
+                    Prefs.alphaFromPercent(opacityPct), Color.red(rgb), Color.green(rgb), Color.blue(rgb)
+                )
+            )
+            setStroke(dp(1), getColor(R.color.ui_divider))
+        }
+        if (opacityPct >= 100) return fill
+        val base = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR, intArrayOf(0xFFFFFFFF.toInt(), 0xFF3A3F4A.toInt())
+        ).apply { shape = GradientDrawable.OVAL }
+        return android.graphics.drawable.LayerDrawable(arrayOf(base, fill))
     }
 
     private fun dp(value: Int): Int = TypedValue.applyDimension(

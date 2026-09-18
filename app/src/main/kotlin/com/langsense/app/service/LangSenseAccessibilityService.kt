@@ -869,8 +869,11 @@ class LangSenseAccessibilityService : AccessibilityService(),
                 Prefs.KEY_KEYBOARD_CONNECT_NOTIFY -> syncKeyboardDetector()
                 // 전환 원인 진단(추가 기능 3) 토글 — 키 필터 구독 여부만 바뀐다.
                 Prefs.KEY_DIAGNOSTIC_KEY_LOGGING -> syncServiceInfo()
-                // 배지 크기/색은 표시 중인 배지에 즉시 재적용(꺼져 있으면 다음 표시 때 반영).
-                Prefs.KEY_BADGE_SIZE, Prefs.KEY_BADGE_BG_COLOR, Prefs.KEY_BADGE_TEXT_COLOR -> {
+                // 배지 크기/색/불투명도는 표시 중인 배지에 즉시 재적용(꺼져 있으면 다음 표시 때 반영).
+                // ⚠️ 불투명도 키를 빠뜨리면 슬라이더를 움직여도 떠 있는 배지가 다음 언어 전환까지
+                // 그대로여서 "설정이 안 먹는다"로 보인다(플래시는 발동 때마다 prefs 를 다시 읽어 불필요).
+                Prefs.KEY_BADGE_SIZE, Prefs.KEY_BADGE_BG_COLOR, Prefs.KEY_BADGE_TEXT_COLOR,
+                Prefs.KEY_BADGE_BG_OPACITY -> {
                     if (prefs.badgeEnabled && featuresEnabled()) overlay.updateBadge(currentLang)
                 }
                 // 그 외 설정(플래시 색/속도/횟수, 임계값 등)은 사용 시점에 prefs 에서 즉시 읽으므로 별도 처리 불필요.

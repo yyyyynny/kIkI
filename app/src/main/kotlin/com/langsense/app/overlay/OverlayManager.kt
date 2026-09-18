@@ -132,7 +132,9 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     fun showNoFocusWarning(message: String) = onMain {
         if (released) return@onMain
         Log.d(TAG, "flash render: no-focus warning")
-        flash(0xD9555555.toInt(), message)
+        // 색은 고정 회색이지만 불투명도는 플래시 설정을 따른다 — 사용자가 플래시를 흐리게 해놨는데
+        // 경고만 진하게 남으면 같은 표현 수단인데 따로 노는 꼴이 된다(예전엔 0xD9555555 하드코딩).
+        flash(prefs.warningFlashArgb(), message)
     }
 
     /**

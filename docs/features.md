@@ -88,7 +88,7 @@ WindowManager.LayoutParams:
   소(0): 12sp / 패딩 6·3dp / minWidth 32dp
   중(1): 14sp / 패딩 8·4dp / minWidth 40dp   ← 기본 = 기존 외형
   대(2): 18sp / 패딩 11·6dp / minWidth 52dp
-배경: GradientDrawable, 코너 6dp, 색 = badge_bg_color(#RRGGBB) + BADGE_BG_ALPHA(0.8)
+배경: GradientDrawable, 코너 8dp, 색 = badge_bg_color(#RRGGBB) + badgeBgOpacityPercent(기본 80%)
       → 기본값(#000000)이면 기존 #CC000000 과 100% 동일
 텍스트: Bold, 색 = badge_text_color(#RRGGBB, 불투명), 기본 흰색
   한국어 → "한"

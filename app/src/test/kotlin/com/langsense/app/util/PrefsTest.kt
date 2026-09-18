@@ -83,4 +83,44 @@ class PrefsTest {
         )
         newIds.forEach { assertTrue(it in fullPool) }
     }
+
+    // ── Prefs.alphaFromPercent — 불투명도 %(0~100) → ARGB 알파(0~255) ──────────────
+
+    /**
+     * 기본값에서 예전 하드코딩 상수와 **바이트 단위로 같아야** 한다.
+     * 예전: 플래시 `(0.85f * 255).toInt()` = 216, 배지 `(0.8f * 255).toInt()` = 204(0xCC).
+     * 반올림(`Math.round(85 * 2.55f)` = 217)으로 구현하면 여기서 깨진다 — 그게 이 테스트의 요점.
+     */
+    @Test
+    fun alphaFromPercent_defaults_matchLegacyConstants() {
+        assertEquals(216, Prefs.alphaFromPercent(Prefs.DEFAULT_FLASH_OPACITY_PCT))
+        assertEquals(204, Prefs.alphaFromPercent(Prefs.DEFAULT_BADGE_BG_OPACITY_PCT))
+        assertEquals((0.85f * 255).toInt(), Prefs.alphaFromPercent(85))
+        assertEquals((0.8f * 255).toInt(), Prefs.alphaFromPercent(80))
+    }
+
+    @Test
+    fun alphaFromPercent_bounds() {
+        assertEquals(0, Prefs.alphaFromPercent(0))
+        assertEquals(255, Prefs.alphaFromPercent(100))
+        assertEquals(51, Prefs.alphaFromPercent(Prefs.MIN_OPACITY_PCT))
+    }
+
+    /** 범위 밖 입력은 저장값이 손상돼도 그리기가 깨지지 않도록 클램프된다. */
+    @Test
+    fun alphaFromPercent_outOfRange_clamped() {
+        assertEquals(0, Prefs.alphaFromPercent(-40))
+        assertEquals(255, Prefs.alphaFromPercent(1000))
+    }
+
+    /** %가 커지면 알파도 단조 증가해야 한다(슬라이더가 역행하거나 멈추지 않음). */
+    @Test
+    fun alphaFromPercent_monotonic() {
+        var prev = -1
+        for (pct in 0..100) {
+            val a = Prefs.alphaFromPercent(pct)
+            assertTrue("pct=$pct 에서 역행: $prev -> $a", a >= prev)
+            prev = a
+        }
+    }
 }

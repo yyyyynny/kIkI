@@ -41,6 +41,9 @@
     <string name="settings_flash_colors">언어별 플래시 색상</string>
     <string name="settings_flash_duration">깜박임 속도</string>
     <string name="settings_flash_count">깜박임 횟수</string>
+    <string name="settings_flash_opacity">불투명도</string>
+    <string name="settings_flash_opacity_desc">낮출수록 플래시가 옅어져 아래 화면이 비쳐 보입니다. 왼쪽 색 동그라미로 지금 정도를 확인할 수 있어요. 포커스 없는 입력 경고도 같은 값을 따릅니다.</string>
+    <string name="settings_badge_bg_opacity">배경 불투명도</string>
     <string name="settings_badge">상시 언어 배지</string>
     <string name="settings_badge_enabled">상시 배지 표시</string>
     <string name="settings_badge_size">배지 크기</string>

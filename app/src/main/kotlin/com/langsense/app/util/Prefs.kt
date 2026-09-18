@@ -10,7 +10,8 @@ import android.graphics.Color
  * SharedPreferences 래퍼 — 모든 설정 항목의 단일 진입점.
  *
  * 설정 변경은 즉시 적용된다(서비스가 [register] 로 변경을 구독).
- * 색상은 "#RRGGBB" 문자열로 저장하고, 플래시 표시 시 [FLASH_ALPHA] 불투명도를 적용한다.
+ * 색상은 "#RRGGBB" 문자열로 저장하고(알파 채널 없음), 표시 시점에 사용자가 고른 불투명도
+ * ([flashOpacityPercent] / [badgeBgOpacityPercent])를 [alphaFromPercent] 로 ARGB 알파에 굽는다.
  */
 class Prefs(context: Context) {
 
@@ -34,6 +35,14 @@ class Prefs(context: Context) {
         get() = sp.getInt(KEY_FLASH_COUNT, 1).coerceIn(1, 5)
         set(v) = sp.edit().putInt(KEY_FLASH_COUNT, v.coerceIn(1, 5)).apply()
 
+    /**
+     * 플래시 불투명도 %(20~100, 기본 [DEFAULT_FLASH_OPACITY_PCT]=85). 낮출수록 아래 화면이 비친다.
+     * 화면에 칠해지는 최종 알파는 [alphaFromPercent] 가 계산한다(기본값이면 예전 상수 0.85f 와 동일한 216).
+     */
+    var flashOpacityPercent: Int
+        get() = sp.getInt(KEY_FLASH_OPACITY, DEFAULT_FLASH_OPACITY_PCT).coerceIn(MIN_OPACITY_PCT, 100)
+        set(v) = sp.edit().putInt(KEY_FLASH_OPACITY, v.coerceIn(MIN_OPACITY_PCT, 100)).apply()
+
     // ---- Feature 2: 배지 ----
     var badgeEnabled: Boolean
         get() = sp.getBoolean(KEY_BADGE_ENABLED, true)
@@ -56,7 +65,15 @@ class Prefs(context: Context) {
         get() = sp.getInt(KEY_BADGE_SIZE, 1).coerceIn(0, 2)
         set(v) = sp.edit().putInt(KEY_BADGE_SIZE, v.coerceIn(0, 2)).apply()
 
-    /** 배지 배경색(#RRGGBB). 표시 시 [BADGE_BG_ALPHA] 가 적용돼 기본값이면 기존 #CC000000 과 동일. */
+    /**
+     * 배지 배경 불투명도 %(20~100, 기본 [DEFAULT_BADGE_BG_OPACITY_PCT]=80).
+     * 기본값이면 최종 알파가 204(0xCC)라 예전 상수 0.8f 및 원래 외형 #CC000000 과 정확히 같다.
+     */
+    var badgeBgOpacityPercent: Int
+        get() = sp.getInt(KEY_BADGE_BG_OPACITY, DEFAULT_BADGE_BG_OPACITY_PCT).coerceIn(MIN_OPACITY_PCT, 100)
+        set(v) = sp.edit().putInt(KEY_BADGE_BG_OPACITY, v.coerceIn(MIN_OPACITY_PCT, 100)).apply()
+
+    /** 배지 배경색(#RRGGBB). 표시 시 [badgeBgOpacityPercent] 가 적용된다. */
     var badgeBgColorHex: String
         get() = sp.getString(KEY_BADGE_BG_COLOR, DEFAULT_BADGE_BG) ?: DEFAULT_BADGE_BG
         set(v) = sp.edit().putString(KEY_BADGE_BG_COLOR, normalizeHex(v)).apply()
@@ -66,11 +83,19 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_BADGE_TEXT_COLOR, DEFAULT_BADGE_TEXT) ?: DEFAULT_BADGE_TEXT
         set(v) = sp.edit().putString(KEY_BADGE_TEXT_COLOR, normalizeHex(v)).apply()
 
-    /** 배지 배경 ARGB(반투명 [BADGE_BG_ALPHA] 적용). 기본값은 기존 #CC000000 과 100% 동일. */
+    /**
+     * 배지 배경 ARGB(반투명 [badgeBgOpacityPercent] 적용). 기본값은 기존 #CC000000 과 100% 동일.
+     *
+     * ⚠️ 불투명도를 여기서 **굽는** 것이 중요하다 — `OverlayManager` 의 배지 스타일 시그니처가
+     * 이 최종 ARGB 를 그대로 담고 있어(저사양 원칙 ④의 "같은 스타일이면 재적용 생략"), 불투명도만
+     * 바꿔도 시그니처가 달라져 재적용이 자동으로 일어난다. 반대로 불투명도를 `applyStyle` 에
+     * 별도 인자로 넘기면 시그니처가 그대로라 "값을 바꿔도 배지가 안 변하는" 조용한 버그가 된다.
+     */
     fun badgeBgColorArgb(): Int {
         val rgb = parseColorOrDefault(badgeBgColorHex, DEFAULT_BADGE_BG)
-        val alpha = (BADGE_BG_ALPHA * 255).toInt()
-        return Color.argb(alpha, Color.red(rgb), Color.green(rgb), Color.blue(rgb))
+        return Color.argb(
+            alphaFromPercent(badgeBgOpacityPercent), Color.red(rgb), Color.green(rgb), Color.blue(rgb)
+        )
     }
 
     /** 배지 글씨 ARGB(불투명). 기본값은 기존 흰색과 동일. */
@@ -257,12 +282,17 @@ class Prefs(context: Context) {
         sp.edit().putString(key, normalizeHex(hex)).apply()
     }
 
-    /** 플래시에 사용할 ARGB 색상(불투명도 [FLASH_ALPHA] 적용). 잘못된 코드는 기본 회색으로. */
+    /** 플래시에 사용할 ARGB 색상(불투명도 [flashOpacityPercent] 적용). 잘못된 코드는 기본 회색으로. */
     fun flashColorArgb(lang: String): Int {
         val rgb = parseColorOrDefault(colorHex(lang), DEFAULT_OTHER)
-        val alpha = (FLASH_ALPHA * 255).toInt()
-        return Color.argb(alpha, Color.red(rgb), Color.green(rgb), Color.blue(rgb))
+        return Color.argb(
+            alphaFromPercent(flashOpacityPercent), Color.red(rgb), Color.green(rgb), Color.blue(rgb)
+        )
     }
+
+    /** 포커스 없음 경고 플래시의 ARGB — 색은 고정 회색, 불투명도는 플래시 설정을 따른다. */
+    fun warningFlashArgb(): Int =
+        Color.argb(alphaFromPercent(flashOpacityPercent), 0x55, 0x55, 0x55)
 
     /** "#RRGGBB" 파싱(실패 시 default, default 도 실패하면 회색). 플래시/배지 색 공용. */
     private fun parseColorOrDefault(hex: String, default: String): Int =
@@ -280,7 +310,23 @@ class Prefs(context: Context) {
 
     companion object {
         const val NAME = "langsense_prefs"
-        const val FLASH_ALPHA = 0.85f
+
+        /** 불투명도 설정의 하한 — 이보다 낮으면 사실상 안 보여서 "고장났다"로 오인된다. */
+        const val MIN_OPACITY_PCT = 20
+
+        /** 플래시 기본 불투명도 %. 예전 하드코딩 상수 0.85f 를 그대로 옮긴 값. */
+        const val DEFAULT_FLASH_OPACITY_PCT = 85
+
+        /**
+         * 불투명도 %(0~100) → ARGB 알파(0~255).
+         *
+         * ⚠️ **정수 나눗셈(버림)이어야 한다.** 예전 코드가 `(0.85f * 255).toInt()` = 216 이었으므로
+         * 같은 216 이 나와야 기본값에서 외형이 한 바이트도 안 바뀐다. `Math.round(pct * 2.55f)` 로
+         * 쓰면 85 에서 217 이 나와 어긋난다(80 → 204 = 0xCC 도 마찬가지).
+         *
+         * Android 의존성이 없는 순수 함수라 JVM 단위 테스트 대상.
+         */
+        fun alphaFromPercent(pct: Int): Int = pct.coerceIn(0, 100) * 255 / 100
 
         /** 하드웨어 저사양 판정 캐시(프로세스 수명 동안 불변). */
         @Volatile
@@ -289,8 +335,8 @@ class Prefs(context: Context) {
         /** 이 총 메모리 이하면 저사양으로 본다(4GiB — Galaxy Tab S6 Lite 급). */
         private const val LOW_SPEC_TOTAL_MEM_BYTES = 4L shl 30
 
-        /** 배지 배경 불투명도(0.8 = 0xCC). 기본 배경(#000000)에 적용하면 기존 #CC000000 과 동일. */
-        const val BADGE_BG_ALPHA = 0.8f
+        /** 배지 배경 기본 불투명도 %. 기본 배경(#000000)에 적용하면 기존 #CC000000 과 동일(알파 204). */
+        const val DEFAULT_BADGE_BG_OPACITY_PCT = 80
         const val DEFAULT_BADGE_BG = "#000000"
         const val DEFAULT_BADGE_TEXT = "#FFFFFF"
 
@@ -303,6 +349,8 @@ class Prefs(context: Context) {
         const val KEY_FLASH_ENABLED = "flash_enabled"
         const val KEY_FLASH_DURATION = "flash_duration_ms"
         const val KEY_FLASH_COUNT = "flash_count"
+        const val KEY_FLASH_OPACITY = "flash_opacity_pct"
+        const val KEY_BADGE_BG_OPACITY = "badge_bg_opacity_pct"
         const val KEY_BADGE_ENABLED = "badge_enabled"
         const val KEY_BADGE_X = "badge_x"
         const val KEY_BADGE_Y = "badge_y"
