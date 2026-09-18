@@ -1086,8 +1086,9 @@ class SettingsActivity : AppCompatActivity() {
             textSize = 14f
             imeOptions = EditorInfo.IME_ACTION_DONE
             hint = getString(R.string.settings_color_hex)
-            layoutParams = LinearLayout.LayoutParams(dp(130), ViewGroup.LayoutParams.WRAP_CONTENT)
-                .also { it.marginStart = dp(14) }
+            // 고정 폭이 아니라 남는 공간을 받는다 — 좁은 화면에서도 팔레트 버튼과 겹치지 않는다.
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .also { it.weight = 1f; it.marginStart = dp(10) }
         }
         applyPreview(preview, initialHex, opacityPct())
         // 불투명도 슬라이더가 움직일 때 이 미리보기도 함께 다시 그리도록 등록.
@@ -1117,17 +1118,46 @@ class SettingsActivity : AppCompatActivity() {
             text = label
             textSize = 14f
             setTextColor(themeColor(R.attr.uiOnSurface))
-            layoutParams = LinearLayout.LayoutParams(dp(64), ViewGroup.LayoutParams.WRAP_CONTENT)
+            // 예전엔 64dp 고정이라 "배지 배경색"·"메뉴 강조색" 같은 6자 라벨이 잘렸다.
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).also { it.marginEnd = dp(10) }
         })
         headerRow.addView(preview)
         headerRow.addView(hexInput)
         container.addView(headerRow)
 
-        // 32색 팔레트 (8 x 4, 원형 스와치)
+        // 32색 팔레트 (8 x 4, 원형 스와치) — 기본은 접어 둔다.
+        //
+        // 색은 한 번 정하면 거의 안 만지는 설정인데, 항상 펼쳐 두면 스와치 32개가 화면을 가득 채워
+        // 자주 쓰는 스위치·슬라이더를 밀어낸다(예전 구조에선 팔레트 6벌이 전체 스크롤의 28%였다).
+        // 미리보기 원 또는 색 이름을 누르면 열린다.
         val palette = GridLayout(this).apply {
             columnCount = 8
             setPadding(0, dp(8), 0, 0)
+            visibility = View.GONE
         }
+        val toggle = TextView(this).apply {
+            text = getString(R.string.settings_color_palette_open)
+            textSize = 12.5f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(themeColor(R.attr.uiAccent))
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+            isClickable = true
+            isFocusable = true
+            background = rippleBoundedBackground()
+        }
+        fun togglePalette() {
+            val opening = palette.visibility != View.VISIBLE
+            palette.visibility = if (opening) View.VISIBLE else View.GONE
+            toggle.text = getString(
+                if (opening) R.string.settings_color_palette_close else R.string.settings_color_palette_open
+            )
+        }
+        toggle.setOnClickListener { togglePalette() }
+        preview.isClickable = true
+        preview.setOnClickListener { togglePalette() }
+        headerRow.addView(toggle)
         PALETTE.forEach { hex ->
             val swatch = View(this).apply {
                 val lp = GridLayout.LayoutParams().apply {

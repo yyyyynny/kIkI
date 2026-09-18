@@ -62,6 +62,8 @@
     <string name="settings_replace_enabled">한영타 교체 켜기</string>
     <string name="settings_replace_confidence">신뢰도 임계값(%)</string>
     <string name="settings_replace_confidence_desc">영문을 한글 자판 배열로 바꿨을 때 올바른 한글 음절로 조합되는 비율이에요. 값이 높을수록 더 확실한 한영타에만 교체 버튼을 띄웁니다. 예를 들어 dkssud 는 안녕 으로 잘 조합돼 높게, 실제 영어 단어는 조합이 깨져 낮게 나옵니다.</string>
+    <string name="settings_color_palette_open">팔레트</string>
+    <string name="settings_color_palette_close">팔레트 닫기</string>
     <string name="settings_color_hex">색상코드(#RRGGBB)</string>
     <string name="settings_apply">설정이 즉시 적용됩니다</string>
     <string name="settings_back">뒤로</string>
