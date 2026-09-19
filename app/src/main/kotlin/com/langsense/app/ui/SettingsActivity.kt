@@ -255,10 +255,25 @@ class SettingsActivity : AppCompatActivity() {
         }
         column.addView(searchRow())
         column.addView(railList)
+        column.addView(versionFooter())
         return ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
             addView(column)
         }
+    }
+
+    /**
+     * "26.9.19" 처럼 마지막 커밋 날짜로 자동 계산된 버전(빌드 스크립트 참조). `BuildConfig` 를
+     * 켜지 않고(빌드 산출물 증가 방지, [appVersionCode] 와 같은 이유) `PackageManager` 로 읽는다.
+     */
+    private fun versionFooter(): TextView = TextView(this).apply {
+        val name = runCatching {
+            packageManager.getPackageInfo(packageName, 0).versionName
+        }.getOrNull()
+        text = getString(R.string.settings_version_format, name ?: "?")
+        textSize = 11f
+        setTextColor(themeColor(R.attr.uiOnSurfaceMuted))
+        setPadding(dp(11), dp(10), dp(11), 0)
     }
 
     /** 설정 이름뿐 아니라 설명 문구까지 함께 찾는 검색칸. */

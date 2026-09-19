@@ -650,6 +650,35 @@ ThemeManager — 앱 화면 테마 6종 적용(setDefaultNightMode + setTheme �
     전환 시 창 생성/파괴 생략, 메뉴 WebView 는 20s 유휴 캐시. ⑤ `ImeState.subtypeId` 처럼 읽는 곳 없는
     IPC 는 제거. ⑥ release 는 R8(`isMinifyEnabled=true`, Log.d 제거) — JS 브리지 keep 규칙 필수.
     ⑦ 래디얼 메뉴 저사양 모드는 기기 자동 판정(Feature 5 참조).
+12. **⚠️ 버전 관리(2026-09 추가) — 이 규칙은 항상 지킬 것, 예외 없음**:
+    - **`versionName`(사람이 보는 문자열)은 마지막 커밋 날짜에서 "yy.M.d" 형식으로 매번 자동
+      계산된다**(예: 2026-09-19 커밋 → `26.9.19`). 계산 위치는 `app/build.gradle.kts` 최상단의
+      `gitCommitDateVersionName()` — `git log -1 --format=%cd --date=short` 로 커밋 날짜를 읽어
+      `LocalDate.parse().format(DateTimeFormatter.ofPattern("yy.M.d"))` 로 변환한다.
+      **이 함수를 지우고 `versionName = "1.2"` 같은 리터럴 문자열로 되돌리지 말 것** — "다음
+      릴리스에서 버전 올리는 걸 잊는다"는 실패 양상을 원천 차단하려고 일부러 사람 손을 뺀
+      것이며, 되돌리면 그 실패가 다시 생긴다.
+      - **wall-clock 날짜가 아니라 커밋 날짜를 쓰는 이유**: 빌드 시각 기준이면 오래된 브랜치를
+        나중에 다시 빌드했을 때 그 코드와 무관한 "오늘" 날짜가 찍혀 버전이 실제 코드 시점과
+        어긋난다. git 이 없거나 커밋이 없으면 조용히 현재 날짜로 폴백한다(버전 표시 부정확 <
+        빌드 실패).
+      - **앱 UI 두 곳에 노출**: 온보딩(`activity_main.xml` 의 `tvVersion`, `MainActivity.
+        showVersion()`)과 설정 화면 좌측 레일 하단(`SettingsActivity.versionFooter()`). 둘 다
+        `BuildConfig` 를 켜지 않고(빌드 산출물 증가 방지 — `appVersionCode()` 와 같은 이유)
+        `PackageManager.getPackageInfo(packageName, 0).versionName` 으로 읽는다.
+      - **CI 에도 매번 찍는다**: `.github/workflows/ci.yml` 의 "빌드 버전 확인" 스텝이
+        `./gradlew -q printVersion`(`app/build.gradle.kts` 의 태스크) 결과를 Job Summary 에
+        남긴다 — 저장소를 열지 않아도 Actions 탭에서 그 실행이 어떤 버전을 빌드했는지 바로
+        보인다. 이 스텝을 지우지 말 것.
+    - **`versionCode`(내부 정수)는 날짜와 절대 엮지 않는다** — 릴리스마다 사람이 정확히 1씩
+      올리는 평범한 정수로 그대로 둔다(`defaultConfig.versionCode`, 현재 2). 이유 둘:
+      (a) Play 스토어는 업로드마다 반드시 증가하는 정수를 요구하고, 날짜 정수(예:
+      `20260919`)로 바꾸면 하루에 여러 번 릴리스할 때 그날 안에서 값이 안 올라간다.
+      (b) `Prefs.MARKER_SINCE`/`isMarkerFresh`(NEW·"이사 갔어요" 자동 만료, 추가 기능 4)가
+      "이 정수가 릴리스마다 정확히 +1" 이라는 전제로 "도입 후 3버전 지나면 사라짐"을
+      계산한다 — 스킴을 바꾸면 이 계산이 조용히 깨진다.
+    - 요약: **`versionName` = 자동(절대 손으로 안 씀) / `versionCode` = 수동 +1(절대 날짜로
+      안 바꿈)**. 이 둘을 섞으면(예: `versionCode` 를 날짜로) 위 부작용이 실제로 발생한다.
 
 ---
 

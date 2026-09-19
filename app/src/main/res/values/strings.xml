@@ -67,6 +67,7 @@
     <string name="settings_color_hex">색상코드(#RRGGBB)</string>
     <string name="settings_apply">설정이 즉시 적용됩니다</string>
     <string name="settings_back">뒤로</string>
+    <string name="settings_version_format">버전 %1$s</string>
     <string name="settings_saved">저장됨 · 즉시 적용</string>
 
     <!-- 터치 키보드 제외 (추가 기능 2) -->

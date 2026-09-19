@@ -291,5 +291,15 @@
             android:textSize="12sp"
             android:lineSpacingExtra="2dp" />
 
+        <!-- 마지막 커밋 날짜로 자동 계산되는 버전(코드는 MainActivity.kt 에서 채운다). -->
+        <TextView
+            android:id="@+id/tvVersion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center"
+            android:textColor="?attr/uiMuted"
+            android:textSize="11sp" />
+
     </LinearLayout>
 </ScrollView>

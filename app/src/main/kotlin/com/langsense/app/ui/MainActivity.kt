@@ -38,6 +38,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         capContentWidth()
+        showVersion()
 
         binding.btnOverlay.setOnClickListener {
             if (PermissionHelper.canDrawOverlays(this)) {
@@ -85,6 +86,17 @@ class MainActivity : AppCompatActivity() {
                 width = maxWidth
                 gravity = Gravity.CENTER_HORIZONTAL
             }
+    }
+
+    /**
+     * "26.9.19" 처럼 마지막 커밋 날짜로 자동 계산되는 버전(app/build.gradle.kts 참조).
+     * `BuildConfig` 를 켜지 않고(빌드 산출물 증가 방지) `PackageManager` 로 읽는다.
+     */
+    private fun showVersion() {
+        val name = runCatching {
+            packageManager.getPackageInfo(packageName, 0).versionName
+        }.getOrNull()
+        binding.tvVersion.text = getString(R.string.settings_version_format, name ?: "?")
     }
 
     private fun refreshStatus() {
