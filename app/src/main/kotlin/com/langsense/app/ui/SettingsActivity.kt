@@ -263,7 +263,7 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     /**
-     * "26.9.19.4" 처럼 마지막 커밋 날짜 + 그날 몇 번째 커밋인지로 자동 계산된 버전(빌드 스크립트 참조). `BuildConfig` 를
+     * "26.9.19.04" 처럼 마지막 커밋 날짜 + 그날 몇 번째 커밋인지로 자동 계산된 버전(빌드 스크립트 참조). `BuildConfig` 를
      * 켜지 않고(빌드 산출물 증가 방지, [appVersionCode] 와 같은 이유) `PackageManager` 로 읽는다.
      */
     private fun versionFooter(): TextView = TextView(this).apply {

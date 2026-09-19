@@ -89,7 +89,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * "26.9.19.4" 처럼 마지막 커밋 날짜 + 그날 몇 번째 커밋인지로 자동 계산되는 버전(app/build.gradle.kts 참조).
+     * "26.9.19.04" 처럼 마지막 커밋 날짜 + 그날 몇 번째 커밋인지로 자동 계산되는 버전(app/build.gradle.kts 참조).
      * `BuildConfig` 를 켜지 않고(빌드 산출물 증가 방지) `PackageManager` 로 읽는다.
      */
     private fun showVersion() {

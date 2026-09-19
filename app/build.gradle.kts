@@ -20,8 +20,8 @@ fun runGit(vararg args: String): String {
 }
 
 /**
- * versionName 을 마지막 커밋 날짜에서 "yy.M.d.n" 형식(예: 2026-09-19 의 3번째 커밋 →
- * "26.9.19.3")으로 자동 계산한다. ⚠️ **여기서 리터럴 문자열로 되돌리지 말 것** — CLAUDE.md
+ * versionName 을 마지막 커밋 날짜에서 "yy.M.d.nn" 형식(예: 2026-09-19 의 4번째 커밋 →
+ * "26.9.19.04")으로 자동 계산한다. ⚠️ **여기서 리터럴 문자열로 되돌리지 말 것** — CLAUDE.md
  * "버전 관리" 절 참조.
  *
  * - **날짜는 wall-clock 이 아니라 커밋 날짜**: 이 값은 "이 코드가 언제 것인가"를 나타내야
@@ -32,11 +32,12 @@ fun runGit(vararg args: String): String {
  *   하루에만 10개 넘는 커밋이 있었다). `git log --since/--until HEAD` 로 그 날짜 범위 안에서
  *   HEAD 까지 도달 가능한 커밋 수를 세면, 별도 상태 저장 없이 커밋 이력만으로 결정된다 —
  *   커밋할 때마다 자동으로 다음 번호가 매겨지고 사람이 셀 필요가 없다.
- * - 10번째를 넘어가도 특별한 처리는 없다 — `n` 은 그냥 정수라 `26.9.19.10` 이 된다. Android
- *   `versionName` 은 순수 표시 문자열이라 자릿수 제한이 없다. 다만 이 문자열을 나중에 **글자
- *   순으로 정렬**하는 코드가 생기면 한 자리(`9`)가 두 자리(`10`)보다 뒤로 가므로(`'9' > '1'`),
- *   그럴 일이 생기면 그때 0 채움을 검토할 것 — 지금은 그런 코드가 없어 안 채운다.
- * - git 이 없거나(소스만 배포된 경우) 커밋이 없는 새 저장소면 조용히 오늘 날짜 + `.1` 로
+ * - **`n` 은 2자리로 0 채움한다**(`04`, `10`, `99`…): 채우지 않으면 이 문자열을 나중에 글자
+ *   순으로 정렬할 때 한 자리(`9`)가 두 자리(`10`)보다 뒤로 가는 문제가 생긴다(`'9' > '1'`).
+ *   하루 99번(`n=99`)을 넘어가면 자릿수가 늘어나 그 특정 날짜만 다시 어긋날 수 있지만, 이
+ *   워크플로에서 하루 100커밋은 사실상 없는 수치라 감수한다 — `padStart` 는 넘치면 그냥 원래
+ *   길이로 반환할 뿐 예외를 던지지 않으므로 빌드가 깨지진 않는다.
+ * - git 이 없거나(소스만 배포된 경우) 커밋이 없는 새 저장소면 조용히 오늘 날짜 + `.01` 로
  *   폴백한다 — 버전 표시가 부정확해질지언정 빌드 자체가 깨지면 안 된다.
  */
 fun gitCommitDateVersionName(): String {
@@ -48,8 +49,8 @@ fun gitCommitDateVersionName(): String {
             "log", "--since=$dateStr 00:00:00", "--until=$dateStr 23:59:59", "--format=%H", "HEAD"
         )
         val n = sameDayCommits.lineSequence().count { it.isNotBlank() }.coerceAtLeast(1)
-        "${LocalDate.parse(dateStr).format(fmt)}.$n"
-    }.getOrElse { "${LocalDate.now().format(fmt)}.1" }
+        "${LocalDate.parse(dateStr).format(fmt)}.${n.toString().padStart(2, '0')}"
+    }.getOrElse { "${LocalDate.now().format(fmt)}.01" }
 }
 
 android {
