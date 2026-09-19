@@ -60,7 +60,8 @@ jobs:
       # versionName 은 마지막 커밋 날짜에서 자동 계산된다(app/build.gradle.kts 상단 주석 참조).
       # 저장소를 열지 않아도 이 실행이 어떤 버전을 빌드했는지 Actions 탭 요약에서 바로 보이게 한다.
       - name: 빌드 버전 확인
-        run: echo "### 빌드 버전: $(./gradlew -q printVersion)" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          echo "### 빌드 버전: $(./gradlew -q printVersion)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Android Lint (lintDebug)
         run: |
