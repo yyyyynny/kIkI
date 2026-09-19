@@ -651,17 +651,24 @@ ThemeManager — 앱 화면 테마 6종 적용(setDefaultNightMode + setTheme �
     IPC 는 제거. ⑥ release 는 R8(`isMinifyEnabled=true`, Log.d 제거) — JS 브리지 keep 규칙 필수.
     ⑦ 래디얼 메뉴 저사양 모드는 기기 자동 판정(Feature 5 참조).
 12. **⚠️ 버전 관리(2026-09 추가) — 이 규칙은 항상 지킬 것, 예외 없음**:
-    - **`versionName`(사람이 보는 문자열)은 마지막 커밋 날짜에서 "yy.M.d" 형식으로 매번 자동
-      계산된다**(예: 2026-09-19 커밋 → `26.9.19`). 계산 위치는 `app/build.gradle.kts` 최상단의
-      `gitCommitDateVersionName()` — `git log -1 --format=%cd --date=short` 로 커밋 날짜를 읽어
-      `LocalDate.parse().format(DateTimeFormatter.ofPattern("yy.M.d"))` 로 변환한다.
+    - **`versionName`(사람이 보는 문자열)은 마지막 커밋 날짜 + 그날 몇 번째 커밋인지에서
+      "yy.M.d.n" 형식으로 매번 자동 계산된다**(예: 2026-09-19 의 4번째 커밋 → `26.9.19.4`).
+      계산 위치는 `app/build.gradle.kts` 최상단의 `gitCommitDateVersionName()` —
+      `git log -1 --format=%cd --date=short` 로 커밋 날짜를 읽고, 같은 날짜 범위 안에서
+      `git log --since/--until HEAD` 로 HEAD 까지 도달 가능한 커밋 수를 세어 `n` 으로 붙인다.
       **이 함수를 지우고 `versionName = "1.2"` 같은 리터럴 문자열로 되돌리지 말 것** — "다음
       릴리스에서 버전 올리는 걸 잊는다"는 실패 양상을 원천 차단하려고 일부러 사람 손을 뺀
       것이며, 되돌리면 그 실패가 다시 생긴다.
       - **wall-clock 날짜가 아니라 커밋 날짜를 쓰는 이유**: 빌드 시각 기준이면 오래된 브랜치를
         나중에 다시 빌드했을 때 그 코드와 무관한 "오늘" 날짜가 찍혀 버전이 실제 코드 시점과
-        어긋난다. git 이 없거나 커밋이 없으면 조용히 현재 날짜로 폴백한다(버전 표시 부정확 <
-        빌드 실패).
+        어긋난다. git 이 없거나 커밋이 없으면 조용히 현재 날짜 + `.1` 로 폴백한다(버전 표시
+        부정확 < 빌드 실패).
+      - **`n` 이 있는 이유**: 이 저장소는 하루에 커밋을 여러 번 하는 워크플로라(어느 날은
+        10개 넘게), 날짜만으로는 같은 날 나온 서로 다른 빌드를 구분할 수 없다. `n` 은 별도
+        상태 저장 없이 커밋 이력만으로 결정되고, 10번째를 넘어가도 그냥 `26.9.19.10`이 될
+        뿐 특별한 처리는 없다(Android `versionName` 은 자릿수 제한 없는 순수 문자열). 이 값을
+        나중에 **글자순으로 정렬**하는 코드가 생기면 한 자리(`9`)가 두 자리(`10`)보다 뒤로
+        가므로 그때 0 채움을 검토할 것 — 지금은 그런 코드가 없어 안 채운다.
       - **앱 UI 두 곳에 노출**: 온보딩(`activity_main.xml` 의 `tvVersion`, `MainActivity.
         showVersion()`)과 설정 화면 좌측 레일 하단(`SettingsActivity.versionFooter()`). 둘 다
         `BuildConfig` 를 켜지 않고(빌드 산출물 증가 방지 — `appVersionCode()` 와 같은 이유)

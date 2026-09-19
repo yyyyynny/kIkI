@@ -7,28 +7,49 @@ plugins {
     alias(libs.plugins.kotlin.android)
 }
 
+/** git 명령을 실행해 표준출력을 돌려준다. 실패하면 예외 — 호출부가 runCatching 으로 감싼다. */
+fun runGit(vararg args: String): String {
+    val proc = ProcessBuilder("git", *args)
+        .directory(rootDir)
+        .redirectErrorStream(true)
+        .start()
+    val output = proc.inputStream.bufferedReader().readText().trim()
+    val exited = proc.waitFor(10, TimeUnit.SECONDS)
+    check(exited && proc.exitValue() == 0)
+    return output
+}
+
 /**
- * versionName 을 마지막 커밋 날짜에서 "yy.M.d" 형식(예: 2026-09-19 → "26.9.19")으로 자동
- * 계산한다. ⚠️ **여기서 리터럴 문자열로 되돌리지 말 것** — CLAUDE.md "버전 관리" 절 참조.
+ * versionName 을 마지막 커밋 날짜에서 "yy.M.d.n" 형식(예: 2026-09-19 의 3번째 커밋 →
+ * "26.9.19.3")으로 자동 계산한다. ⚠️ **여기서 리터럴 문자열로 되돌리지 말 것** — CLAUDE.md
+ * "버전 관리" 절 참조.
  *
- * 현재 wall-clock 날짜가 아니라 **커밋 날짜**를 쓰는 이유: 이 값은 "이 코드가 언제 것인가"를
- * 나타내야 한다. 빌드 시각 기준이면 몇 달 뒤 같은 커밋을 다시 빌드했을 때(예: 오래된 브랜치를
- * 다시 빌드) 그 코드와 무관한 "오늘" 날짜가 찍혀 버전이 실제 코드 시점과 어긋난다. git 이
- * 없거나(소스만 배포된 경우) 커밋이 없는 새 저장소면 조용히 현재 날짜로 폴백한다 — 버전
- * 표시가 부정확해질지언정 빌드 자체가 깨지면 안 된다.
+ * - **날짜는 wall-clock 이 아니라 커밋 날짜**: 이 값은 "이 코드가 언제 것인가"를 나타내야
+ *   한다. 빌드 시각 기준이면 몇 달 뒤 같은 커밋을 다시 빌드했을 때(예: 오래된 브랜치를 다시
+ *   빌드) 그 코드와 무관한 "오늘" 날짜가 찍혀 버전이 실제 코드 시점과 어긋난다.
+ * - **`n` = 그날 안에서 HEAD 가 몇 번째 커밋인지**: 하루에 커밋을 여러 번 하는 이 저장소의
+ *   실제 워크플로에서, 날짜만으로는 같은 날 나온 서로 다른 빌드를 구분할 수 없다(오늘
+ *   하루에만 10개 넘는 커밋이 있었다). `git log --since/--until HEAD` 로 그 날짜 범위 안에서
+ *   HEAD 까지 도달 가능한 커밋 수를 세면, 별도 상태 저장 없이 커밋 이력만으로 결정된다 —
+ *   커밋할 때마다 자동으로 다음 번호가 매겨지고 사람이 셀 필요가 없다.
+ * - 10번째를 넘어가도 특별한 처리는 없다 — `n` 은 그냥 정수라 `26.9.19.10` 이 된다. Android
+ *   `versionName` 은 순수 표시 문자열이라 자릿수 제한이 없다. 다만 이 문자열을 나중에 **글자
+ *   순으로 정렬**하는 코드가 생기면 한 자리(`9`)가 두 자리(`10`)보다 뒤로 가므로(`'9' > '1'`),
+ *   그럴 일이 생기면 그때 0 채움을 검토할 것 — 지금은 그런 코드가 없어 안 채운다.
+ * - git 이 없거나(소스만 배포된 경우) 커밋이 없는 새 저장소면 조용히 오늘 날짜 + `.1` 로
+ *   폴백한다 — 버전 표시가 부정확해질지언정 빌드 자체가 깨지면 안 된다.
  */
 fun gitCommitDateVersionName(): String {
     val fmt = DateTimeFormatter.ofPattern("yy.M.d")
     return runCatching {
-        val proc = ProcessBuilder("git", "log", "-1", "--format=%cd", "--date=short")
-            .directory(rootDir)
-            .redirectErrorStream(true)
-            .start()
-        val output = proc.inputStream.bufferedReader().readText().trim()
-        val exited = proc.waitFor(10, TimeUnit.SECONDS)
-        check(exited && proc.exitValue() == 0 && output.isNotEmpty())
-        LocalDate.parse(output).format(fmt)
-    }.getOrElse { LocalDate.now().format(fmt) }
+        val dateStr = runGit("log", "-1", "--format=%cd", "--date=short") // "YYYY-MM-DD"
+        check(dateStr.isNotEmpty())
+        val sameDayCommits = runGit(
+            "log", "--since=$dateStr 00:00:00", "--until=$dateStr 23:59:59", "--format=%H", "HEAD"
+        )
+        val n = sameDayCommits.lineSequence().count { it.isNotBlank() }.coerceAtLeast(1)
+        "${LocalDate.parse(dateStr).format(fmt)}.$n"
+    }.getOrElse { "${LocalDate.now().format(fmt)}.1" }
 }
 
 android {
