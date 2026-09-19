@@ -115,14 +115,14 @@ class SettingsActivity : AppCompatActivity() {
             restoredInDetail = it.getBoolean(STATE_IN_DETAIL, false)
         }
 
-        twoPane = resources.configuration.screenWidthDp >= TWO_PANE_MIN_WIDTH_DP
+        twoPane = isWideEnoughForTwoPane()
 
         railList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         railRoot = buildRail()
 
         detailContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(4), dp(18), dp(28))
+            setPadding(dp(DETAIL_PADDING_DP), dp(4), dp(DETAIL_PADDING_DP), dp(28))
         }
         detailScroll = ScrollView(this).apply {
             id = R.id.settings_detail_scroll   // 스크롤 위치를 테마 변경(recreate) 너머로 보존
@@ -133,7 +133,7 @@ class SettingsActivity : AppCompatActivity() {
         val body: ViewGroup = if (twoPane) {
             LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
-                addView(railRoot, LinearLayout.LayoutParams(dp(300), ViewGroup.LayoutParams.MATCH_PARENT))
+                addView(railRoot, LinearLayout.LayoutParams(dp(RAIL_WIDTH_DP), ViewGroup.LayoutParams.MATCH_PARENT))
                 addView(
                     View(this@SettingsActivity).apply {
                         setBackgroundColor(themeColor(R.attr.uiDivider))
@@ -181,6 +181,42 @@ class SettingsActivity : AppCompatActivity() {
                 if (!twoPane && detailScroll.visibility == View.VISIBLE) showList() else finish()
             }
         })
+    }
+
+    // ── 화면 크기 적응(폰 / 폴더블 / 태블릿 / 멀티윈도우) ────────────────────────
+
+    /**
+     * 목록과 상세를 나란히 놓을 만한 화면인가.
+     *
+     * 폭만 보면 **폰을 가로로 눕혔을 때도 2단이 뜬다**(예: 851×393dp) — 세로가 393dp뿐이라
+     * 카드 두세 개면 끝나는 높이에 레일까지 끼는 꼴이라 오히려 답답하다. 그래서 높이도 함께 본다.
+     *
+     * 실제 기기 대입:
+     *  - Galaxy Tab S6 Lite 세로 857×1338 / 가로 1338×857 → 둘 다 2단
+     *  - Fold 펼침 약 725×870 → 2단 / **접힘 329×842 → 1단**
+     *  - 일반 폰 393×851, 가로 851×393 → 둘 다 1단
+     *  - 태블릿 분할화면(폭 절반) → 1단
+     *
+     * 접고 펴거나 분할화면 크기를 바꾸면 매니페스트에 `configChanges` 가 없어 액티비티가 재생성되고,
+     * `onSaveInstanceState` 로 보던 그룹·검색어가 유지된 채 이 판정이 다시 돈다.
+     */
+    private fun isWideEnoughForTwoPane(): Boolean {
+        val c = resources.configuration
+        return c.screenWidthDp >= TWO_PANE_MIN_WIDTH_DP && c.screenHeightDp >= TWO_PANE_MIN_HEIGHT_DP
+    }
+
+    /** 32색 팔레트의 열 수 — 들어가는 만큼만, 최소 4열 최대 8열. */
+    private fun paletteColumns(): Int =
+        (detailContentWidthDp() / SWATCH_CELL_DP).coerceIn(4, 8)
+
+    /** 테마 카드 격자의 열 수 — 아주 좁으면(폴드 접힘 등) 1열로 떨어뜨려 글자가 뭉치지 않게 한다. */
+    private fun themeColumns(): Int = if (detailContentWidthDp() < THEME_TWO_COLUMN_MIN_DP) 1 else 2
+
+    /** 상세 카드 **안쪽**에서 실제로 쓸 수 있는 가로 폭(dp) — 팔레트·테마 격자의 열 수 기준. */
+    private fun detailContentWidthDp(): Int {
+        val screen = resources.configuration.screenWidthDp
+        val detail = if (twoPane) screen - RAIL_WIDTH_DP - 1 else screen
+        return (detail - DETAIL_PADDING_DP * 2 - CARD_PADDING_DP * 2).coerceAtLeast(160)
     }
 
     // ── 좌측 레일(검색 + 그룹 목록) ──────────────────────────────────────────────
@@ -734,7 +770,7 @@ class SettingsActivity : AppCompatActivity() {
     /** 테마 카드 6개(2열). 고르면 즉시 [recreate] 로 다시 그린다. */
     private fun themePicker(): View {
         val grid = GridLayout(this).apply {
-            columnCount = 2
+            columnCount = themeColumns()
             setPadding(0, dp(8), 0, dp(4))
         }
         Prefs.UI_THEME_IDS.forEach { id ->
@@ -853,6 +889,9 @@ class SettingsActivity : AppCompatActivity() {
             textSize = 20f
             setTextColor(themeColor(R.attr.uiOnSurface))
             setTypeface(typeface, Typeface.BOLD)
+            // 좁은 화면(폴드 접힘 329dp 등)에서 제목이 두 줄로 밀려 톱바가 뚱뚱해지지 않게.
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
                 .also { it.weight = 1f; it.marginStart = dp(8) }
         }
@@ -1189,8 +1228,10 @@ class SettingsActivity : AppCompatActivity() {
         // 색은 한 번 정하면 거의 안 만지는 설정인데, 항상 펼쳐 두면 스와치 32개가 화면을 가득 채워
         // 자주 쓰는 스위치·슬라이더를 밀어낸다(예전 구조에선 팔레트 6벌이 전체 스크롤의 28%였다).
         // 미리보기 원 또는 색 이름을 누르면 열린다.
+        // 열 수는 화면 폭에서 계산한다 — 8열 고정이면 8×(32+3+3)=304dp 가 필요해 폰(360dp)과
+        // 폴드 접힌 화면(329dp)에서 카드 밖으로 넘쳐 오른쪽 색들이 잘린다.
         val palette = GridLayout(this).apply {
-            columnCount = 8
+            columnCount = paletteColumns()
             setPadding(0, dp(8), 0, 0)
             visibility = View.GONE
         }
@@ -1547,6 +1588,22 @@ class SettingsActivity : AppCompatActivity() {
          * 세로로만 쌓이면 가로 공간을 통째로 버리면서 스크롤만 길어진다.
          */
         private const val TWO_PANE_MIN_WIDTH_DP = 720
+
+        /** 2단에 필요한 최소 높이 — 폰을 눕혔을 때(높이 약 393dp) 2단이 뜨는 것을 막는다. */
+        private const val TWO_PANE_MIN_HEIGHT_DP = 480
+
+        /** 2단일 때 좌측 레일 폭. [detailContentWidthDp] 계산과 같은 값을 써야 한다. */
+        private const val RAIL_WIDTH_DP = 300
+
+        /** 상세 영역 좌우 패딩 / [sectionCard] 좌우 패딩 — 반응형 폭 계산의 입력. */
+        private const val DETAIL_PADDING_DP = 18
+        private const val CARD_PADDING_DP = 18
+
+        /** 팔레트 스와치 한 칸이 차지하는 폭(32dp + 좌우 여백 3dp씩). */
+        private const val SWATCH_CELL_DP = 38
+
+        /** 테마 카드를 2열로 둘 수 있는 최소 카드 안쪽 폭. 그 아래면 1열. */
+        private const val THEME_TWO_COLUMN_MIN_DP = 300
 
         // 재생성(테마 변경·회전) 너머로 살려야 하는 화면 상태.
         private const val STATE_GROUP = "state_group"
