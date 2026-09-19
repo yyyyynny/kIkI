@@ -3,6 +3,8 @@ package com.langsense.app.ui
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.os.Bundle
+import android.view.Gravity
+import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -35,6 +37,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        capContentWidth()
 
         binding.btnOverlay.setOnClickListener {
             if (PermissionHelper.canDrawOverlays(this)) {
@@ -66,6 +69,22 @@ class MainActivity : AppCompatActivity() {
             return
         }
         refreshStatus()
+    }
+
+    /**
+     * 넓은 화면에서는 본문 폭을 [R.dimen.content_max_width] 로 묶고 가운데로 모은다.
+     * 태블릿 가로(1338dp)에서 한 줄이 화면 끝까지 늘어나면 시선 이동이 커져 읽기 불편하다.
+     * 폰·폴드 접힘처럼 그보다 좁은 화면에서는 조건에 걸리지 않아 `match_parent` 그대로다.
+     */
+    private fun capContentWidth() {
+        val maxWidth = resources.getDimensionPixelSize(R.dimen.content_max_width)
+        val screenWidth = resources.displayMetrics.widthPixels
+        if (screenWidth <= maxWidth) return
+        binding.contentColumn.layoutParams =
+            (binding.contentColumn.layoutParams as FrameLayout.LayoutParams).apply {
+                width = maxWidth
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
     }
 
     private fun refreshStatus() {

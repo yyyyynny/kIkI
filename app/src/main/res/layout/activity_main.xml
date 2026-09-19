@@ -5,9 +5,15 @@
     android:fillViewport="true"
     android:scrollbars="none">
 
+    <!--
+        폭은 MainActivity 가 화면 크기에 맞춰 조정한다 — 태블릿 가로(1338dp)에서 한 줄이 화면
+        끝까지 늘어나면 읽기 힘들어, 넓은 화면에서는 최대 폭을 걸고 가운데로 모은다.
+    -->
     <LinearLayout
+        android:id="@+id/contentColumn"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
         android:orientation="vertical"
         android:paddingStart="20dp"
         android:paddingEnd="20dp"

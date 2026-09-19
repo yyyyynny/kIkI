@@ -124,6 +124,11 @@ class SettingsActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(DETAIL_PADDING_DP), dp(4), dp(DETAIL_PADDING_DP), dp(28))
         }
+        // 넓은 화면에서 카드가 화면 끝까지 늘어나지 않게 상한을 두고 가운데로 모은다
+        // (태블릿 가로 1338dp 에서 상세 영역이 1037dp 까지 벌어진다). 좁은 화면엔 영향 없음.
+        detailContainer.layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).also { it.gravity = Gravity.CENTER_HORIZONTAL }
         detailScroll = ScrollView(this).apply {
             id = R.id.settings_detail_scroll   // 스크롤 위치를 테마 변경(recreate) 너머로 보존
             isVerticalScrollBarEnabled = false
@@ -163,6 +168,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         setContentView(screen)
 
+        capDetailWidth()
         renderRail()
         renderDetail()
         // 1단에서는 목록이 기본이지만, 상세를 보던 중 재생성(테마 변경·회전)됐으면 그 자리로 돌아간다.
@@ -215,8 +221,29 @@ class SettingsActivity : AppCompatActivity() {
     /** 상세 카드 **안쪽**에서 실제로 쓸 수 있는 가로 폭(dp) — 팔레트·테마 격자의 열 수 기준. */
     private fun detailContentWidthDp(): Int {
         val screen = resources.configuration.screenWidthDp
-        val detail = if (twoPane) screen - RAIL_WIDTH_DP - 1 else screen
+        val detail = (if (twoPane) screen - RAIL_WIDTH_DP - 1 else screen)
+            .coerceAtMost(contentMaxWidthDp())
         return (detail - DETAIL_PADDING_DP * 2 - CARD_PADDING_DP * 2).coerceAtLeast(160)
+    }
+
+    private fun contentMaxWidthDp(): Int =
+        (resources.getDimensionPixelSize(R.dimen.content_max_width) / resources.displayMetrics.density)
+            .toInt()
+
+    /**
+     * 상세 영역이 지나치게 넓어지지 않게 상한을 둔다 — 태블릿 가로(1338dp)에서는 상세만
+     * 1037dp 라 카드 한 줄이 화면 끝까지 늘어나 읽기 불편하다. 상한보다 좁으면 그대로 둔다.
+     */
+    private fun capDetailWidth() {
+        val maxWidth = resources.getDimensionPixelSize(R.dimen.content_max_width)
+        val available = detailScroll.width.takeIf { it > 0 }
+            ?: (resources.displayMetrics.widthPixels - if (twoPane) dp(RAIL_WIDTH_DP) else 0)
+        if (available <= maxWidth) return
+        detailContainer.layoutParams =
+            (detailContainer.layoutParams as FrameLayout.LayoutParams).apply {
+                width = maxWidth
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
     }
 
     // ── 좌측 레일(검색 + 그룹 목록) ──────────────────────────────────────────────

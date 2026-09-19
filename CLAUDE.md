@@ -540,7 +540,9 @@ SettingsActivity  — 2단(목록+상세) IA, 2026-09 재구성
       2단 조건은 **폭 720dp 이상 + 높이 480dp 이상**(폭만 보면 폰 가로 851×393 에서도 2단이 떠
       답답하다). 그 외에는 목록→상세 드릴다운(뒤로가기로 목록 복귀).
       팔레트/테마 격자의 열 수는 화면 폭에서 계산 — 8열 고정이면 304dp 가 필요해 폰(360dp)과
-      폴드 접힘(329dp)에서 잘렸다. 접기/펴기·분할화면 크기 변경은 `configChanges` 를 선언하지
+      폴드 접힘(329dp)에서 잘렸다. 반대쪽으로는 `R.dimen.content_max_width`(640dp) 상한을 둬
+      태블릿 가로(상세만 1037dp)에서 한 줄이 화면 끝까지 늘어나지 않게 가운데로 모은다
+      (온보딩 `MainActivity.capContentWidth` 도 같은 상한을 쓴다). 접기/펴기·분할화면 크기 변경은 `configChanges` 를 선언하지
       않아 액티비티 재생성으로 처리되고, `onSaveInstanceState` 가 보던 그룹·검색어를 유지한다.
 
 ThemeManager — 앱 화면 테마 6종 적용(setDefaultNightMode + setTheme 두 축)
