@@ -15,6 +15,14 @@
 :root {
   --kiki-accent-rgb: 205, 238, 255; /* #CDEEFF */
   --kiki-glow-rgb: 77, 168, 255;    /* #4DA8FF */
+  /* 원본의 중간 톤 4종. 원본은 층마다 서로 다른 파랑(림/은은한 빛/후광/깊은 후광)을 써서 빛이
+     겹겹이 번지는 깊이감을 냈다 — 한때 이걸 위의 두 색으로 뭉뚱그렸다가 후광이 탁하고 짙은
+     파랑으로 평평해졌다(2026-09 되돌림). 기본값은 원본 리터럴 그대로(픽셀 동일)이고, 사용자가
+     두 색을 바꾸면 JS(deriveTones)가 그 두 색 사이를 원본과 같은 비율로 섞어 다시 만든다. */
+  --kiki-rim-rgb: 180, 240, 255;
+  --kiki-soft-rgb: 127, 210, 255;
+  --kiki-halo-rgb: 120, 200, 255;
+  --kiki-deep-rgb: 80, 150, 255;
 }
 
 html, body {
@@ -136,12 +144,15 @@ html, body {
   -webkit-backdrop-filter: blur(10px) saturate(1.3);
 
   /* same glass + cyan rim treatment as the badge */
-  border: 1.5px solid rgba(var(--kiki-accent-rgb),0.55);
+  border: 1.5px solid rgba(var(--kiki-rim-rgb),0.55);
   box-shadow:
-    0 0 0 1.5px rgba(var(--kiki-accent-rgb),0.55),
-    0 0 20px  6px rgba(var(--kiki-glow-rgb),0.70),
-    0 0 50px 14px rgba(var(--kiki-glow-rgb),0.40),
-    inset 0 0 22px  6px rgba(var(--kiki-accent-rgb),0.12);
+    0 0 0 1.5px rgba(var(--kiki-rim-rgb),0.55),
+    0 0 20px  6px rgba(var(--kiki-halo-rgb),0.70),
+    0 0 50px 14px rgba(var(--kiki-deep-rgb),0.40),
+    inset 0 0 22px  6px rgba(var(--kiki-soft-rgb),0.12);
+  /* 빛 레이어(.orb-light)를 오브 모양 안으로 잘라, 모서리가 숨쉬듯 변할 때 빛도 함께 휘게 한다.
+     (box-shadow/outline 은 요소 자신의 것이라 overflow 로 잘리지 않는다.) */
+  overflow: hidden;
 
   transition: box-shadow 0.28s ease, filter 0.28s ease;
   /* organic breathing morph — offset per orb via inline --morph-del */
@@ -157,28 +168,107 @@ html, body {
   100% { border-radius: 20px; }
 }
 
-/* specular gloss — bright white top-left highlight */
-.orb::before {
+/* ── 물방울 빛(2026-09 재설계) ─────────────────────────────
+   예전 하이라이트는 모서리에 찍힌 흰 타원 하나였다 — 자기 border-radius(50%)로 고정돼 있고
+   오브 모양에 잘리지도 않아서, 오브가 숨쉬고(모서리 변형) 떠다녀도 그 자리에 그대로 박혀
+   "붙여 넣은" 느낌이었다. 이제 실제 유리 물방울이 빛을 받는 방식대로 네 겹으로 나눈다:
+   - gloss   : 윗면에 비친 창(광원) — 윗변 곡률을 따라 감기는 넓고 부드러운 띠
+   - glint   : 가장 밝은 한 점 — 윗면 곡선을 따라 천천히 미끄러진다
+   - caustic : 물방울을 통과한 빛이 반대편 아래에 모이는 은은한 빛 — glint 와 반대로 움직인다
+   - ::before: 윗 가장자리의 가는 반사선(프레넬)
+   모두 오브 안으로 잘려 모양 변형을 그대로 따라가고(overflow), 레이어 전체는 떠다니는(bob)
+   움직임과 반대로 살짝 밀려 "광원은 제자리, 물방울만 움직이는" 착시를 만든다(lightCounter).
+   screen 합성이라 흰색을 덮어 칠하는 게 아니라 유리 위에 빛을 더하는 방식으로 섞인다. */
+.orb-light {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+.menu.open .orb-light {
+  animation: lightCounter var(--bob-dur, 4.4s) ease-in-out var(--bob-del, 0s) infinite;
+}
+@keyframes lightCounter {
+  0%, 100% { translate: 0 0; }
+  50%      { translate: 0 calc(var(--bob-amp, -7px) * -0.3); }
+}
+.orb-light::before {
   content: '';
   position: absolute;
-  top: 8%; left: 12%;
-  width: 52%; height: 36%;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 1.5px 0.5px rgba(255,255,255,0.30),
+    inset 0 -1px 1px rgba(var(--kiki-soft-rgb),0.16);
+}
+.orb-light .gloss,
+.orb-light .caustic {
+  position: absolute;
+  inset: -12% -16%;
+}
+.orb-light .gloss {
+  background: radial-gradient(ellipse 62% 44% at 40% 9%,
+    rgba(255,255,255,0.64) 0%,
+    rgba(232,247,255,0.30) 42%,
+    rgba(255,255,255,0) 72%);
+  transform-origin: 40% 9%;
+  animation: glossDrift var(--flow-dur, 9s) ease-in-out var(--flow-del, 0s) infinite alternate;
+}
+@keyframes glossDrift {
+  0%   { transform: translateX(-6%) scaleX(0.94); opacity: 0.86; }
+  50%  { transform: translateX(2%)  scaleX(1.06); opacity: 1;    }
+  100% { transform: translateX(8%)  scaleX(0.97); opacity: 0.84; }
+}
+.orb-light .glint {
+  position: absolute;
+  left: 15%; top: 10%;
+  width: 30%; height: 16%;
   border-radius: 50%;
-  background: radial-gradient(ellipse at 38% 32%,
-    rgba(255,255,255,0.72) 0%,
-    rgba(220,245,255,0.32) 45%,
-    transparent 100%);
-  pointer-events: none;
+  background: radial-gradient(closest-side,
+    rgba(255,255,255,0.98) 0%,
+    rgba(255,255,255,0.55) 48%,
+    rgba(255,255,255,0) 100%);
+  filter: blur(0.5px);
+  transform: rotate(-10deg);
+  animation: glintFlow var(--flow-dur, 9s) ease-in-out var(--flow-del, 0s) infinite alternate;
+}
+/* 윗변은 가운데가 평평하고 양 끝이 둥글게 내려가므로, 가운데서 살짝 올라갔다 끝에서 내려온다. */
+@keyframes glintFlow {
+  0%   { transform: translate(-12%, 14%) rotate(-18deg) scale(0.86, 0.8); opacity: 0.7;  }
+  45%  { transform: translate(38%, -6%)  rotate(-6deg)  scale(1.06, 1);   opacity: 1;    }
+  100% { transform: translate(88%, 10%)  rotate(8deg)   scale(0.9, 0.82); opacity: 0.72; }
+}
+.orb-light .caustic {
+  background: radial-gradient(ellipse 50% 34% at 60% 96%,
+    rgba(var(--kiki-soft-rgb),0.44) 0%,
+    rgba(var(--kiki-soft-rgb),0.16) 48%,
+    rgba(var(--kiki-soft-rgb),0) 76%);
+  animation: causticBreath var(--flow-dur, 9s) ease-in-out var(--flow-del, 0s) infinite alternate;
+}
+@keyframes causticBreath {
+  0%   { transform: translateX(7%);  opacity: 1;    }
+  50%  { transform: translateX(-1%); opacity: 0.68; }
+  100% { transform: translateX(-9%); opacity: 0.92; }
 }
 
-/* thin inner ring */
+/* thin inner ring — 바깥 모서리와 같은 간격(4px)을 유지하도록 반지름도 함께 숨쉰다
+   (고정 10px 이면 바깥이 28px 로 부풀 때 안쪽 고리만 각진 채 남는다). */
 .orb::after {
   content: '';
   position: absolute;
   inset: 4px;
-  border-radius: 10px;
-  border: 1px solid rgba(var(--kiki-accent-rgb),0.20);
+  border-radius: 16px;
+  border: 1px solid rgba(var(--kiki-soft-rgb),0.20);
   pointer-events: none;
+  animation: innerMorph var(--morph-dur, 4s) ease-in-out var(--morph-del, 0s) infinite;
+}
+@keyframes innerMorph {
+  0%   { border-radius: 16px; }
+  25%  { border-radius: 24px; }
+  50%  { border-radius: 16px; }
+  75%  { border-radius: 12px; }
+  100% { border-radius: 16px; }
 }
 
 /* spring bounce on tap */
@@ -200,7 +290,7 @@ html, body {
   letter-spacing: 0.04em;
   color: rgb(var(--kiki-accent-rgb));
   text-shadow:
-    0 0  6px rgba(var(--kiki-accent-rgb),0.95),
+    0 0  6px rgba(var(--kiki-soft-rgb),0.95),
     0 0 14px rgba(var(--kiki-glow-rgb),0.65),
     0 0 26px rgba(var(--kiki-glow-rgb),0.30);
   pointer-events: none;
@@ -211,10 +301,10 @@ html, body {
 .orb-wrap:hover .orb,
 .orb-wrap:focus-visible .orb {
   box-shadow:
-    0 0 0 2px   rgba(var(--kiki-accent-rgb),1.00),
-    0 0 28px  9px rgba(var(--kiki-glow-rgb),0.90),
-    0 0 70px 22px rgba(var(--kiki-glow-rgb),0.55),
-    inset 0 0 30px  8px rgba(var(--kiki-accent-rgb),0.22);
+    0 0 0 2px   rgba(var(--kiki-rim-rgb),1.00),
+    0 0 28px  9px rgba(var(--kiki-halo-rgb),0.90),
+    0 0 70px 22px rgba(var(--kiki-deep-rgb),0.55),
+    inset 0 0 30px  8px rgba(var(--kiki-soft-rgb),0.22);
   filter: brightness(1.18);
 }
 
@@ -232,8 +322,8 @@ html, body {
   position: absolute;
   width: 6px; height: 6px;
   border-radius: 50%;
-  background: rgb(var(--kiki-accent-rgb));
-  box-shadow: 0 0 7px 2px rgba(var(--kiki-accent-rgb),0.9);
+  background: rgb(var(--kiki-soft-rgb));
+  box-shadow: 0 0 7px 2px rgba(var(--kiki-soft-rgb),0.9);
   pointer-events: none;
   opacity: 0;
 }
@@ -354,6 +444,12 @@ body.app-mode .menu .orb-wrap { pointer-events: auto; }
    아예 생성하지 않는다(applyLineBreath 참조 — CSS 가 아니라 JS 단에서 결정). */
 body.reduce-motion .menu.open .orb-wrap { animation: none; }
 body.reduce-motion .orb { animation: none; }
+body.reduce-motion .orb::after { animation: none; }
+/* 빛은 정지 상태로만 남긴다(모양은 같음). screen 합성도 끈다 — 합성 비용을 아끼고, 정지된
+   흰 그라디언트는 일반 합성으로도 거의 같게 보인다. */
+body.reduce-motion .menu.open .orb-light,
+body.reduce-motion .orb-light > * { animation: none; }
+body.reduce-motion .orb-light { mix-blend-mode: normal; }
 body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
 /* 저사양 모드의 최대 단일 이득: backdrop-filter(매 프레임 배경 readback + 블러) 와 50px 스프레드
    글로우를 뺀다. 유리 질감은 약해지지만 정적인 림+글로우로 같은 인상을 유지한다.
@@ -365,8 +461,8 @@ body.reduce-motion .orb {
      ON)의 기본 외형이 하늘색으로 바뀌는 회귀가 된다. */
   background: rgba(20, 60, 180, 0.30);
   box-shadow:
-    0 0 0 1.5px rgba(var(--kiki-accent-rgb),0.55),
-    0 0 20px  6px rgba(var(--kiki-glow-rgb),0.70);
+    0 0 0 1.5px rgba(var(--kiki-rim-rgb),0.55),
+    0 0 20px  6px rgba(var(--kiki-halo-rgb),0.70);
 }
 </style>
 </head>
@@ -430,11 +526,16 @@ body.reduce-motion .orb {
      배지가 화면 최상/최하단이거나 가로 모드라 세로로 팬이 안 들어갈 때만 KikiInit 이
      0 이 아닌 값을 쓴다 — tilt=0 이면 원본 지오메트리 그대로다.
      count 는 생략 시 현재 N(오브 개수)을 쓴다 — 1개일 때 분모가 0 이 되는 것만 방지한다. */
+  /* 오브 사이 각도는 항목 수와 무관하게 원본 5개 팬의 간격(35°)으로 고정하고, 팬을 배지 정면
+     (180°)에 가운데 맞춘다. 예전엔 몇 개든 140° 호 전체에 흩뿌려서 2개면 맨 위·맨 아래에 떨어져
+     긴 호 하나로만 이어지고, 1개면 정면이 아니라 왼쪽 위(250°)를 가리켰다. 5개일 때는
+     250→110 그대로라 원본 지오메트리와 동일하다. */
+  const ARC_STEP = (ARC_END - ARC_START) / (MAX_N - 1);
   function computePositions(tiltDeg, count) {
     const n = count || N;
-    const denom = (n - 1) || 1;
+    const top = 180 + ARC_STEP * (n - 1) / 2;
     return LABELS.slice(0, n).map((_, i) => {
-      const deg = ARC_END - (ARC_END - ARC_START) * (i / denom) + tiltDeg; // 250 -> 110 (+tilt)
+      const deg = top - ARC_STEP * i + tiltDeg; // n=5: 250 -> 110 (+tilt)
       const rad = deg * Math.PI / 180;
       return {
         x: BX + R * Math.cos(rad),
@@ -584,6 +685,14 @@ body.reduce-motion .orb {
     // each orb morphs on its own offset cycle (3-5s) for a living, breathing feel
     orb.style.setProperty('--morph-dur', (3 + Math.random() * 2).toFixed(2) + 's');
     orb.style.setProperty('--morph-del', (-i * 0.7 - Math.random() * 0.6).toFixed(2) + 's');
+    // 물방울 빛의 흐름 주기 — 오브마다 다르게(8~11s) 하고 음수 지연으로 위상을 흩어, 다섯 개가
+    // 같은 박자로 번쩍이지 않게 한다(.orb-light 참조).
+    orb.style.setProperty('--flow-dur', (8 + Math.random() * 3).toFixed(2) + 's');
+    orb.style.setProperty('--flow-del', (-Math.random() * 9).toFixed(2) + 's');
+    const light = document.createElement('div');
+    light.className = 'orb-light';
+    light.innerHTML = '<i class="gloss"></i><i class="caustic"></i><i class="glint"></i>';
+    orb.appendChild(light);
 
     const label = document.createElement('span');
     label.className = 'orb-label';
@@ -816,6 +925,24 @@ body.reduce-motion .orb {
     const triplet = hexToRgbTriplet(hex);
     if (triplet) document.documentElement.style.setProperty(name, triplet);
   }
+  /* 두 강조색 사이의 중간 톤 4종(:root 의 --kiki-rim/soft/halo/deep 참조)을 다시 만든다.
+     기본 두 색 그대로면 원본 리터럴(:root 기본값)을 쓰도록 덮어쓴 값을 지운다 — 원본과 픽셀
+     동일해야 하므로 근사 공식으로 대신하지 않는다. 섞는 비율은 원본 톤이 두 색 사이 어디쯤
+     있는지에서 잰 값(림 0.2 · 은은한 빛 0.6 · 후광 0.66 · 깊은 후광 0.98). */
+  const DEFAULT_ACCENT = '205,238,255', DEFAULT_GLOW = '77,168,255';
+  function deriveTones() {
+    const root = document.documentElement.style;
+    const read = n => (root.getPropertyValue(n) || getComputedStyle(document.documentElement).getPropertyValue(n))
+      .split(',').map(v => parseInt(v, 10));
+    const a = read('--kiki-accent-rgb'), g = read('--kiki-glow-rgb');
+    const names = ['--kiki-rim-rgb', '--kiki-soft-rgb', '--kiki-halo-rgb', '--kiki-deep-rgb'];
+    if (a.join(',') === DEFAULT_ACCENT && g.join(',') === DEFAULT_GLOW) {
+      names.forEach(n => root.removeProperty(n));
+      return;
+    }
+    const mix = t => a.map((v, i) => Math.round(v + (g[i] - v) * t)).join(',');
+    [0.2, 0.6, 0.66, 0.98].forEach((t, k) => root.setProperty(names[k], mix(t)));
+  }
 
   if (BRIDGE) {
     document.body.classList.add('app-mode');
@@ -845,6 +972,7 @@ body.reduce-motion .orb {
       // 강조색 2종(설정에서 커스터마이즈) — 값이 안 오면(구버전 캐시 등) 기존 색 유지.
       if (typeof cfg.accentColor === 'string') applyColorVar('--kiki-accent-rgb', cfg.accentColor);
       if (typeof cfg.glowColor === 'string') applyColorVar('--kiki-glow-rgb', cfg.glowColor);
+      deriveTones();
       // 현재 켜져 있는(ON) 토글 항목에 테두리 강조. buildOrbs 로 오브가 재생성됐어도(위)
       // orbWraps 는 최신 배열이라 인덱스가 항상 맞는다.
       if (Array.isArray(cfg.activeFlags)) {
