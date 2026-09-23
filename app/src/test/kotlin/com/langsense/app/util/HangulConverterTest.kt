@@ -177,6 +177,61 @@ class HangulConverterTest {
         }
     }
 
+    /**
+     * 사용자 제보(2026-09): 한영타 옆의 영어 단어까지 통째로 변환돼 `cpu`→`체ㅕ`, `gpu`→`헤ㅕ`
+     * 가 됐다. 감지는 그대로 되면서, 교체 문자열에서는 영어 단어를 지켜야 한다.
+     */
+    @Test
+    fun analyze_keepsEnglishWordsNextToTypo() {
+        val cases = mapOf(
+            "cpu wjdakf whgek" to "cpu 정말 좋다",
+            "gpu tjdsmddl whgdkwlsek" to "gpu 성능이 좋아진다",
+            "cpu gpu rkqtdl dhffkTek" to "cpu gpu 값이 올랐다",
+            "ram 16rlrk vlfdygksep" to "ram 16기가 필요한데",
+            "usb zpdlqmf rkqt" to "usb 케이블 값",
+        )
+        for ((typo, want) in cases) {
+            val result = HangulConverter.analyze(typo)
+            assertTrue("$typo -> conf=${result.confidence}", result.confidence >= 0.70f)
+            assertEquals(typo, want, result.converted)
+        }
+    }
+
+    /** 영어 단어에 조사가 붙어 한 덩어리로 친 경우 — 영어는 두고 조사만 바꾼다. */
+    @Test
+    fun analyze_splitsEnglishWordAndParticle() {
+        val cases = mapOf(
+            "cpusms qkRnjTek" to "cpu는 바꿨다",
+            "gpurk vlfdygo" to "gpu가 필요해",
+            "OSTeh whgdkdy" to "OST도 좋아요",
+            // B 는 Shift 가 한글에서 의미 없는 키 — 대문자로 쳤다는 것 자체가 영어의 증거
+            "Brmq dudghk" to "B급 영화",
+        )
+        for ((typo, want) in cases) assertEquals(typo, want, HangulConverter.analyze(typo).converted)
+    }
+
+    /** 순수 한영타 문장은 예전처럼 전부 바뀌어야 한다 — 구어체 낱자모(ㅋㅋ/ㅠㅠ/ㅉㅉ) 포함. */
+    @Test
+    fun analyze_pureTypoSentence_fullyConverted() {
+        val cases = mapOf(
+            "dlrjs wjdakf woalTek" to "이건 정말 재밌다",
+            "dkssud zzz" to "안녕 ㅋㅋㅋ",
+            "tkfkdgo bb" to "사랑해 ㅠㅠ",
+            // 전부 대문자여도 Shift 가 의미 있는 키(W=ㅉ)뿐이면 약어로 단정하지 않는다
+            "wjdakf WW" to "정말 ㅉㅉ",
+        )
+        for ((typo, want) in cases) assertEquals(typo, want, HangulConverter.analyze(typo).converted)
+    }
+
+    /** `체ㅕ` 는 실제 구어체에 거의 없는 전이(음절 뒤 낱모음 ㅕ)라 "기형"으로 판정돼야 한다. */
+    @Test
+    fun informalModel_flagsMalformedButNotCommonJamo() {
+        assertTrue(TypoLanguageModel.koreanInformal("체ㅕ")!!.rarestTransition < -8.0)
+        assertTrue(TypoLanguageModel.koreanInformal("헤ㅕ")!!.rarestTransition < -8.0)
+        assertTrue(TypoLanguageModel.koreanInformal("ㅋㅋㅋ")!!.rarestTransition >= -8.0)
+        assertTrue(TypoLanguageModel.koreanInformal("좋아ㅠㅠ")!!.rarestTransition >= -8.0)
+    }
+
     // ---------------------------------------------------------------------
     // 역방향(한글 자판으로 잘못 친 영어) — analyzeReverse
     // ---------------------------------------------------------------------

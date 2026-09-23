@@ -202,7 +202,8 @@ object HangulConverter {
      *
      * ⚠️ 이미 완성형 한글/호환 자모인 문자는 토큰화에서 경계로 취급해 판정에서 제외한다 —
      * 포함시키면 긴 정상 한글 문장에 짧은 한영타 조각이 섞였을 때 신호가 묻힌다.
-     * [Analysis.converted] 만 원본 전체를 쓴다([convertEngToKor] 가 한글을 그대로 보존).
+     * [Analysis.converted] 는 토큰마다 따로 정한다 — 영어 단어(`cpu`)는 그대로 두고 한영타만
+     * 바꾼다([convertInTypoContext]). 한글·공백은 원문 그대로 보존된다.
      */
     fun analyze(input: String): Analysis {
         // 라틴 토큰(공백/한글로 구분되는 조각) 하나 = 원문 텍스트([text], 구두점/숫자 포함 —
@@ -210,18 +211,10 @@ object HangulConverter {
         // 비율 계산용) + 매핑 가능 글자 수. [text] 와 [letters] 를 분리해 두는 이유: "1cm" 처럼
         // 숫자가 붙으면 원문 그대로는 사전(cm)과 일치하지 않아 억제가 무력화된다(2026-09 발견
         // — "1cm" 오탐).
-        data class LatinToken(
-            val text: String,
-            val letters: String,
-            val mappable: Int,
-            val allUpper: Boolean,
-            /** 첫 글자 외의 대문자 유무 — 두벌식 쌍자음/복합모음(Shift) 흔적. */
-            val innerUpper: Boolean,
-        )
-
         val tokens = mutableListOf<LatinToken>()
         val tok = StringBuilder()
         val tokLetters = StringBuilder()
+        var tokStart = 0
         var tokMappable = 0
         var tokUpper = 0
         var tokInnerUpper = false
@@ -230,20 +223,21 @@ object HangulConverter {
             if (tok.isEmpty()) return
             val letters = tokLetters.toString()
             val allUpper = letters.isNotEmpty() && tokUpper == letters.length
-            tokens.add(LatinToken(tok.toString(), letters, tokMappable, allUpper, tokInnerUpper && !allUpper))
+            tokens.add(LatinToken(tokStart, tok.toString(), letters, tokMappable, allUpper, tokInnerUpper && !allUpper))
             tok.setLength(0)
             tokLetters.setLength(0)
             tokMappable = 0
             tokUpper = 0
             tokInnerUpper = false
         }
-        for (c in input) {
+        for ((i, c) in input.withIndex()) {
             val code = c.code
             val isHangul = code in HANGUL_BASE..HANGUL_LAST || code in COMPAT_JAMO_START..COMPAT_JAMO_END
             if (isHangul || c.isWhitespace()) {
                 flushToken()
                 continue
             }
+            if (tok.isEmpty()) tokStart = i
             if (c.isLetter()) {
                 anyLetter = true
                 if (c.isUpperCase()) {
@@ -279,9 +273,166 @@ object HangulConverter {
             if (conf > best) best = conf
         }
         if (best == 0f) return Analysis(0f, input)
-        val converted = convertEngToKor(input) // 최종 반환값(교체용) — 한글은 그대로 보존됨
-        return Analysis(best, converted)
+
+        // 교체 문자열: 토큰마다 따로 정한다. 선택 전체를 통째로 변환하면 진짜 한영타 옆의 영어
+        // 단어까지 바뀐다(`cpu wjdakf` → `체ㅕ 정말`). 공백·한글은 원문 그대로 둔다.
+        val out = StringBuilder(input.length)
+        var last = 0
+        for (t in tokens) {
+            out.append(input, last, t.start)
+            out.append(convertInTypoContext(t))
+            last = t.start + t.text.length
+        }
+        out.append(input, last, input.length)
+        return Analysis(best, out.toString())
     }
+
+    /** [analyze] 의 라틴 토큰(공백/한글로 구분되는 조각). */
+    private class LatinToken(
+        /** 입력 안에서의 시작 위치. */
+        val start: Int,
+        /** 원문 텍스트(구두점/숫자 포함 — convertEngToKor 입력용). */
+        val text: String,
+        /** 글자만 모아 소문자화한 것(스톱워드 비교·모델 입력용). */
+        val letters: String,
+        val mappable: Int,
+        val allUpper: Boolean,
+        /** 첫 글자 외의 대문자 유무 — 두벌식 쌍자음/복합모음(Shift) 흔적. */
+        val innerUpper: Boolean,
+    )
+
+    /**
+     * 이미 한영타로 판정된 선택 안에서 토큰 하나를 어떻게 교체할지 정한다. 선택 전체를 통째로
+     * 변환하던 시절엔 진짜 한영타 옆의 영어 단어까지 바뀌었다(`cpu wjdakf` → `체ㅕ 정말`, 사용자
+     * 제보 2026-09). 이제 라틴 글자 구간마다 세 가설 중 우도가 가장 큰 것을 고른다:
+     * 1. 영어 그대로(`cpu`) — 영어 단어/약어 모델([TypoLanguageModel.englishOrAcronymLogProb])
+     * 2. 전부 한글(`dkssud`→`안녕`, `zzz`→`ㅋㅋㅋ`) — 구어체 한국어 모델 + 문맥 사전확률
+     * 3. 영어 + 한글(`cpusms`→`cpu는`) — 앞은 영어, 뒤는 "영어 바로 뒤 첫 단위" 실측 분포(조사 위주)
+     *
+     * 문맥 사전확률([CONTEXT_TOKEN_PRIOR] + [CONTEXT_PRIOR_PER_LETTER])은 "같은 선택에 이미 확실한
+     * 한영타가 있으니 나머지도 한글일 가능성이 높다"는 것이다. 단, 실제 구어체에서 거의 안 나오는
+     * 전이가 필요한 변환(`체ㅕ`: 음절 뒤 낱모음 ㅕ, -12.7)은 이 사전확률을 받지 못한다
+     * ([MALFORMED_TRANSITION_LOG]) — 사용자 표현 그대로 "한국어로도 매우 이상한" 결과라 문맥이
+     * 구제할 수 없다.
+     *
+     * 파라미터는 NSMC test(학습에 안 쓴 5만 문장)에서 세 집합으로 정했다: (A) 순수 한영타 문장
+     * 4.5만 — 전부 한글로 복원돼야 함, (B) 영어가 원래 섞인 실제 리뷰 2.3천 — 영어는 지켜야 함,
+     * (C) 한국어 문장에 소문자 기술 용어(cpu/gpu/ssd…)를 끼운 6천 — 절반은 조사 붙임.
+     * | 복원 정확도 | 통째 변환(이전) | 현재 |
+     * |---|---|---|
+     * | A 순수 한영타 | 97.95% | 97.31% |
+     * | B 실제 혼합 | 0% | 75.05% |
+     * | C 기술 용어 | 0% | 84.86% |
+     * A 의 실패 약 2%는 IME 자체의 모호성(`닼ㅋ`/`다ㅋㅋ`)이라 이전 방식도 똑같이 틀리고, 새로 생긴
+     * 0.6%p 는 한 글자 조각(`o`/`w`)·이모티콘(`-t-`)·드문 속어(`rid`→`걍`) 정도다.
+     * C 에 남은 실패(`xml`→`틔`, `gif`→`햘`, `fps`→`렌`)는 변환 결과가 멀쩡한 음절이라 본질적으로
+     * 모호하다.
+     */
+    private fun convertInTypoContext(t: LatinToken): String {
+        if (t.mappable == 0) return t.text // 숫자·기호뿐
+        // 라틴 글자 연속 구간마다 따로 판단한다 — 구두점·숫자로 붙은 조각(`whgdkdy...OSTeh`,
+        // `10wjawnazz`)은 서로 다른 단어다. convertEngToKor 도 그 경계에서 조합을 끊으므로 동치다.
+        val text = t.text
+        val out = StringBuilder(text.length)
+        var i = 0
+        while (i < text.length) {
+            if (!isLatin(text[i])) {
+                out.append(text[i])
+                i++
+                continue
+            }
+            var j = i
+            while (j < text.length && isLatin(text[j])) j++
+            out.append(convertRunInTypoContext(text.substring(i, j)))
+            i = j
+        }
+        return out.toString()
+    }
+
+    private fun isLatin(c: Char) = c in 'a'..'z' || c in 'A'..'Z'
+
+    /** [convertInTypoContext] 의 라틴 글자 구간 하나(전부 a-z/A-Z). */
+    private fun convertRunInTypoContext(run: String): String {
+        // 전부 대문자는 약어(OST/EBS) — 단, Shift 가 한글에서 의미 있는 키로만 이뤄졌으면(`WW`→ㅉㅉ)
+        // 대문자가 영어의 증거가 못 되므로 모델에 맡긴다.
+        if (run.length >= 2 && run.all { it.isUpperCase() } && !run.all { it in ENG_UPPER_TO_JAMO }) return run
+
+        var bestText = run
+        var bestLl = englishLl(run) + logLatinNotGlued(run.length)
+        val whole = convertEngToKor(run)
+        TypoLanguageModel.koreanInformal(whole)?.let { ko ->
+            // 실제 구어체에서 거의 안 나오는 전이가 필요한 변환(`체ㅕ`)은 문맥 가산점을 못 받는다.
+            val prior = if (ko.rarestTransition >= MALFORMED_TRANSITION_LOG) CONTEXT_TOKEN_PRIOR else 0.0
+            val ll = koreanLl(run, ko.logProb) + prior
+            if (ll >= bestLl) { bestLl = ll; bestText = whole }
+        }
+
+        // 영어 접두 + 한글 접미(`cpusms`→`cpu는`, `Brmq`→`B급`). 접미엔 음절이 하나는 있어야 한다.
+        for (k in 1 until run.length) {
+            val suffix = run.substring(k)
+            val suffixKo = convertEngToKor(suffix)
+            if (suffixKo.none { it.code in HANGUL_BASE..HANGUL_LAST }) continue
+            val ko = TypoLanguageModel.koreanInformalLogProb(suffixKo, afterLatin = true) ?: continue
+            val ll = englishLl(run.substring(0, k)) + logLatinGlued(k) + koreanLl(suffix, ko)
+            if (ll > bestLl) {
+                bestLl = ll
+                bestText = run.substring(0, k) + suffixKo
+            }
+        }
+        return bestText
+    }
+
+
+    /**
+     * 길이 n 인 라틴 연속 구간이 공백 없이 한글로 이어질 확률(NSMC train 실측, 13,342구간).
+     * 짧은 약어는 절반이 조사와 붙지만(`B급`/`cg가`/`ost도`) 4글자 이상 단어는 10% 안팎이다.
+     */
+    private val LATIN_GLUED_RATE = doubleArrayOf(0.0, 0.585, 0.560, 0.471, 0.106, 0.100, 0.077, 0.103)
+
+    private fun logLatinGlued(n: Int) = Math.log(LATIN_GLUED_RATE[n.coerceIn(1, 7)])
+    private fun logLatinNotGlued(n: Int) = Math.log(1 - LATIN_GLUED_RATE[n.coerceIn(1, 7)])
+
+    /**
+     * [run] 을 "의도한 영어"로 볼 때의 로그우도 — 단어+약어 모델에, 섞인 대소문자(`gpuRk`)는
+     * 영어에서 드문 형태라 벌점을 더한다. 전부 대문자(`OST`)나 첫 글자만 대문자는 정상.
+     */
+    private fun englishLl(run: String): Double {
+        var ll = TypoLanguageModel.englishOrAcronymLogProb(run.lowercase())
+        val uppers = run.count { it.isUpperCase() }
+        val innerUppers = uppers - (if (run[0].isUpperCase()) 1 else 0)
+        if (uppers < run.length && innerUppers > 0) ll += EN_MIXED_CASE_LOG * innerUppers
+        return ll
+    }
+
+    /**
+     * [run] 을 "한글 자판으로 친 것"으로 볼 때의 로그우도(변환 결과의 구어체 로그확률 [koLogProb]) +
+     * 문맥 가산점. 두벌식에서 Shift 는 Q/W/E/R/T/O/P 에만 의미가 있으므로, 그 외 키의 대문자
+     * (`B급` 의 B)는 한글로 치던 사람이 굳이 누를 이유가 없는 흔적이라 벌점이다.
+     */
+    private fun koreanLl(run: String, koLogProb: Double): Double {
+        var ll = koLogProb
+        for (c in run) if (c.isUpperCase() && c !in ENG_UPPER_TO_JAMO) ll += KO_NEEDLESS_SHIFT_LOG
+        return ll + CONTEXT_PRIOR_PER_LETTER * run.length
+    }
+
+    /** 문맥 사전확률: 조각 전체가 한글이라는 가설에 주는 로그오즈(약 2만:1). */
+    private const val CONTEXT_TOKEN_PRIOR = 10.0
+
+    /** 문맥 사전확률: 한글로 읽는 글자마다 더하는 몫(긴 조각일수록 한글 쪽 근거가 쌓인다). */
+    private const val CONTEXT_PRIOR_PER_LETTER = 1.0
+
+    /**
+     * 이보다 드문 전이(실측 약 3천 단위에 1번 미만)가 하나라도 필요하면 "기형 변환"으로 보고
+     * [CONTEXT_TOKEN_PRIOR] 를 주지 않는다 — `체ㅕ`(-12.7), `ㅕ기`(url, -11.9), `메ㅔ`(app, -12.3).
+     * `ㅋㅋ`/`ㅠㅠ`/`ㅈㄴ`/`ㅁㅊ` 같은 흔한 구어체 전이는 모두 이보다 훨씬 흔하다.
+     */
+    private const val MALFORMED_TRANSITION_LOG = -8.0
+
+    /** 영어 단어 안쪽 대문자 1개의 로그 벌점 — 실측상 영어 글 토큰의 0.26%만 이런 형태다. */
+    private val EN_MIXED_CASE_LOG = Math.log(0.0026)
+
+    /** 한글로 치던 중 Shift 가 의미 없는 키에 대문자가 나올 로그확률(오입력 수준으로 드묾). */
+    private val KO_NEEDLESS_SHIFT_LOG = Math.log(0.001)
 
     /** 입력에 완성형 한글 음절 또는 조합되지 못한 호환 자모가 하나라도 있으면 true. */
     fun containsHangul(input: String): Boolean = input.any {

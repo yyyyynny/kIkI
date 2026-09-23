@@ -391,36 +391,222 @@ internal object TypoLanguageModel {
      * 변환 결과에 한글이 전혀 없으면(판단 근거 없음) null.
      */
     fun score(latin: String, converted: String, innerUppercase: Boolean = false): Double? {
-        var koTotal = 0.0
+        val koTotal = koreanLogProb(converted) ?: return null
+        val base = (koTotal - englishLogProb(latin)) / latin.length.coerceAtLeast(1)
+        return if (innerUppercase) base + INNER_UPPERCASE_BONUS else base
+    }
+
+    /**
+     * 두벌식 변환 결과가 한국어 음절 모델에서 나올 로그확률(합). 한글이 전혀 없으면 null.
+     * 조합 실패한 낱자모는 [KO_FLOOR] — 실제 한국어 단어엔 없는 형태라 최저값이다.
+     */
+    fun koreanLogProb(converted: String): Double? {
+        var total = 0.0
         var units = 0
         for (ch in converted) {
             val code = ch.code
             when {
                 code in HANGUL_FIRST..HANGUL_LAST -> {
-                    koTotal += decode(KO_SYLLABLE_TABLE[code - HANGUL_FIRST], KO_LO, KO_HI)
+                    total += decode(KO_SYLLABLE_TABLE[code - HANGUL_FIRST], KO_LO, KO_HI)
                     units++
                 }
                 code in JAMO_FIRST..JAMO_LAST -> {
-                    koTotal += KO_FLOOR
+                    total += KO_FLOOR
                     units++
                 }
             }
         }
-        if (units == 0) return null
+        return if (units == 0) null else total
+    }
 
-        // 영어 trigram: 경계 심볼 2개를 앞에, 1개를 뒤에 붙여 시작/끝 패턴까지 반영
-        var enTotal = 0.0
+    /**
+     * [koreanLogProb] 의 구어체판 — 낱자모를 [KO_FLOOR] 대신 실제 구어체 빈도로 본다.
+     * **교체 문자열을 정할 때만** 쓴다([HangulConverter] 의 문맥 변환). 감지 자체는 여전히
+     * [koreanLogProb](정제된 글로 학습)를 쓴다 — 검증된 오탐/감지율 수치를 건드리지 않기 위해서다.
+     *
+     * 왜 필요한가: 정제된 글에는 `ㅋㅋ`/`ㅠㅠ`/`ㅡㅡ` 가 없어 모든 낱자모가 최저 확률이 되는데,
+     * 실제 한영타 문장에는 이게 흔하다(`zzz`→ㅋㅋㅋ). 이걸 최저값으로 두면 이미 한영타로 판정된
+     * 선택 안에서도 `zzz`/`bb` 만 영어로 남는 반쪽 교체가 된다(NSMC 대량 검증에서 교체 실패의
+     * 대부분이 이것이었다). 반대로 `cpu`→`체ㅕ` 의 `ㅕ` 같은 낱모음은 구어체에서도 드물어
+     * 여전히 낮은 확률을 받는다.
+     */
+    fun koreanInformalLogProb(converted: String, afterLatin: Boolean = false): Double? =
+        koreanInformal(converted, afterLatin)?.logProb
+
+    /** [koreanInformal] 결과 — 합계 로그확률과, 그중 가장 드문 전이 하나의 로그확률. */
+    class InformalScore(val logProb: Double, val rarestTransition: Double)
+
+    /**
+     * [koreanInformalLogProb] + "가장 드문 전이". 합계만 보면 흔한 음절 몇 개가 드문 전이 하나를
+     * 가려 버린다 — `cpu`→`체ㅕ` 는 `체` 가 흔해서 합계는 그럴듯하지만 "음절 뒤 낱모음 ㅕ" 는 실제
+     * 구어체에서 3만 단위에 한 번꼴(-12.7)이다. 호출부는 이 값으로 "문맥이 구제할 수 없는 기형"을
+     * 가른다([HangulConverter] 의 문맥 변환).
+     */
+    fun koreanInformal(converted: String, afterLatin: Boolean = false): InformalScore? {
+        var total = 0.0
+        var rarest = 0.0
+        var units = 0
+        var prev = ROW_BOS
+        for (ch in converted) {
+            val code = ch.code
+            val col = when {
+                code in HANGUL_FIRST..HANGUL_LAST -> {
+                    total += decode(KO_SYLLABLE_TABLE[code - HANGUL_FIRST], KO_LO, KO_HI)
+                    COL_SYLLABLE
+                }
+                code in UNIT_JAMO_FIRST..UNIT_JAMO_LAST -> COL_JAMO + (code - UNIT_JAMO_FIRST)
+                else -> {
+                    // 한글이 아닌 문자 = 단어 경계
+                    if (prev != ROW_BOS) total += transition(prev, COL_EOS).also { if (it < rarest) rarest = it }
+                    prev = ROW_BOS
+                    continue
+                }
+            }
+            if (afterLatin && units == 0) {
+                // 영어 단어 바로 뒤 첫 단위: 실측 분포(조사 위주)로 바꿔 끼운다([AFTER_LATIN_UNITS]).
+                // 위에서 더한 음절 확률은 일반 분포 몫이라 되돌리고 전체를 다시 계산한다.
+                val emission = if (col == COL_SYLLABLE) decode(KO_SYLLABLE_TABLE[code - HANGUL_FIRST], KO_LO, KO_HI) else 0.0
+                total += afterLatinLogProb(ch, emission + transition(ROW_BOS, col)) - emission
+            } else {
+                val t = transition(prev, col)
+                total += t
+                if (t < rarest) rarest = t
+            }
+            units++
+            prev = if (col == COL_SYLLABLE) ROW_SYLLABLE else ROW_JAMO + (code - UNIT_JAMO_FIRST)
+        }
+        if (prev != ROW_BOS) total += transition(prev, COL_EOS).also { if (it < rarest) rarest = it }
+        return if (units == 0) null else InformalScore(total, rarest)
+    }
+
+    /**
+     * 라틴 글자 바로 뒤(공백 없이)에 오는 첫 한글 단위의 로그확률 — 실측 빈도를 일반 분포
+     * ([general], 같은 단위가 단어 첫머리에 올 확률) 쪽으로 평활한 값.
+     */
+    private fun afterLatinLogProb(ch: Char, general: Double): Double {
+        val idx = AFTER_LATIN_UNITS.indexOf(ch)
+        val count = if (idx >= 0) AFTER_LATIN_COUNTS[idx].toDouble() else 0.0
+        return Math.log((count + AFTER_LATIN_SMOOTHING * Math.exp(general)) / (AFTER_LATIN_TOTAL + AFTER_LATIN_SMOOTHING))
+    }
+
+    /**
+     * 영어 단어 바로 뒤에 붙는 한글 첫 단위(NSMC train 에서 라틴 연속 구간 13,342개 중 한글이 바로
+     * 붙은 5,621건, 5회 이상만). 조사·접사가 압도적이다(`B급`/`cg에`/`ost가`/`3D로`/`sf영화`…).
+     * 이 분포가 "영어 단어 + 조사" 쪼개기(`cpusms`→`cpu는`)의 핵심 근거다 — 영어 뒤에 거의 안
+     * 오는 음절로 시작하는 쪼개기(`and`+`클한`, `s`+`아`(sdk), `moni`+`색`)는 자연히 밀린다.
+     */
+    private const val AFTER_LATIN_UNITS =
+        "급에가로기도는를영이같의창들만와나라보인드판아하은다시까있전을님방때물용한수랑사스ㅋ자서소야쓰년애발으과지처새무부중액없채네세등작특형문대모적임였배효정게여그장재평해노걸최티출줄개명욕치코진짱점고감프끼단안제바팝냐맨력속입리뿐예성왜너역니버살요마파병연좀타"
+    private val AFTER_LATIN_COUNTS = intArrayOf(
+        737, 466, 294, 264, 260, 227, 216, 162, 143, 138, 118, 117, 102, 101, 66, 66, 65, 62, 53, 52,
+        51, 49, 40, 39, 38, 35, 33, 32, 32, 31, 26, 25, 24, 22, 22, 21, 20, 20, 19, 19,
+        19, 18, 17, 16, 16, 15, 15, 14, 14, 14, 14, 14, 13, 13, 12, 12, 12, 12, 12, 12,
+        11, 11, 10, 10, 10, 10, 10, 10, 10, 9, 9, 9, 9, 9, 9, 9, 8, 8, 8, 8,
+        8, 8, 8, 8, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 6,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+        5, 5, 5, 5, 5, 5, 5, 5,
+    )
+    private const val AFTER_LATIN_TOTAL = 5070.0
+    private const val AFTER_LATIN_SMOOTHING = 500.0
+
+    private fun transition(row: Int, col: Int): Double =
+        decode(UNIT_TRANSITION_TABLE[row * UNIT_COLS + col], UNIT_LO, UNIT_HI)
+
+    // 단위 전이 표의 행(직전 단위) / 열(다음 단위). 낱자모는 호환 자모 51자(ㄱ~ㅣ) 각각이 한 칸.
+    private const val UNIT_JAMO_FIRST = 0x3131
+    private const val UNIT_JAMO_LAST = 0x3163
+    private const val ROW_BOS = 0
+    private const val ROW_SYLLABLE = 1
+    private const val ROW_JAMO = 2
+    private const val COL_SYLLABLE = 0
+    private const val COL_EOS = 1
+    private const val COL_JAMO = 2
+    private const val UNIT_COLS = 53
+    private const val UNIT_LO = -18.0
+    private const val UNIT_HI = 0.0
+
+    /**
+     * 구어체 단어 안에서 "직전 단위 → 다음 단위" 로그확률(53×53, [LEVELS]단계 양자화). 단위는
+     * 음절(종류 무관 1칸) / 낱자모 51종 / 단어 시작·끝. 음절이 무엇인지는 [KO_SYLLABLE_TABLE] 이
+     * 따로 곱해진다.
+     *
+     * 네이버 영화리뷰 NSMC **train** 분할(15만 문장)에서 세고, 행마다 전체 분포 쪽으로 평활
+     * (α=20)했다 — 평가는 겹치지 않는 test 분할로 했다. 실측이 보여주는 것:
+     * - 음절 뒤 낱모음 `ㅕ` 는 -12.7(`cpu`→`체ㅕ`), 반면 음절 뒤 `ㅋ` -6.9 · `ㅠ` -7.8
+     * - 같은 낱자모 반복은 거의 확실(`ㅋ→ㅋ` -0.4 · `ㅠ→ㅠ` -0.7 · `ㄷ→ㄷ` -0.6)
+     * - 초성 약어 짝도 흔함(`ㅈ→ㄴ` -1.4 · `ㅁ→ㅊ` -2.2), 반면 `ㅊ→ㄴ` 은 -11.4(`css`)
+     * 낱자모 하나하나의 빈도만 보면(unigram) `ㅕ` 도 -12.1 로 드물지만 "어디에 붙었는가"를 몰라
+     * `ㅜㅜ`/`ㅎㅎㅎ`/`ㅁㅊ` 같은 흔한 초성 표현을 영어 약어와 가르지 못했다.
+     */
+    private const val UNIT_TRANSITION_TABLE =
+        "~?PHAL;!U>K7!!!!!!ON=LTKTPVFe=D_HGC!E@B!I7!!=Z!!!`^7J|xF=!G!1J5B!!!!!!!CA9;F;LDH;[89SHA<!E@>!B7!!AR7!1VS1Fwzuc" +
+        ",i%`g+g%%!!!!!`>`6j`hcDio42`;j0!8`0!9)!!1I'%!Ne'9yvjv3D,.L2C,,####*BE4=H=jsKgo;9SB=g*?g7*@0##8P.,*Ug.g{ymDpJ24" +
+        "R8I22****0HK:CNCQJRDcA?YHC>0E@=0F6**>V420[X4Fyxg8.t&(i,g&&!!!!#ia/7h7ohFabaaMge2#e41#:*!!2J(&#Oa(:|xME;L46T9K4" +
+        "4,,,,1JM<EOERKSFeC@[IE?1FB?1H8,,@W641^Z6H|wME;L45S9J44,,,,1IM<EnEnKSFeC@[IE?1FA?1G8,,@W541^Z5Hqyb1&a!!{Y]!!!!!" +
+        "!!5d'0d0dY>1e.,]_]*!2Y*!3!!!+C!!!HE!3|wLD:K35S8I33++++0IL;DNDQJREdB?ZHD>0E@>0n7++?V530]Y5Gwwr9/i(*G-t((!!!!%bA" +
+        "09C9ubGlf74fb93%:b3%;,!!4K*(%QN*b|wME;L46T9K44,,,,1JM<EOERKSFeC@[IE?1FB?1H8,,@W641^Z6H|wME;o46T9K44,,,,1JM<EOE" +
+        "RKSFeC@[IE?1FB?1H8,,@W641^Z6H}wNF<M46T:K44,,,,2JM<EPESLTFeCA[JE@2GB?2H8,,@X642^Z6H}wNF<M46T:K44,,,,2JM<EPESLTF" +
+        "eCA[JE@2GB?2H8,,@X642^Z6H}wNF<M46T:K44,,,,2JM<EPESLTFeCA[JE@2GB?2H8,,@X642^Z6H}wNF<M46T:K44,,,,2JM<EPESLTFeCA[" +
+        "JE@2GB?2H8,,@X642^Z6H|wNF;L46T:K44,,,,2JM<EPESKSFeCA[IE?2GB?2H8,,@X642^Z6HwzB:0o)*H.g))!!!!&nB1:g:noHrd75c>:4&" +
+        ";63&<-!!4L*)&Rc*<u{`7-`&'n+g&&!!!!``h`6s6kfE8d42L;71!830!9)!!1I'&!dd'`{wKD9J24R8I22****0HK:CmCQIQDmm>YpC=0E@=0" +
+        "F6**>V420[X4F|xF>4E-.g2C--%%%%*BF5>H>KDL?^<9TB>8*?:8*@1%%9P.-*VS.Auvnj^a!%f)c!!!!!!!ey+4p^maB5hhag84.!^1.!7'!!" +
+        "/G%^!eh%7yuF>4g-.g2w--%%%%*BFk>noKDL?^<gkm>8*?:8*@1%%9P.g*VS.guyb2'f!Ze&f!^!!!!!cg(1k1x`?2kZ-df1+Zb^+!4#!!,D!!" +
+        "!`b!fysl9.w')b-r''!!!!%le/bmbepF9W64nbg2%:52%b+!!3K)'%PM)bnzY1'8!!?%6!!!!!!!59(1Y1>Y{2O.,Gb1+!Y-*!3#!!+C!!!IE!" +
+        "Yyyf=3D,.K1r,,####)BE4=G=JjKsq;8gA=7)>97)?0##8O.,)UR.@pw[T!I!!W!L!!!!!!!I(!!P!RIIN|WIY#!L!!!!!!!!!!I!!!NI!!xwH" +
+        "@6i.0N4E..&&&&,DG6?J?iFMutt;UD?:,A<9,B2&&:R0.,WT0BzxIA7H02k5k00((((-FI8AKANkOBn?qnEA;-B>;kD4((<S20-YV2DpzU)!Q!" +
+        "!i!Z!!!!!!!X1!)[)[U7*bW#zU)!!*%!!+!!!QR!!!AW!,zxg;0A)+l/d))!!!!'dd1:gdodHdk85kq:4'g74'=-!!5M+)'dd+={xk>4k-.L2C" +
+        "--%%%%*BF5>H>KgL?];9TBs8*?:7*@1%%8P.-*VR.gyykB8I12P6G11)))).FJ9BoBOkPCo?=XkBk.C>;.D5))<T21.Zk2D}vNF;L46T:K44,," +
+        ",,2JM<EPESKSFeCA[IE?2GB?2H8,,@X642^Z6Hzwf=3f,-K1j,,!!!!)fE4<GfpfK>g:ffj=7)s96)ff!!7j-,)fQ-f{wjA6G/1O5Fj/''''-E" +
+        "H7@K@jjNA`><mDj:-Bt:-C3'';S1/-XU1C{xJB8o13P6k11)))).GJ9BLBkHPCb@=lkB<.k><.D5))=T31.ZW3E}vNF;L46T:K44,,,,2JM<EP" +
+        "ESKSFeCA[IE?2GB?2H8,,@X642^Z6HwyD<2C+,J0A++!!!!(@D3;e;IBJ=f97k@<6(e85(y/!!6N,+(TP,>}wME;K35S9J33++++1IL;DODRKR" +
+        "EdB@ZID?1FA>1G7++?W531]Y5G}wNF<M46T:K44,,,,2JM<EPESLTFeCA[JE@2GB?2H8,,@X642^Z6H}wNF<M46T:K44,,,,2JM<EPESLTFeCA" +
+        "[JE@2GB?2H8,,@X642^Z6HzxJB7k02P6k00((((.Fk8ALApHOBa?=WnA;.k>;.D4((kn20.YV2Drz5-!3!!;!U!!!!!!!14!,U,:3:-_U(]1U&" +
+        "!.)&!/!!!'y!!!me!/}wME;L45S9J44,,,,1IM<EOERKSFeC@[IE?1FA?1G8,,@W541^Z5H|vME;L46T9K44,,,,1JM<ErERKSFeC@[IE?1FB?" +
+        "1H8,,@W641^Z6H}vNF;L46T:K44,,,,2JM<EPESKSFeCA[IE?2GB?2H8,,@X642^Z6HqzO'!.!!5!O!!!!!!!,O!'X'X-5([%SP+'!!(!O!O!!" +
+        "!!i!!!z`!*rzX*!X!!S!0!!!!!!!VS!*`*^S8+e(%VS*#!+'#![!!!%e!!!byS-|yME;L45S9J44,,,,1IM<EOERKSFeC@[IE?1FA?1G8,,@W5" +
+        "41^Z5H{wh<1h*,h0h**!!!!(hC2;eemBI<f97Qj;6(e85(>.!!6N,*(SP,p"
+
+    /**
+     * 영어 가설을 "일반 단어 + 약어" 로 넓힌 로그확률. trigram([englishLogProb])은 소설·뉴스로
+     * 학습해 `cpu`/`gpu`/`ssd` 같은 약어를 흔치 않은 글자 배열이라며 매우 낮게 본다(`cpu` ≈ -27).
+     * 그러면 이미 한영타로 판정된 선택 안에서 `cpu` 가 `체ㅕ` 에게 진다 — 사용자가 실제로 겪은
+     * 버그. 약어는 사실상 "아무 글자나 짧게 늘어놓은 것"이라 글자당 균등확률(1/26)로 보는 별도
+     * 부류를 [ACRONYM_LOG_PRIOR] 의 사전확률로 섞는다.
+     *
+     * ⚠️ 약어 부류에는 반드시 **길이 분포**([ACRONYM_LENGTH_LOG])가 있어야 한다. 균등 글자 모델은
+     * 글자당 -3.26 인데 한국어 음절 모델은 글자당 약 -4.9 라(`너무너무` = -39.2 / 8글자), 길이
+     * 제한 없이 섞으면 긴 진짜 한영타(`sjansjan`)까지 "약어"로 설명돼 교체에서 빠졌다. 약어는
+     * 실제로 2~4글자가 대부분이고 7글자 이상은 사실상 없다.
+     */
+    fun englishOrAcronymLogProb(latin: String): Double {
+        val word = englishLogProb(latin)
+        val lengthLog = ACRONYM_LENGTH_LOG.getOrNull(latin.length) ?: return word
+        val acronym = ACRONYM_LOG_PRIOR + lengthLog + latin.length * LOG_UNIFORM_LETTER
+        val hi = maxOf(word, acronym)
+        return hi + Math.log(Math.exp(word - hi) + Math.exp(acronym - hi))
+    }
+
+    /** 약어 부류의 사전 로그확률(≈5%) — NSMC 평가로 정함([HangulConverter] 문맥 변환 문서 참조). */
+    private const val ACRONYM_LOG_PRIOR = -3.0
+    private val LOG_UNIFORM_LETTER = Math.log(1.0 / 26)
+
+    /** 약어 길이 분포(인덱스 = 글자 수, 1~6). `B`급 / `ai` / `cpu` / `html` / `https` / `ssdnvme`… */
+    private val ACRONYM_LENGTH_LOG: DoubleArray =
+        doubleArrayOf(0.0, 0.10, 0.25, 0.35, 0.20, 0.07, 0.03).map { if (it == 0.0) Double.NEGATIVE_INFINITY else Math.log(it) }
+            .toDoubleArray()
+
+    /** 소문자 라틴 글자열이 영어 단어로 나올 로그확률(합). 앞 경계 2개·뒤 경계 1개를 붙인 trigram. */
+    fun englishLogProb(latin: String): Double {
+        var total = 0.0
         var s1 = 26
         var s2 = 26
         for (i in 0..latin.length) {
             val s3 = if (i < latin.length) symbolIndex(latin[i].lowercaseChar()) else 26
-            enTotal += decode(EN_TRIGRAM_TABLE[s1 * 729 + s2 * 27 + s3], EN_LO, EN_HI)
+            total += decode(EN_TRIGRAM_TABLE[s1 * 729 + s2 * 27 + s3], EN_LO, EN_HI)
             s1 = s2
             s2 = s3
         }
-
-        val base = (koTotal - enTotal) / latin.length.coerceAtLeast(1)
-        return if (innerUppercase) base + INNER_UPPERCASE_BONUS else base
+        return total
     }
 
     /**

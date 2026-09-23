@@ -291,6 +291,9 @@ fun onTextSelectionChanged(event: AccessibilityEvent) {
     if (selectedText.isBlank() || selectedText.length < 2) return
 
     // 한영타 신뢰도 판정
+    // ⚠️ [개념 설명용] 현재 코드는 선택 전체를 통째로 변환하지 않는다 — `HangulConverter.analyze()`
+    // 가 판정과 함께 **토큰별로** 교체 문자열을 만든다(2026-09: `cpu wjdakf` → `체ㅕ 정말` 버그 수정,
+    // 영어 단어는 그대로 두고 한영타만 바꾸며 `cpusms` 는 `cpu는` 으로 쪼갠다). CLAUDE.md Feature 4 참조.
     val confidence = HangulConverter.detectEnglishToKorean(selectedText)
     if (confidence >= 0.70f) {
         val converted = HangulConverter.convertEngToKor(selectedText)
