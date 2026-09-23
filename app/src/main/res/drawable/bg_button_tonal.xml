@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 보조 동작 버튼: 강조 컨테이너 톤 라운드 + 리플. -->
+<!-- 보조 동작 버튼: 강조 컨테이너 톤 라운드 + 리플. 테두리는 고대비·사이버펑크에서만 보인다(uiOutline). -->
 <ripple xmlns:android="http://schemas.android.com/apk/res/android"
     android:color="?attr/uiRippleOnTonal">
     <item>
         <shape android:shape="rectangle">
             <solid android:color="?attr/uiAccentContainer" />
             <corners android:radius="12dp" />
+            <stroke android:width="?attr/uiStrokeWidth" android:color="?attr/uiOutline" />
         </shape>
     </item>
 </ripple>

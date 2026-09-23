@@ -313,6 +313,31 @@ class Prefs(context: Context) {
             .let { if (it in UI_THEME_IDS) it else THEME_SYSTEM }
         set(v) = sp.edit().putString(KEY_UI_THEME, if (v in UI_THEME_IDS) v else THEME_SYSTEM).apply()
 
+    /**
+     * 사용자 지정 테마의 4색("#RRGGBB") — 배경·카드·글자·강조. 나머지 역할은
+     * [UiPalette.derive] 가 기본 테마와 같은 구조로 만든다. 손상된 값이면 라이트 팔레트 값으로
+     * 폴백한다.
+     */
+    fun customThemeSeed(slot: String): String =
+        normalizeHexOrNull(sp.getString(KEY_CUSTOM_THEME_PREFIX + slot, null).orEmpty())
+            ?: CUSTOM_SEED_DEFAULTS.getValue(slot)
+
+    /** 사용자 지정 4색을 한 번이라도 저장했는가 — 처음 고를 때 지금 테마에서 복사할지 판단. */
+    fun hasCustomThemeSeeds(): Boolean = sp.contains(KEY_CUSTOM_THEME_PREFIX + CUSTOM_BG)
+
+    fun setCustomThemeSeed(slot: String, hex: String) {
+        val v = normalizeHexOrNull(hex) ?: return
+        sp.edit().putString(KEY_CUSTOM_THEME_PREFIX + slot, v).apply()
+    }
+
+    /** 저장된 4색으로 만든 사용자 지정 팔레트. */
+    fun customPalette(): UiPalette = UiPalette.derive(
+        bg = parseColorOrDefault(customThemeSeed(CUSTOM_BG), CUSTOM_SEED_DEFAULTS.getValue(CUSTOM_BG)),
+        surfaceSeed = parseColorOrDefault(customThemeSeed(CUSTOM_SURFACE), CUSTOM_SEED_DEFAULTS.getValue(CUSTOM_SURFACE)),
+        text = parseColorOrDefault(customThemeSeed(CUSTOM_TEXT), CUSTOM_SEED_DEFAULTS.getValue(CUSTOM_TEXT)),
+        accentSeed = parseColorOrDefault(customThemeSeed(CUSTOM_ACCENT), CUSTOM_SEED_DEFAULTS.getValue(CUSTOM_ACCENT)),
+    )
+
     // ---- "NEW" 배지 / "이사 갔어요" 안내의 자동 만료 ----
 
     /**
@@ -414,6 +439,7 @@ class Prefs(context: Context) {
         const val KEY_RADIAL_ACCENT_COLOR = "radial_accent_color"
         const val KEY_RADIAL_GLOW_COLOR = "radial_glow_color"
         const val KEY_UI_THEME = "ui_theme"
+        const val KEY_CUSTOM_THEME_PREFIX = "custom_theme_"
         const val KEY_SEEN_MARKERS = "seen_markers"
 
         // ---- 화면 테마 id ----
@@ -424,10 +450,27 @@ class Prefs(context: Context) {
         const val THEME_BEIGE = "beige"
         const val THEME_CYBER = "cyber"
         const val THEME_HIGH_CONTRAST = "high_contrast"
+        /** 사용자가 4색을 골라 만드는 테마([customPalette]). */
+        const val THEME_CUSTOM = "custom"
 
         /** 설정 화면에 보여줄 순서 그대로. 기본값(system)이 맨 앞. */
         val UI_THEME_IDS = listOf(
-            THEME_SYSTEM, THEME_LIGHT, THEME_DARK, THEME_BEIGE, THEME_CYBER, THEME_HIGH_CONTRAST
+            THEME_SYSTEM, THEME_LIGHT, THEME_DARK, THEME_BEIGE, THEME_CYBER, THEME_HIGH_CONTRAST, THEME_CUSTOM
+        )
+
+        // ---- 사용자 지정 테마의 색 슬롯 ----
+        const val CUSTOM_BG = "bg"
+        const val CUSTOM_SURFACE = "surface"
+        const val CUSTOM_TEXT = "text"
+        const val CUSTOM_ACCENT = "accent"
+        val CUSTOM_SLOTS = listOf(CUSTOM_BG, CUSTOM_SURFACE, CUSTOM_TEXT, CUSTOM_ACCENT)
+
+        /** 처음 고를 때의 4색 = 라이트 테마(values/colors.xml 의 ui_bg/ui_surface/ui_on_surface/ui_accent). */
+        val CUSTOM_SEED_DEFAULTS = mapOf(
+            CUSTOM_BG to "#F4F6FA",
+            CUSTOM_SURFACE to "#FFFFFF",
+            CUSTOM_TEXT to "#1A1C20",
+            CUSTOM_ACCENT to "#2563EB",
         )
 
         // ---- NEW / 이사 안내 마커 ----

@@ -25,6 +25,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/onboarding_title"
+            android:tag="fg=onSurface"
             android:textColor="?attr/uiOnSurface"
             android:textSize="28sp"
             android:letterSpacing="0.01"
@@ -35,6 +36,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:text="@string/onboarding_desc"
+            android:tag="fg=onSurfaceMuted"
             android:textColor="?attr/uiOnSurfaceMuted"
             android:textSize="14sp"
             android:lineSpacingExtra="2dp" />
@@ -60,6 +62,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:background="@drawable/bg_card"
+            android:tag="bg=card"
             android:orientation="vertical"
             android:padding="20dp">
 
@@ -73,6 +76,7 @@
                     android:layout_width="28dp"
                     android:layout_height="28dp"
                     android:background="@drawable/bg_step_chip"
+                    android:tag="bg=stepChip fg=onAccentContainer"
                     android:gravity="center"
                     android:text="@string/step_no_1"
                     android:textColor="?attr/uiOnAccentContainer"
@@ -85,6 +89,7 @@
                     android:layout_marginStart="12dp"
                     android:layout_weight="1"
                     android:text="@string/step_overlay"
+                    android:tag="fg=onSurface"
                     android:textColor="?attr/uiOnSurface"
                     android:textSize="16sp"
                     android:textStyle="bold" />
@@ -107,6 +112,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:text="@string/step_overlay_desc"
+                android:tag="fg=onSurfaceMuted"
                 android:textColor="?attr/uiOnSurfaceMuted"
                 android:textSize="13sp"
                 android:lineSpacingExtra="2dp" />
@@ -117,6 +123,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
                 android:background="@drawable/bg_button_primary"
+                android:tag="bg=buttonPrimary fg=onAccent"
                 android:minHeight="48dp"
                 android:stateListAnimator="@null"
                 android:text="@string/btn_grant_overlay"
@@ -131,6 +138,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:background="@drawable/bg_card"
+            android:tag="bg=card"
             android:orientation="vertical"
             android:padding="20dp">
 
@@ -144,6 +152,7 @@
                     android:layout_width="28dp"
                     android:layout_height="28dp"
                     android:background="@drawable/bg_step_chip"
+                    android:tag="bg=stepChip fg=onAccentContainer"
                     android:gravity="center"
                     android:text="@string/step_no_2"
                     android:textColor="?attr/uiOnAccentContainer"
@@ -156,6 +165,7 @@
                     android:layout_marginStart="12dp"
                     android:layout_weight="1"
                     android:text="@string/step_accessibility"
+                    android:tag="fg=onSurface"
                     android:textColor="?attr/uiOnSurface"
                     android:textSize="16sp"
                     android:textStyle="bold" />
@@ -178,6 +188,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:text="@string/step_accessibility_desc"
+                android:tag="fg=onSurfaceMuted"
                 android:textColor="?attr/uiOnSurfaceMuted"
                 android:textSize="13sp"
                 android:lineSpacingExtra="2dp" />
@@ -188,6 +199,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
                 android:background="@drawable/bg_button_primary"
+                android:tag="bg=buttonPrimary fg=onAccent"
                 android:minHeight="48dp"
                 android:stateListAnimator="@null"
                 android:text="@string/btn_open_accessibility"
@@ -202,6 +214,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:background="@drawable/bg_card"
+            android:tag="bg=card"
             android:orientation="vertical"
             android:padding="20dp">
 
@@ -215,6 +228,7 @@
                     android:layout_width="28dp"
                     android:layout_height="28dp"
                     android:background="@drawable/bg_step_chip"
+                    android:tag="bg=stepChip fg=onAccentContainer"
                     android:gravity="center"
                     android:text="@string/step_no_3"
                     android:textColor="?attr/uiOnAccentContainer"
@@ -227,6 +241,7 @@
                     android:layout_marginStart="12dp"
                     android:layout_weight="1"
                     android:text="@string/step_battery"
+                    android:tag="fg=onSurface"
                     android:textColor="?attr/uiOnSurface"
                     android:textSize="16sp"
                     android:textStyle="bold" />
@@ -249,6 +264,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:text="@string/step_battery_desc"
+                android:tag="fg=onSurfaceMuted"
                 android:textColor="?attr/uiOnSurfaceMuted"
                 android:textSize="13sp"
                 android:lineSpacingExtra="2dp" />
@@ -259,6 +275,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
                 android:background="@drawable/bg_button_tonal"
+                android:tag="bg=buttonTonal fg=onAccentContainer"
                 android:minHeight="48dp"
                 android:stateListAnimator="@null"
                 android:text="@string/btn_battery"
@@ -274,6 +291,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
             android:background="@drawable/bg_button_tonal"
+            android:tag="bg=buttonTonal fg=onAccentContainer"
             android:minHeight="52dp"
             android:stateListAnimator="@null"
             android:text="@string/btn_settings"
@@ -287,6 +305,7 @@
             android:layout_marginTop="20dp"
             android:gravity="center"
             android:text="@string/privacy_note"
+            android:tag="fg=muted"
             android:textColor="?attr/uiMuted"
             android:textSize="12sp"
             android:lineSpacingExtra="2dp" />
@@ -298,6 +317,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:gravity="center"
+            android:tag="fg=muted"
             android:textColor="?attr/uiMuted"
             android:textSize="11sp" />
 

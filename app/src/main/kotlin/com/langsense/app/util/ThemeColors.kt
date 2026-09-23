@@ -12,6 +12,9 @@ import androidx.annotation.ColorInt
  * `setTheme()` 만으로는 앱 색이 바뀌지 않는다. 화면 코드가 이 함수를 거치면 색이 테마에서
  * 해석되므로, 나중에 팔레트만 다르게 바인딩한 테마를 추가하는 것으로 런타임 색 교체가 된다.
  *
+ * 사용자 지정 테마([Prefs.THEME_CUSTOM])일 때는 테마 속성이 아니라 [ThemeManager.customPalette]
+ * 에서 색을 준다 — 안드로이드 스타일은 컴파일 시점에 고정이라 사용자가 고른 색을 담을 수 없다.
+ *
  * 구현은 `SettingsActivity.themeRipple()` 이 `selectableItemBackground` 에 이미 쓰고 있는
  * `TypedValue` + `resolveAttribute` 관용구와 동일하다(코드베이스 기존 패턴).
  *
@@ -24,6 +27,8 @@ import androidx.annotation.ColorInt
  */
 @ColorInt
 fun Context.themeColor(@AttrRes attr: Int): Int {
+    // 사용자 지정 테마: 스타일엔 런타임 색이 없으므로 팔레트가 우선한다(ThemeManager.customPalette).
+    ThemeManager.customPalette?.colorFor(attr)?.let { return it }
     val tv = TypedValue()
     if (!theme.resolveAttribute(attr, tv, true)) return 0
     return if (tv.type >= TypedValue.TYPE_FIRST_COLOR_INT && tv.type <= TypedValue.TYPE_LAST_COLOR_INT) {

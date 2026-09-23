@@ -32,6 +32,7 @@
         <!-- 리플: 기존 drawable 에 박혀 있던 리터럴 그대로(동작 불변) -->
         <item name="uiRippleOnAccent">#33FFFFFF</item>
         <item name="uiRippleOnTonal">#332563EB</item>
+        <item name="uiOutline">@android:color/transparent</item>
         <item name="uiStrokeWidth">1dp</item>
     </style>
 </resources>

@@ -43,6 +43,18 @@
     <color name="status_need">#B91C1C</color>
     <color name="status_need_container">#FCEAEA</color>
 
+    <!-- 사용자 지정 테마 바탕 스타일의 안전 기본값(실제 색은 런타임 팔레트가 준다 — themes.xml) -->
+    <color name="custom_light_bg">#F4F6FA</color>
+    <color name="custom_light_surface">#FFFFFF</color>
+    <color name="custom_light_on_surface">#1A1C20</color>
+    <color name="custom_light_on_surface_muted">#5F6673</color>
+    <color name="custom_light_accent">#2563EB</color>
+    <color name="custom_dark_bg">#0F1115</color>
+    <color name="custom_dark_surface">#1A1D23</color>
+    <color name="custom_dark_on_surface">#E6E8EC</color>
+    <color name="custom_dark_on_surface_muted">#9CA3AF</color>
+    <color name="custom_dark_accent">#5B9DF7</color>
+
     <!-- ══════════════════════════════════════════════════════════════════
          고정 팔레트 3종 (베이지 / 사이버펑크 / 고대비)
 
@@ -55,55 +67,67 @@
          반드시 재계산하고 이 주석도 함께 갱신할 것. 전경/배경으로 함께 쓰이는 쌍만 적었다.
          ────────────────────────────────────────────────────────────────── -->
 
-    <!-- ── 베이지(따뜻한 종이) ──────────────────────────────────────────
-         on_surface/surface        13.86:1   on_surface_muted/surface   5.83:1
-         on_surface_muted/bg        5.07:1   accent/surface             6.16:1
-         accent/bg                  5.36:1   on_accent/accent           6.40:1
-         on_accent_container/accent_container 7.30:1
-         status_ok/status_ok_container        4.99:1
-         status_need/status_need_container    5.23:1                          -->
-    <color name="beige_bg">#EFE4CE</color>
-    <color name="beige_surface">#FAF4E6</color>
-    <color name="beige_on_surface">#2E2418</color>
-    <color name="beige_on_surface_muted">#6B5D49</color>
-    <color name="beige_accent">#8C4A18</color>
-    <color name="beige_on_accent">#FFF8EC</color>
-    <color name="beige_accent_container">#EBDCBE</color>
-    <color name="beige_on_accent_container">#6B3410</color>
-    <color name="beige_divider">#D2BF9B</color>
-    <color name="beige_muted">#6B5D49</color>
-    <color name="beige_status_ok">#3A6B2A</color>
-    <color name="beige_status_ok_container">#DFE8CC</color>
-    <color name="beige_status_need">#A33327</color>
-    <color name="beige_status_need_container">#F3DCD4</color>
+    <!-- ── 베이지(따뜻한 종이 위의 잉크) ────────────────────────────────
+         2026-09 재설계: 예전 배경(#EFE4CE)은 채도가 높은 황갈색이라 "종이"보다 판지/크라프트지에
+         가까웠다. 배경을 옅은 미색 종이로, 카드를 한 장 더 밝은 종이로 올리고, 글자는 먹빛 잉크,
+         강조는 세피아 잉크로 둔다. 구분선도 누런 선 대신 종이 결 정도로 옅게.
+         on_surface/surface        14.43:1   on_surface_muted/surface   6.16:1
+         on_surface_muted/bg        5.60:1   accent/surface             6.66:1
+         accent/bg                  6.06:1   on_accent/accent           6.75:1
+         on_accent_container/accent_container 7.72:1
+         status_ok/status_ok_container        5.21:1
+         status_need/status_need_container    5.32:1                          -->
+    <color name="beige_bg">#F3EDE0</color>
+    <color name="beige_surface">#FBF8F1</color>
+    <color name="beige_on_surface">#2B241C</color>
+    <color name="beige_on_surface_muted">#675C4D</color>
+    <color name="beige_accent">#8A461A</color>
+    <color name="beige_on_accent">#FFF9EF</color>
+    <color name="beige_accent_container">#EFE3CD</color>
+    <color name="beige_on_accent_container">#6B3512</color>
+    <color name="beige_divider">#E0D3BB</color>
+    <color name="beige_muted">#675C4D</color>
+    <color name="beige_status_ok">#3B6A2B</color>
+    <color name="beige_status_ok_container">#E3EBD3</color>
+    <color name="beige_status_need">#A2352A</color>
+    <color name="beige_status_need_container">#F4DFD7</color>
     <!-- 리플 20%(=0x33): 강조색 버튼 위는 밝은 on_accent, 톤 버튼 위는 짙은 accent -->
-    <color name="beige_ripple_on_accent">#33FFF8EC</color>
-    <color name="beige_ripple_on_tonal">#338C4A18</color>
+    <color name="beige_ripple_on_accent">#33FFF9EF</color>
+    <color name="beige_ripple_on_tonal">#338A461A</color>
+    <!-- 종이 테마엔 컨테이너 테두리가 없다(채움만으로 충분히 구분됨) -->
+    <color name="beige_outline">#00000000</color>
 
-    <!-- ── 사이버펑크 ───────────────────────────────────────────────────
-         on_surface/surface        15.45:1   on_surface_muted/surface   7.60:1
-         on_surface_muted/bg        8.15:1   accent/surface            11.63:1
-         accent/bg                 12.48:1   on_accent/accent          11.78:1
-         on_accent_container/accent_container 9.57:1
-         status_ok/status_ok_container        8.43:1
-         status_need/status_need_container    5.59:1                          -->
-    <color name="cyber_bg">#08080F</color>
-    <color name="cyber_surface">#12121C</color>
-    <color name="cyber_on_surface">#E9E9F5</color>
-    <color name="cyber_on_surface_muted">#A3A3C2</color>
-    <color name="cyber_accent">#2DE2E6</color>
-    <color name="cyber_on_accent">#05131A</color>
-    <color name="cyber_accent_container">#0E3540</color>
-    <color name="cyber_on_accent_container">#6FEFF4</color>
-    <color name="cyber_divider">#262639</color>
-    <color name="cyber_muted">#A3A3C2</color>
-    <color name="cyber_status_ok">#3DE08C</color>
-    <color name="cyber_status_ok_container">#07301F</color>
-    <color name="cyber_status_need">#FF5C8A</color>
-    <color name="cyber_status_need_container">#3A1024</color>
-    <!-- 강조색(밝은 시안) 위에는 어두운 리플, 짙은 톤 컨테이너 위에는 시안 리플 -->
-    <color name="cyber_ripple_on_accent">#3305131A</color>
-    <color name="cyber_ripple_on_tonal">#332DE2E6</color>
+    <!-- ── 사이버펑크(검보라 바탕 + 네온 시안·마젠타) ─────────────────────
+         2026-09 재설계: 예전엔 검정 바탕에 시안 하나뿐이라 "시안 강조한 다크 테마"로 보였다.
+         사이버펑크의 핵심인 **시안×마젠타 네온 대비**를 역할로 나눈다 — 주 강조(스위치·슬라이더·
+         주 버튼·제목)는 네온 시안, 톤 컨테이너(선택된 목록·톤 버튼·NEW 칩)는 짙은 자주 위의 네온
+         마젠타. 바탕/카드/구분선은 무채색 대신 보랏빛이 도는 어둠이고, 컨테이너엔 네온 윤곽
+         (cyber_outline)을 둘러 빛나는 간판 느낌을 낸다.
+         on_surface/surface        15.99:1   on_surface_muted/surface   7.93:1
+         on_surface_muted/bg        8.42:1   accent/surface            13.47:1
+         accent/bg                 14.29:1   on_accent/accent          13.12:1
+         on_accent_container/accent_container 6.38:1
+         status_ok/status_ok_container       10.88:1
+         status_need/status_need_container    5.86:1                          -->
+    <color name="cyber_bg">#07060F</color>
+    <color name="cyber_surface">#110E1E</color>
+    <color name="cyber_on_surface">#ECEAF7</color>
+    <color name="cyber_on_surface_muted">#A9A3C9</color>
+    <color name="cyber_accent">#2BF0F5</color>
+    <color name="cyber_on_accent">#04161A</color>
+    <color name="cyber_accent_container">#2A0F3D</color>
+    <color name="cyber_on_accent_container">#FF5CE1</color>
+    <color name="cyber_divider">#2E2553</color>
+    <color name="cyber_muted">#A9A3C9</color>
+    <color name="cyber_status_ok">#3DF5A0</color>
+    <color name="cyber_status_ok_container">#062A1E</color>
+    <color name="cyber_status_need">#FF5C86</color>
+    <color name="cyber_status_need_container">#36091F</color>
+    <!-- 강조색(밝은 시안) 위에는 어두운 리플, 자주 톤 컨테이너 위에는 마젠타 리플 -->
+    <color name="cyber_ripple_on_accent">#3304161A</color>
+    <color name="cyber_ripple_on_tonal">#33FF5CE1</color>
+    <!-- 네온 마젠타 윤곽(55%) — 톤 컨테이너 테두리 -->
+    <color name="cyber_outline">#8CFF5CE1</color>
 
     <!-- ── 고대비 ───────────────────────────────────────────────────────
          on_surface/surface        21.00:1   on_surface_muted/surface  17.14:1
@@ -137,4 +161,10 @@
     -->
     <color name="hc_ripple_on_accent">#33000000</color>
     <color name="hc_ripple_on_tonal">#33FFD400</color>
+    <!--
+        컨테이너 테두리 = 흰색. 필/스텝 칩/톤 버튼의 채움이 전부 순흑이라, 이 테두리가 없으면
+        검정 위 검정이 되어 모양이 통째로 사라진다(2026-09 실측: 온보딩의 요약 필·"필요함" 필·
+        단계 번호 원·"배터리 설정 열기" 버튼이 전부 글자만 떠 있었다).
+    -->
+    <color name="hc_outline">#FFFFFF</color>
 </resources>

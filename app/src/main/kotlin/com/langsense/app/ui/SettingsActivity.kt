@@ -27,9 +27,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.ContextCompat
 import com.langsense.app.R
+import com.langsense.app.util.ColorMath
 import com.langsense.app.util.ImeLocaleParser
 import com.langsense.app.util.Prefs
 import com.langsense.app.util.ThemeManager
+import com.langsense.app.util.UiPalette
 import com.langsense.app.util.themeColor
 import kotlin.math.roundToInt
 
@@ -102,8 +104,8 @@ class SettingsActivity : AppCompatActivity() {
         // ⚠️ setTheme 은 반드시 super.onCreate 보다 먼저 — windowBackground 는 super.onCreate 안에서
         // Window 가 붙을 때 확정되므로, 나중에 부르면 배경만 이전 테마로 남는다.
         prefs = Prefs(this)
-        appliedTheme = prefs.uiTheme
-        ThemeManager.apply(this, appliedTheme)
+        appliedTheme = ThemeManager.signature(this, prefs.uiTheme)
+        ThemeManager.apply(this, prefs.uiTheme)
         super.onCreate(savedInstanceState)
 
         // 테마를 고르면 recreate() 가 돈다 — 복원하지 않으면 "화면 테마"에서 테마를 바꾸는 순간
@@ -167,6 +169,7 @@ class SettingsActivity : AppCompatActivity() {
             )
         }
         setContentView(screen)
+        ThemeManager.applyWindow(this)
 
         capDetailWidth()
         renderRail()
@@ -298,6 +301,9 @@ class SettingsActivity : AppCompatActivity() {
             setText(query)
             hint = getString(R.string.settings_search_hint)
             textSize = 14f
+            setTextColor(themeColor(R.attr.uiOnSurface))
+            setHintTextColor(themeColor(R.attr.uiOnSurfaceMuted))
+            tintForCustomPalette(this)
             setSingleLine()
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             imeOptions = EditorInfo.IME_ACTION_SEARCH
@@ -794,6 +800,7 @@ class SettingsActivity : AppCompatActivity() {
             c.addView(sectionCard(getString(R.string.settings_group_theme)).apply {
                 addView(themePicker())
             })
+            if (prefs.uiTheme == Prefs.THEME_CUSTOM) c.addView(customThemeEditor())
             c.addView(sectionCard(getString(R.string.settings_theme_scope_title)).apply {
                 addView(descRow(getString(R.string.settings_theme_scope_desc)))
             })
@@ -806,10 +813,15 @@ class SettingsActivity : AppCompatActivity() {
         Prefs.THEME_BEIGE -> R.string.settings_theme_beige
         Prefs.THEME_CYBER -> R.string.settings_theme_cyber
         Prefs.THEME_HIGH_CONTRAST -> R.string.settings_theme_high_contrast
+        Prefs.THEME_CUSTOM -> R.string.settings_theme_custom
         else -> R.string.settings_theme_system
     }
 
-    /** 테마 카드 6개(2열). 고르면 즉시 [recreate] 로 다시 그린다. */
+    /**
+     * 테마 카드(2열). 각 카드 왼쪽의 작은 화면 그림은 **그 테마의 실제 색**(바탕·카드·강조·글자)이라,
+     * 고르기 전에 설명이 말하는 모습을 바로 볼 수 있다 — 예전엔 카드가 전부 지금 테마 색의 글자뿐이라
+     * "종이 같은"·"네온" 같은 설명을 확인하려면 하나씩 눌러 봐야 했다. 고르면 즉시 [recreate].
+     */
     private fun themePicker(): View {
         val grid = GridLayout(this).apply {
             columnCount = themeColumns()
@@ -818,11 +830,12 @@ class SettingsActivity : AppCompatActivity() {
         Prefs.UI_THEME_IDS.forEach { id ->
             val selected = prefs.uiTheme == id
             val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(12), dp(11), dp(12), dp(11))
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(10), dp(10), dp(12), dp(10))
                 isClickable = true
                 isFocusable = true
-                contentDescription = getString(themeLabelRes(id))
+                contentDescription = getString(themeLabelRes(id)) + ", " + getString(themeDescRes(id))
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = dp(12).toFloat()
@@ -831,25 +844,29 @@ class SettingsActivity : AppCompatActivity() {
                         if (selected) themeColor(R.attr.uiAccent) else themeColor(R.attr.uiDivider)
                     )
                 }
-                setOnClickListener {
-                    if (prefs.uiTheme == id) return@setOnClickListener
-                    prefs.uiTheme = id
-                    markSaved()
-                    recreate()
-                }
+                setOnClickListener { selectTheme(id) }
             }
-            card.addView(TextView(this).apply {
+            card.addView(View(this).apply {
+                background = themeThumbnail(UiPalette.forTheme(this@SettingsActivity, id))
+                layoutParams = LinearLayout.LayoutParams(dp(46), dp(34)).also { it.marginEnd = dp(10) }
+            })
+            val texts = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT).also { it.weight = 1f }
+            }
+            texts.addView(TextView(this).apply {
                 text = getString(themeLabelRes(id))
                 textSize = 14f
                 setTextColor(themeColor(R.attr.uiOnSurface))
                 if (selected) setTypeface(typeface, Typeface.BOLD)
             })
-            card.addView(TextView(this).apply {
+            texts.addView(TextView(this).apply {
                 text = getString(themeDescRes(id))
                 textSize = 11.5f
                 setTextColor(themeColor(R.attr.uiOnSurfaceMuted))
-                setPadding(0, dp(3), 0, 0)
+                setPadding(0, dp(2), 0, 0)
             })
+            card.addView(texts)
             card.layoutParams = GridLayout.LayoutParams().apply {
                 width = 0
                 height = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -861,12 +878,157 @@ class SettingsActivity : AppCompatActivity() {
         return grid
     }
 
+    private fun selectTheme(id: String) {
+        if (prefs.uiTheme == id) return
+        // 사용자 지정을 처음 고르면 지금 보던 테마의 4색에서 시작한다 — 고르자마자 화면이 엉뚱한
+        // 기본색으로 튀지 않고, "지금 테마에서 몇 군데만 바꾸기"가 자연스러운 출발점이 된다.
+        if (id == Prefs.THEME_CUSTOM && !prefs.hasCustomThemeSeeds()) copyThemeToCustom(prefs.uiTheme)
+        prefs.uiTheme = id
+        markSaved()
+        recreate()
+    }
+
+    /** [themeId] 테마의 배경·카드·글자·강조를 사용자 지정 4색으로 복사한다. */
+    private fun copyThemeToCustom(themeId: String) {
+        val p = UiPalette.forTheme(this, themeId)
+        prefs.setCustomThemeSeed(Prefs.CUSTOM_BG, ColorMath.toHex(p.bg))
+        prefs.setCustomThemeSeed(Prefs.CUSTOM_SURFACE, ColorMath.toHex(p.surface))
+        prefs.setCustomThemeSeed(Prefs.CUSTOM_TEXT, ColorMath.toHex(p.onSurface))
+        prefs.setCustomThemeSeed(Prefs.CUSTOM_ACCENT, ColorMath.toHex(p.accent))
+    }
+
+    /** 테마 미리보기 그림(46×34dp 고정 칸) — 바탕 위에 카드 한 장, 그 안에 강조색 막대와 글자 두 줄. */
+    private fun themeThumbnail(p: UiPalette): android.graphics.drawable.Drawable {
+        fun rect(color: Int, radius: Int, strokeColor: Int = 0) = GradientDrawable().apply {
+            cornerRadius = dp(radius).toFloat()
+            setColor(color)
+            if (strokeColor != 0) setStroke(dp(1), strokeColor)
+        }
+        // 카드 테두리: 고대비/사이버펑크는 윤곽색, 나머지는 구분선 — 실제 화면과 같은 규칙.
+        val cardStroke = if (ColorMath.alpha(p.outline) > 0) p.outline else p.divider
+        val layers = arrayOf(
+            rect(p.bg, 7, p.divider),
+            rect(p.surface, 4, cardStroke),
+            rect(p.accent, 2),
+            rect(p.onSurface, 1),
+            rect(p.onSurfaceMuted, 1),
+        )
+        return android.graphics.drawable.LayerDrawable(layers).apply {
+            setLayerInset(1, dp(6), dp(6), dp(6), dp(5))
+            setLayerInset(2, dp(10), dp(10), dp(22), dp(20))
+            setLayerInset(3, dp(10), dp(17), dp(14), dp(14))
+            setLayerInset(4, dp(10), dp(22), dp(20), dp(9))
+        }
+    }
+
+    /**
+     * 사용자 지정 테마 편집: 4색만 고르면 나머지 역할은 [UiPalette.derive] 가 기본 테마와 같은
+     * 규칙으로 채운다. 색을 고를 때마다 [recreate] 해 화면 전체가 바로 그 팔레트로 바뀐다(가장
+     * 확실한 미리보기). 스크롤 위치는 상세 ScrollView 의 고정 id 로 보존된다.
+     */
+    private fun customThemeEditor(): View = sectionCard(getString(R.string.settings_theme_custom_title)).apply {
+        addView(descRow(getString(R.string.settings_theme_custom_help)))
+        val slots = listOf(
+            Triple(Prefs.CUSTOM_BG, R.string.settings_theme_custom_bg, THEME_BG_SWATCHES),
+            Triple(Prefs.CUSTOM_SURFACE, R.string.settings_theme_custom_surface, THEME_BG_SWATCHES),
+            Triple(Prefs.CUSTOM_TEXT, R.string.settings_theme_custom_text, THEME_TEXT_SWATCHES),
+            Triple(Prefs.CUSTOM_ACCENT, R.string.settings_theme_custom_accent, PALETTE),
+        )
+        slots.forEach { (slot, labelRes, swatches) ->
+            addView(colorPickerRow(getString(labelRes), prefs.customThemeSeed(slot), swatches = swatches) { hex ->
+                if (hex.equals(prefs.customThemeSeed(slot), ignoreCase = true)) return@colorPickerRow
+                prefs.setCustomThemeSeed(slot, hex)
+                markSaved()
+                recreate()
+            })
+        }
+        // 가독성 보정 안내: 고른 글자/강조색이 배경 위에서 안 읽혀 자동으로 진하게(밝게) 했으면 알린다
+        // — 조용히 바꾸면 "고른 색이 안 먹는다"로 보인다.
+        val palette = prefs.customPalette()
+        val adjusted = listOf(
+            Triple(R.string.settings_theme_custom_surface, Prefs.CUSTOM_SURFACE, palette.surface),
+            Triple(R.string.settings_theme_custom_text, Prefs.CUSTOM_TEXT, palette.onSurface),
+            Triple(R.string.settings_theme_custom_accent, Prefs.CUSTOM_ACCENT, palette.accent),
+        ).filter { (_, slot, effective) ->
+            !ColorMath.toHex(effective).equals(prefs.customThemeSeed(slot), ignoreCase = true)
+        }
+        if (adjusted.isNotEmpty()) {
+            addView(descRow(adjusted.joinToString("\n") { (labelRes, slot, effective) ->
+                getString(
+                    R.string.settings_theme_custom_adjusted,
+                    getString(labelRes), prefs.customThemeSeed(slot), ColorMath.toHex(effective)
+                )
+            }))
+        }
+        // 출발점: 기본 테마의 4색을 그대로 가져와서 거기서부터 바꾼다.
+        addView(TextView(this@SettingsActivity).apply {
+            text = getString(R.string.settings_theme_custom_start_from)
+            textSize = 13f
+            setTextColor(themeColor(R.attr.uiOnSurface))
+            setPadding(0, dp(12), 0, dp(6))
+        })
+        val starts = GridLayout(this@SettingsActivity).apply { columnCount = themeColumns() + 1 }
+        Prefs.UI_THEME_IDS.filter { it != Prefs.THEME_SYSTEM && it != Prefs.THEME_CUSTOM }.forEach { id ->
+            starts.addView(TextView(this@SettingsActivity).apply {
+                text = getString(themeLabelRes(id))
+                textSize = 13f
+                gravity = Gravity.CENTER
+                minHeight = dp(40)
+                setTextColor(themeColor(R.attr.uiOnAccentContainer))
+                background = UiDrawables.buttonTonal(this@SettingsActivity)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    copyThemeToCustom(id)
+                    markSaved()
+                    recreate()
+                }
+                layoutParams = GridLayout.LayoutParams().apply {
+                    width = 0
+                    columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                    setMargins(dp(3), dp(3), dp(3), dp(3))
+                }
+            })
+        }
+        addView(starts)
+    }
+
+    /**
+     * 사용자 지정 테마일 때 위젯 틴트를 팔레트로 맞춘다. 스위치·슬라이더·라디오·입력칸의 기본 색은
+     * 스타일의 colorAccent 에서 오는데, 사용자가 고른 강조색은 스타일에 없다(런타임 팔레트뿐).
+     * 기본 테마에서는 아무것도 하지 않는다 — 스타일이 이미 정확한 색을 준다.
+     */
+    private fun tintForCustomPalette(v: View) {
+        val p = ThemeManager.customPalette ?: return
+        fun states(on: Int, off: Int, state: Int = android.R.attr.state_checked) =
+            android.content.res.ColorStateList(arrayOf(intArrayOf(state), intArrayOf()), intArrayOf(on, off))
+        when (v) {
+            is SwitchCompat -> {
+                val thumbOff = if (p.isDark) ColorMath.mix(p.onSurfaceMuted, p.surface, 0.15) else ColorMath.mix(p.surface, p.onSurface, 0.06)
+                v.thumbTintList = states(p.accent, thumbOff)
+                v.trackTintList = states(ColorMath.withAlpha(p.accent, 0x4D), ColorMath.withAlpha(p.onSurface, 0x4D))
+            }
+            is SeekBar -> {
+                v.progressTintList = android.content.res.ColorStateList.valueOf(p.accent)
+                v.thumbTintList = android.content.res.ColorStateList.valueOf(p.accent)
+                v.progressBackgroundTintList = android.content.res.ColorStateList.valueOf(ColorMath.withAlpha(p.onSurface, 0x4D))
+            }
+            is RadioButton -> v.buttonTintList = states(p.accent, p.onSurfaceMuted)
+            is EditText -> {
+                v.backgroundTintList = states(p.accent, p.divider, android.R.attr.state_focused)
+                v.highlightColor = ColorMath.withAlpha(p.accent, 0x55)
+                v.textCursorDrawable?.setTint(p.accent)
+            }
+        }
+    }
+
     private fun themeDescRes(id: String): Int = when (id) {
         Prefs.THEME_LIGHT -> R.string.settings_theme_light_desc
         Prefs.THEME_DARK -> R.string.settings_theme_dark_desc
         Prefs.THEME_BEIGE -> R.string.settings_theme_beige_desc
         Prefs.THEME_CYBER -> R.string.settings_theme_cyber_desc
         Prefs.THEME_HIGH_CONTRAST -> R.string.settings_theme_high_contrast_desc
+        Prefs.THEME_CUSTOM -> R.string.settings_theme_custom_desc
         else -> R.string.settings_theme_system_desc
     }
 
@@ -905,7 +1067,8 @@ class SettingsActivity : AppCompatActivity() {
             e(R.string.settings_keyboard_connect_notify, R.string.settings_group_keyboard, GROUP_KEYBOARD, "블루투스 연결 알림 배터리"),
             e(R.string.settings_diagnostic_enabled, R.string.settings_group_diag, GROUP_DIAG, "진단 범인 원인 단축키"),
             e(R.string.settings_diagnostic_pause_with_touch_kb, R.string.settings_group_diag, GROUP_DIAG, "진단 일시정지 터치 키보드"),
-            e(R.string.settings_group_theme, R.string.settings_group_theme, GROUP_THEME, "테마 다크 라이트 베이지 사이버펑크 고대비 색")
+            e(R.string.settings_group_theme, R.string.settings_group_theme, GROUP_THEME, "테마 다크 라이트 베이지 사이버펑크 고대비 색"),
+            e(R.string.settings_theme_custom, R.string.settings_group_theme, GROUP_THEME, "사용자 지정 커스텀 팔레트 배경 카드 글자 강조 색")
         )
     }
 
@@ -1078,7 +1241,7 @@ class SettingsActivity : AppCompatActivity() {
     /** 섹션 카드: 라운드 surface 컨테이너 + 섹션 제목. 항목들은 이 안에 addView 한다. */
     private fun sectionCard(title: String): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        background = ContextCompat.getDrawable(this@SettingsActivity, R.drawable.bg_card)
+        background = UiDrawables.card(this@SettingsActivity)
         setPadding(dp(18), dp(16), dp(18), dp(16))
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
@@ -1113,6 +1276,7 @@ class SettingsActivity : AppCompatActivity() {
             text = label
             textSize = 15f
             setTextColor(themeColor(R.attr.uiOnSurface))
+            tintForCustomPalette(this)
             isChecked = initial
             minHeight = dp(44)
             layoutParams = LinearLayout.LayoutParams(
@@ -1158,6 +1322,7 @@ class SettingsActivity : AppCompatActivity() {
 
         val steps = (max - min) / step
         val seek = SeekBar(this).apply {
+            tintForCustomPalette(this)
             this.max = steps
             progress = ((value - min) / step).coerceIn(0, steps)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -1201,6 +1366,8 @@ class SettingsActivity : AppCompatActivity() {
          * 움직이면 [previewRefreshers] 를 통해 여기를 다시 읽어 미리보기가 따라온다.
          */
         opacityPct: () -> Int = { 100 },
+        /** 격자에 보일 견본 색 — 기본은 오버레이용 선명한 32색, 테마 배경·글자는 무채/옅은 색 목록. */
+        swatches: List<String> = PALETTE,
         onPicked: (String) -> Unit
     ): View {
         // 마지막으로 확정된 유효 색. 잘못된 입력으로 commit 이 거부될 때 입력칸을 되돌리는 기준.
@@ -1222,6 +1389,9 @@ class SettingsActivity : AppCompatActivity() {
             filters = arrayOf(InputFilter.LengthFilter(7))
             setSingleLine()
             textSize = 14f
+            setTextColor(themeColor(R.attr.uiOnSurface))
+            setHintTextColor(themeColor(R.attr.uiOnSurfaceMuted))
+            tintForCustomPalette(this)
             imeOptions = EditorInfo.IME_ACTION_DONE
             hint = getString(R.string.settings_color_hex)
             // 고정 폭이 아니라 남는 공간을 받는다 — 좁은 화면에서도 팔레트 버튼과 겹치지 않는다.
@@ -1298,7 +1468,7 @@ class SettingsActivity : AppCompatActivity() {
         preview.isClickable = true
         preview.setOnClickListener { togglePalette() }
         headerRow.addView(toggle)
-        PALETTE.forEach { hex ->
+        swatches.forEach { hex ->
             val swatch = View(this).apply {
                 val lp = GridLayout.LayoutParams().apply {
                     width = dp(32); height = dp(32)
@@ -1336,6 +1506,8 @@ class SettingsActivity : AppCompatActivity() {
                 id = View.generateViewId()
                 setText(res)
                 textSize = 14f
+                setTextColor(themeColor(R.attr.uiOnSurface))
+                tintForCustomPalette(this)
                 setPadding(0, 0, dp(16), 0)
             }.also { group.addView(it) }
         }
@@ -1364,6 +1536,8 @@ class SettingsActivity : AppCompatActivity() {
                 id = View.generateViewId()
                 setText(res)
                 textSize = 14f
+                setTextColor(themeColor(R.attr.uiOnSurface))
+                tintForCustomPalette(this)
                 minHeight = dp(40)
             }.also { group.addView(it) }
         }
@@ -1678,6 +1852,19 @@ class SettingsActivity : AppCompatActivity() {
         )
 
         /** 32색 팔레트. */
+        /** 테마 배경·카드 견본 — 옅은 무채/종이/파스텔 + 어두운 바탕(오버레이용 [PALETTE] 는 너무 선명하다). */
+        private val THEME_BG_SWATCHES = listOf(
+            "#FFFFFF", "#F4F6FA", "#F3EDE0", "#FBF8F1", "#EEF3EC", "#F1ECF7", "#FDF1F3", "#EAF4F8",
+            "#E9E9E9", "#D9DEE7", "#1A1D23", "#0F1115", "#111827", "#110E1E", "#10231C", "#2A1E17",
+            "#0B1B2B", "#000000"
+        )
+
+        /** 테마 글자 견본 — 짙은 잉크 계열 + 밝은 글자 계열. */
+        private val THEME_TEXT_SWATCHES = listOf(
+            "#111317", "#1A1C20", "#2B241C", "#1F2937", "#0F172A", "#3B2F2F",
+            "#FFFFFF", "#ECEAF7", "#E6E8EC", "#F5F0E6", "#D1D5DB", "#FFE9A8"
+        )
+
         private val PALETTE = listOf(
             "#000000", "#444444", "#888888", "#CCCCCC", "#FFFFFF",
             "#CC2D2D", "#E53935", "#FF6F61", "#FF1744",

@@ -38,6 +38,7 @@
         <!-- 리플: 기존 drawable 에 박혀 있던 리터럴 그대로(동작 불변) -->
         <item name="uiRippleOnAccent">#33FFFFFF</item>
         <item name="uiRippleOnTonal">#332563EB</item>
+        <item name="uiOutline">@android:color/transparent</item>
         <item name="uiStrokeWidth">1dp</item>
     </style>
 
@@ -57,7 +58,7 @@
         night mode 자체는 `ThemeManager.apply()` 가 팔레트와 같은 쪽으로 고정한다
         (AppCompat 내부 위젯 리소스 — 다이얼로그/커서/오버플로 — 를 맞추기 위함).
 
-        각 테마는 attrs.xml 의 17개 attr 을 **전부** 자기 팔레트로 바인딩한다
+        각 테마는 attrs.xml 의 18개 attr 을 **전부** 자기 팔레트로 바인딩한다
         (하나라도 빠지면 부모 AppCompat 에 그 attr 이 없어 런타임에 색이 깨진다).
         ══════════════════════════════════════════════════════════════════
     -->
@@ -90,6 +91,7 @@
         <item name="statusNeedContainer">@color/beige_status_need_container</item>
         <item name="uiRippleOnAccent">@color/beige_ripple_on_accent</item>
         <item name="uiRippleOnTonal">@color/beige_ripple_on_tonal</item>
+        <item name="uiOutline">@color/beige_outline</item>
         <item name="uiStrokeWidth">1dp</item>
     </style>
 
@@ -121,6 +123,7 @@
         <item name="statusNeedContainer">@color/cyber_status_need_container</item>
         <item name="uiRippleOnAccent">@color/cyber_ripple_on_accent</item>
         <item name="uiRippleOnTonal">@color/cyber_ripple_on_tonal</item>
+        <item name="uiOutline">@color/cyber_outline</item>
         <item name="uiStrokeWidth">1dp</item>
     </style>
 
@@ -153,6 +156,75 @@
         <item name="uiRippleOnAccent">@color/hc_ripple_on_accent</item>
         <item name="uiRippleOnTonal">@color/hc_ripple_on_tonal</item>
         <!-- 채움이 전부 순흑이라 테두리가 유일한 구분 수단 → 2dp -->
+        <item name="uiOutline">@color/hc_outline</item>
         <item name="uiStrokeWidth">2dp</item>
+    </style>
+
+    <!--
+        ══════════════════════════════════════════════════════════════════
+        사용자 지정 테마의 바탕 스타일 2벌 (밝은 배경 / 어두운 배경)
+
+        색은 여기가 아니라 런타임 팔레트(UiPalette, 사용자가 고른 4색에서 파생)가 준다 — 스타일은
+        컴파일 시점에 고정이라 사용자 색을 담을 수 없기 때문이다. [ThemeManager.apply] 가 배경
+        밝기로 둘 중 하나를 고르고, 화면 코드는 themeColor() 로 팔레트 색을 받는다.
+        이 스타일이 정하는 건 "밝기 축"뿐이다: 부모(Light/일반)와 상태바 아이콘 밝기가 맞아야
+        AppCompat 내부 위젯(다이얼로그·커서·오버플로)이 반대 밝기로 튀지 않는다. 아래 색 바인딩은
+        팔레트가 닿지 않는 곳이 혹시 남았을 때의 안전한 기본값(라이트/다크 팔레트)일 뿐이다.
+        ══════════════════════════════════════════════════════════════════
+    -->
+    <style name="Theme.LangSense.CustomLight" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="colorPrimary">@color/custom_light_accent</item>
+        <item name="colorPrimaryDark">@color/custom_light_bg</item>
+        <item name="colorAccent">@color/custom_light_accent</item>
+        <item name="android:windowBackground">@color/custom_light_bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:textColorPrimary">@color/custom_light_on_surface</item>
+        <item name="android:textColorSecondary">@color/custom_light_on_surface_muted</item>
+        <item name="uiBg">@color/custom_light_bg</item>
+        <item name="uiSurface">@color/custom_light_surface</item>
+        <item name="uiOnSurface">@color/custom_light_on_surface</item>
+        <item name="uiOnSurfaceMuted">@color/custom_light_on_surface_muted</item>
+        <item name="uiAccent">@color/custom_light_accent</item>
+        <item name="uiOnAccent">#FFFFFF</item>
+        <item name="uiAccentContainer">#E3ECFD</item>
+        <item name="uiOnAccentContainer">#1D4ED8</item>
+        <item name="uiDivider">#E5E7EB</item>
+        <item name="uiMuted">@color/custom_light_on_surface_muted</item>
+        <item name="statusOk">#12703A</item>
+        <item name="statusOkContainer">#E4F5EA</item>
+        <item name="statusNeed">#B91C1C</item>
+        <item name="statusNeedContainer">#FCEAEA</item>
+        <item name="uiRippleOnAccent">#33FFFFFF</item>
+        <item name="uiRippleOnTonal">#332563EB</item>
+        <item name="uiOutline">@android:color/transparent</item>
+        <item name="uiStrokeWidth">1dp</item>
+    </style>
+
+    <style name="Theme.LangSense.CustomDark" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">@color/custom_dark_accent</item>
+        <item name="colorPrimaryDark">@color/custom_dark_bg</item>
+        <item name="colorAccent">@color/custom_dark_accent</item>
+        <item name="android:windowBackground">@color/custom_dark_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:textColorPrimary">@color/custom_dark_on_surface</item>
+        <item name="android:textColorSecondary">@color/custom_dark_on_surface_muted</item>
+        <item name="uiBg">@color/custom_dark_bg</item>
+        <item name="uiSurface">@color/custom_dark_surface</item>
+        <item name="uiOnSurface">@color/custom_dark_on_surface</item>
+        <item name="uiOnSurfaceMuted">@color/custom_dark_on_surface_muted</item>
+        <item name="uiAccent">@color/custom_dark_accent</item>
+        <item name="uiOnAccent">#0B1220</item>
+        <item name="uiAccentContainer">#1E3A5F</item>
+        <item name="uiOnAccentContainer">#A8C7FA</item>
+        <item name="uiDivider">#2A2E36</item>
+        <item name="uiMuted">@color/custom_dark_on_surface_muted</item>
+        <item name="statusOk">#4ADE80</item>
+        <item name="statusOkContainer">#153524</item>
+        <item name="statusNeed">#F87171</item>
+        <item name="statusNeedContainer">#3A1B1B</item>
+        <item name="uiRippleOnAccent">#33FFFFFF</item>
+        <item name="uiRippleOnTonal">#335B9DF7</item>
+        <item name="uiOutline">@android:color/transparent</item>
+        <item name="uiStrokeWidth">1dp</item>
     </style>
 </resources>

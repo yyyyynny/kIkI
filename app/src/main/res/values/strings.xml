@@ -174,11 +174,21 @@
     <string name="settings_theme_dark">다크</string>
     <string name="settings_theme_dark_desc">언제나 어둡게</string>
     <string name="settings_theme_beige">베이지</string>
-    <string name="settings_theme_beige_desc">종이 같은 따뜻한 색</string>
+    <string name="settings_theme_beige_desc">따뜻한 미색 종이에 먹빛 글자</string>
     <string name="settings_theme_cyber">사이버펑크</string>
-    <string name="settings_theme_cyber_desc">near-black 바탕에 시안 강조</string>
+    <string name="settings_theme_cyber_desc">검보라 바탕에 네온 시안·마젠타</string>
     <string name="settings_theme_high_contrast">고대비</string>
-    <string name="settings_theme_high_contrast_desc">순흑·순백 + 노란 강조</string>
+    <string name="settings_theme_high_contrast_desc">순흑·순백·노란 강조, 굵은 윤곽선</string>
+    <string name="settings_theme_custom">사용자 지정</string>
+    <string name="settings_theme_custom_desc">4색만 고르면 나머지는 자동</string>
+    <string name="settings_theme_custom_title">사용자 지정 색</string>
+    <string name="settings_theme_custom_help">배경·카드·글자·강조 네 가지만 고르면, 보조 글자·구분선·톤 버튼·상태 색은 기본 테마와 같은 규칙으로 자동으로 맞춰집니다. 글자와 강조색이 배경 위에서 잘 읽히지 않으면 읽힐 만큼만 자동으로 진하게(또는 밝게) 보정해요.</string>
+    <string name="settings_theme_custom_bg">배경</string>
+    <string name="settings_theme_custom_surface">카드</string>
+    <string name="settings_theme_custom_text">글자</string>
+    <string name="settings_theme_custom_accent">강조</string>
+    <string name="settings_theme_custom_adjusted">가독성 보정: %1$s %2$s → %3$s</string>
+    <string name="settings_theme_custom_start_from">다른 테마의 색에서 시작하기</string>
     <string name="settings_theme_scope_title">어디까지 바뀌나요</string>
     <string name="settings_theme_scope_desc">테마는 앱 화면에만 적용됩니다. 플래시·배지·빠른 메뉴는 화면 위에 따로 뜨는 오버레이라 각자의 색 설정을 그대로 씁니다 — 테마를 바꿔도 그 색은 변하지 않아요.</string>
 </resources>

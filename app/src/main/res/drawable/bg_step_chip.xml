@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 온보딩 스텝 번호 칩(원형). -->
+<!-- 온보딩 스텝 번호 칩(원형). 테두리는 고대비·사이버펑크에서만 보인다(uiOutline). -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
     <solid android:color="?attr/uiAccentContainer" />
+    <stroke android:width="?attr/uiStrokeWidth" android:color="?attr/uiOutline" />
 </shape>

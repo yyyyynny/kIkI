@@ -1,7 +1,6 @@
 package com.langsense.app.ui
 
 import android.content.Intent
-import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.Gravity
 import android.widget.FrameLayout
@@ -24,19 +23,25 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
 
     /**
-     * 이 화면에 실제로 적용한 테마. 설정에서 테마를 바꾸고 돌아오면 [onResume] 에서 이 값과
-     * 비교해 다시 그린다 — 팔레트 변경은 시스템 구성 변경이 아니라 앱 내부 상태 변경이라
-     * 백스택에 멈춰 있던 이 화면은 저절로 갱신되지 않는다.
+     * 이 화면에 실제로 적용한 테마([ThemeManager.signature] — 사용자 지정이면 4색 포함). 설정에서
+     * 테마나 사용자 지정 색을 바꾸고 돌아오면 [onResume] 에서 이 값과 비교해 다시 그린다 — 팔레트
+     * 변경은 시스템 구성 변경이 아니라 앱 내부 상태 변경이라 백스택에 멈춰 있던 이 화면은 저절로
+     * 갱신되지 않는다.
      */
     private var appliedTheme: String = Prefs.THEME_SYSTEM
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // ⚠️ setTheme 은 super.onCreate 보다 먼저(ThemeManager.apply 문서 참조).
-        appliedTheme = Prefs(this).uiTheme
-        ThemeManager.apply(this, appliedTheme)
+        val themeId = Prefs(this).uiTheme
+        appliedTheme = ThemeManager.signature(this, themeId)
+        ThemeManager.apply(this, themeId)
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // 레이아웃의 역할 태그(fg=/bg=)대로 색을 입힌다 — 사용자 지정 테마의 색은 스타일이 아니라
+        // 런타임 팔레트에 있어 XML 의 ?attr 만으로는 닿지 않는다(UiDrawables 참조).
+        UiDrawables.bindTags(binding.root)
+        ThemeManager.applyWindow(this)
         capContentWidth()
         showVersion()
 
@@ -65,7 +70,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         // 설정에서 테마를 바꾸고 돌아온 경우: 이 화면은 아직 이전 팔레트라 다시 만든다.
         // (라이트/다크만 바뀐 경우는 AppCompat 이 이미 재생성해 주므로 여기서 값이 같아 통과한다.)
-        if (appliedTheme != Prefs(this).uiTheme) {
+        if (appliedTheme != ThemeManager.signature(this, Prefs(this).uiTheme)) {
             recreate()
             return
         }
@@ -125,8 +130,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun tintPill(tv: TextView, ok: Boolean) {
         tv.setTextColor(themeColor(if (ok) R.attr.statusOk else R.attr.statusNeed))
-        tv.backgroundTintList = ColorStateList.valueOf(
-            themeColor(if (ok) R.attr.statusOkContainer else R.attr.statusNeedContainer)
+        // backgroundTint 를 쓰면 테두리까지 채움색으로 덮여 고대비에서 필이 사라진다(bg_pill.xml).
+        tv.background = UiDrawables.pill(
+            this, themeColor(if (ok) R.attr.statusOkContainer else R.attr.statusNeedContainer)
         )
     }
 

@@ -38,6 +38,12 @@
     <attr name="uiRippleOnAccent" format="color" />
     <attr name="uiRippleOnTonal" format="color" />
 
+    <!--
+        채움 컨테이너(상태 필·스텝 칩·톤 버튼)의 테두리색. 대부분의 테마는 투명(외형 불변)이고,
+        고대비(컨테이너가 전부 순흑이라 테두리가 없으면 사라짐)와 사이버펑크(네온 윤곽)만 보인다.
+    -->
+    <attr name="uiOutline" format="color" />
+
     <!-- 카드 등 외곽선 두께 -->
     <attr name="uiStrokeWidth" format="dimension" />
 </resources>
