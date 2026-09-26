@@ -1000,7 +1000,22 @@ body.reduce-motion .orb {
         // 화면이 좁아 하한>상한이 되면(어느 쪽에도 못 들어감) 중앙으로 축퇴.
         const clamp = (v, lo, hi) => hi < lo ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v));
 
-        // 후보 틸트의 배치 결과: 팬 실측 범위 → 미러 여부 → 클램프된 앵커 → 배지 이탈 거리.
+        // ⚠️ 배지가 화면 모서리(특히 구석)에 있으면 팬이 뻗을 공간이 부족해, 예전엔 이 클램프가
+        // ax/ay 를 실제 배지 위치에서 수백 px 까지 안쪽으로 밀어 넣었다 — 그러면 메뉴가 열리는
+        // 지점이 화면에 보이는 진짜 배지와 시각적으로 어긋나(구석 실측: 최대 219px), "배지를
+        // 끝으로 옮기면 특정 자리에서만 제대로 눌리는 것처럼" 느껴졌다(사용자 제보, 2026-09).
+        // 팬 공간이 여유 있을 땐 배지 위치를 옮기는 대신 팬 쪽이 양보해(오브가 화면 가장자리에
+        // 조금 더 붙는 정도) 실제 배지와 정확히 맞물리게 한다("선이 길어져도 좋으니 그 정도까지
+        // 만" 이라는 요청대로 이 값을 한도로 둔다 — 배지 한 변 길이(중간 크기 기준) 정도).
+        // ⚠️ 이 한도는 "가능할 때만" 지킨다: 무조건 적용하면 오브가 화면 밖으로 완전히 밀려나
+        // 아예 눌리지 않는 자리가 생길 수 있다(팬이 화면보다 큰 극단적 구석 — 실측으로 발견,
+        // 안전장치 없이 배포했으면 새 회귀였다). 그래서 한도를 지켜도 팬 전체가 화면 안에 들어오는
+        // 경우에만 쓰고, 안 들어오면 (구석에 몰린 항목이 아예 안 보이는 것보다는 배지에서 좀 멀어
+        // 보이는 쪽이 낫다는 원칙으로) 기존처럼 화면 안에 다 들어오는 값으로 되돌아간다 — "안전(전부
+        // 누를 수 있음)"이 "배지와의 거리"보다 항상 우선한다.
+        const MAX_ANCHOR_DRIFT = 28;
+
+        // 후보 틸트의 배치 결과: 팬 실측 범위 → 미러 여부 → 클램프된(안전 우선, 여유 있으면 한도 내) 앵커 → 배지 이탈 거리.
         function evaluate(tilt) {
           const pts = computePositions(tilt, N);
           let minX = BX, maxX = BX, minY = BY, maxY = BY;
@@ -1014,12 +1029,22 @@ body.reduce-motion .orb {
           const extLeft = BX - minX + PAD, extRight = maxX - BX + PAD;
           const extUp = BY - minY + PAD, extDown = maxY - BY + PAD;
           const mirror = cfg.anchorX < extLeft && vw - cfg.anchorX > cfg.anchorX;
-          const ax = mirror ? clamp(cfg.anchorX, extRight, vw - extLeft)
-                            : clamp(cfg.anchorX, extLeft, vw - extRight);
-          const ay = clamp(cfg.anchorY, extUp, vh - extDown);
-          // 팬이 화면보다 커서 어떻게 놓아도 잘리는 양(가로 모드에서 세로가 특히 문제).
+          const axLo = mirror ? extRight : extLeft, axHi = mirror ? vw - extLeft : vw - extRight;
+          const ayLo = extUp, ayHi = vh - extDown;
+          const idealAx = clamp(cfg.anchorX, axLo, axHi);
+          const idealAy = clamp(cfg.anchorY, ayLo, ayHi);
+          // 한도 내로 당긴 값이 여전히 "팬 전체가 화면 안" 범위([axLo,axHi]/[ayLo,ayHi]) 안에 있을
+          // 때만 채택한다 — 그 범위를 벗어나면(팬이 너무 커서 한도 안에서 다 못 들어감) 오브가
+          // 화면 밖으로 밀려나므로, 안전한 idealAx/idealAy 로 되돌아간다.
+          const boundedAx = clamp(idealAx, cfg.anchorX - MAX_ANCHOR_DRIFT, cfg.anchorX + MAX_ANCHOR_DRIFT);
+          const boundedAy = clamp(idealAy, cfg.anchorY - MAX_ANCHOR_DRIFT, cfg.anchorY + MAX_ANCHOR_DRIFT);
+          const ax = (boundedAx >= axLo && boundedAx <= axHi) ? boundedAx : idealAx;
+          const ay = (boundedAy >= ayLo && boundedAy <= ayHi) ? boundedAy : idealAy;
+          // 팬이 화면보다 커서 어떻게 놓아도 잘리는 양(가로 모드에서 세로가 특히 문제) + 위 한도
+          // 때문에 이상적인 위치까지 못 간 나머지(둘 다 "잘림"의 일종이라 overflow 에 합친다).
           const overflow = Math.max(0, (extUp + extDown) - vh) +
-                           Math.max(0, (extLeft + extRight) - vw);
+                           Math.max(0, (extLeft + extRight) - vw) +
+                           Math.abs(idealAx - ax) + Math.abs(idealAy - ay);
           // 점수(작을수록 좋음) = 배지 이탈 거리 + 잘림량. 잘림은 항목을 아예 못 누르게 하므로
           // 이탈보다 무겁게 친다 — 축퇴 클램프가 "이탈 0"으로 보여 잘린 배치를 고르는 걸 막는다.
           const score = Math.abs(ax - cfg.anchorX) + Math.abs(ay - cfg.anchorY) + overflow * 4;
