@@ -95,6 +95,14 @@ class SettingsActivity : AppCompatActivity() {
     /** 테마 변경은 화면을 다시 만들어야 반영되므로, 지금 적용된 테마를 기억해 뒀다 비교한다. */
     private var appliedTheme: String = Prefs.THEME_SYSTEM
 
+    /**
+     * 펼쳐진 색 팔레트의 [colorPickerRow] key 집합 — 사용자 지정 테마 색은 고를 때마다 [recreate]
+     * 가 화면을 통째로 새로 그리는데, 그때마다 팔레트가 접힌 채로 다시 시작하면 "펼치고 → 한 번
+     * 고르면 접힘 → 다시 펼치고" 를 색마다 반복해야 해서 불편하다(사용자 제보, 2026-09). 이
+     * 인스턴스 필드 자체는 recreate() 로 죽지만 [onSaveInstanceState]/복원으로 값이 넘어간다.
+     */
+    private val openPaletteKeys: MutableSet<String> = mutableSetOf()
+
     private lateinit var railRoot: View
     private lateinit var railList: LinearLayout
     private lateinit var detailScroll: ScrollView
@@ -115,6 +123,7 @@ class SettingsActivity : AppCompatActivity() {
             currentGroup = it.getString(STATE_GROUP) ?: GROUP_FLASH
             query = it.getString(STATE_QUERY).orEmpty()
             restoredInDetail = it.getBoolean(STATE_IN_DETAIL, false)
+            openPaletteKeys.addAll(it.getStringArrayList(STATE_OPEN_PALETTES).orEmpty())
         }
 
         twoPane = isWideEnoughForTwoPane()
@@ -935,12 +944,19 @@ class SettingsActivity : AppCompatActivity() {
             Triple(Prefs.CUSTOM_ACCENT, R.string.settings_theme_custom_accent, PALETTE),
         )
         slots.forEach { (slot, labelRes, swatches) ->
-            addView(colorPickerRow(getString(labelRes), prefs.customThemeSeed(slot), swatches = swatches) { hex ->
-                if (hex.equals(prefs.customThemeSeed(slot), ignoreCase = true)) return@colorPickerRow
-                prefs.setCustomThemeSeed(slot, hex)
-                markSaved()
-                recreate()
-            })
+            // key 를 줘서 recreate() 뒤에도 이 팔레트가 펼쳐진 채로 남게 한다(사용자 제보,
+            // 2026-09) — 색 고를 때마다 recreate() 가 화면을 통째로 새로 그려 팔레트가 매번
+            // 접힌 채로 시작하면, 여러 색을 잇달아 바꿔볼 때마다 다시 펼쳐야 해 불편했다.
+            addView(
+                colorPickerRow(
+                    getString(labelRes), prefs.customThemeSeed(slot), swatches = swatches, key = "custom_$slot"
+                ) { hex ->
+                    if (hex.equals(prefs.customThemeSeed(slot), ignoreCase = true)) return@colorPickerRow
+                    prefs.setCustomThemeSeed(slot, hex)
+                    markSaved()
+                    recreate()
+                }
+            )
         }
         // 가독성 보정 안내: 고른 글자/강조색이 배경 위에서 안 읽혀 자동으로 진하게(밝게) 했으면 알린다
         // — 조용히 바꾸면 "고른 색이 안 먹는다"로 보인다.
@@ -1150,6 +1166,7 @@ class SettingsActivity : AppCompatActivity() {
         outState.putString(STATE_GROUP, currentGroup)
         outState.putString(STATE_QUERY, query)
         outState.putBoolean(STATE_IN_DETAIL, !twoPane && detailScroll.visibility == View.VISIBLE)
+        outState.putStringArrayList(STATE_OPEN_PALETTES, ArrayList(openPaletteKeys))
     }
 
     private fun syncToggles() {
@@ -1177,7 +1194,7 @@ class SettingsActivity : AppCompatActivity() {
 
     /**
      * 전환 원인 진단(추가 기능 3) 결과 행: 최근 캡처된 키 조합(또는 "없음" 안내) + 상대 시각,
-     * 오른쪽에 지우기 버튼. 서비스가 백그라운드에서 [Prefs.lastSwitchTriggerKeys] 를 갱신하므로
+     * 오른쪽에 지우기 버튼. 서비스가 백그라운드에서 [Prefs.lastSwitchTriggers] 를 갱신하므로
      * onResume/prefsListener 양쪽에서 [refreshDiagnosticResult] 로 다시 그린다.
      */
     private fun diagnosticResultRow(): View {
@@ -1214,19 +1231,22 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     /**
-     * [Prefs.lastSwitchTriggerKeys]/[Prefs.lastSwitchTriggerAt] 이 나타낼 수 있는 세 가지 상태를
-     * 각각 다른 문구로 보여준다 — 서비스는 "값이 없다"(at==0L, 한 번도 캡처된 적 없음)와 "캡처는
-     * 됐는데 키를 못 찾았다"(keys=="", at!=0L)를 원문 그대로(빈 값)만 남기고, 그 뜻을 문장으로
-     * 풀어내는 건 여기(화면)의 몫으로 나눠 뒀다.
+     * [Prefs.lastSwitchTriggers] 이력(최신이 맨 앞, 최대 10건)을 한 줄씩 보여준다. 각 건은 "캡처는
+     * 됐는데 키를 못 찾았다"(keys=="")와 "이 키 조합이 눌려 있었다" 두 상태 중 하나이고, 이력 자체가
+     * 비어 있으면(한 번도 캡처된 적 없음) 안내 문구 하나만 보여준다. 여러 줄을 나란히 보여주는
+     * 이유: 전환이 반복될 때마다 매번 같은 키가 뜨면 그게 범인이라는 뜻이므로, 1건만 보이던 예전과
+     * 달리 사람이 직접 패턴을 비교할 수 있다.
      */
     private fun refreshDiagnosticResult() {
         if (!::diagnosticResultText.isInitialized) return
-        val keys = prefs.lastSwitchTriggerKeys
-        val at = prefs.lastSwitchTriggerAt
-        diagnosticResultText.text = when {
-            at == 0L -> getString(R.string.settings_diagnostic_result_empty)
-            keys.isEmpty() -> getString(R.string.settings_diagnostic_result_unknown, relativeTime(at))
-            else -> getString(R.string.settings_diagnostic_result_label, keys, relativeTime(at))
+        val history = prefs.lastSwitchTriggers
+        diagnosticResultText.text = if (history.isEmpty()) {
+            getString(R.string.settings_diagnostic_result_empty)
+        } else {
+            history.joinToString("\n") { t ->
+                if (t.keys.isEmpty()) getString(R.string.settings_diagnostic_result_unknown, relativeTime(t.atMillis))
+                else getString(R.string.settings_diagnostic_result_label, t.keys, relativeTime(t.atMillis))
+            }
         }
     }
 
@@ -1346,10 +1366,16 @@ class SettingsActivity : AppCompatActivity() {
         return container
     }
 
-    /** 언어별 플래시 색상 편집기 — 공용 [colorPickerRow] 를 prefs.colorHex 에 연결. */
+    /**
+     * 언어별 플래시 색상 편집기 — 공용 [colorPickerRow] 를 prefs.colorHex 에 연결.
+     * ⚠️ [labelMinWidthDp] 로 라벨 폭을 고정한다 — "한국어"(3자)와 "영어"(2자)는 길이가 달라
+     * 라벨을 wrap_content 그대로 두면 그 뒤의 색 미리보기 원·입력칸이 행마다 다른 x 위치에서
+     * 시작해 두 행이 나란히 있을 때 어긋나 보였다(사용자 제보, 2026-09).
+     */
     private fun colorEditor(lang: String, langLabel: String): View =
         colorPickerRow(
-            langLabel, prefs.colorHex(lang), opacityPct = { prefs.flashOpacityPercent }
+            langLabel, prefs.colorHex(lang), opacityPct = { prefs.flashOpacityPercent },
+            labelMinWidthDp = LANGUAGE_LABEL_MIN_WIDTH_DP
         ) { hex -> prefs.setColorHex(lang, hex) }
 
     /**
@@ -1366,8 +1392,19 @@ class SettingsActivity : AppCompatActivity() {
          * 움직이면 [previewRefreshers] 를 통해 여기를 다시 읽어 미리보기가 따라온다.
          */
         opacityPct: () -> Int = { 100 },
+        /**
+         * 0 이면 라벨 폭이 wrap_content(기본). 여러 [colorPickerRow] 가 같은 카드 안에 나란히
+         * 쌓여 세로로 정렬돼 보여야 할 때(예: 한국어/영어 색상 두 행)만 지정한다 — 그 외 단독
+         * 행에서는 라벨 길이만큼만 차지하는 게 자연스럽다.
+         */
+        labelMinWidthDp: Int = 0,
         /** 격자에 보일 견본 색 — 기본은 오버레이용 선명한 32색, 테마 배경·글자는 무채/옅은 색 목록. */
         swatches: List<String> = PALETTE,
+        /**
+         * 비 null 이면 이 팔레트의 펼침 상태를 [openPaletteKeys] 에 기억한다 — [recreate] 를 유발하는
+         * 사용자 지정 테마 색에만 필요하다(그 외 색은 recreate() 가 없어 펼침 상태가 그냥 유지된다).
+         */
+        key: String? = null,
         onPicked: (String) -> Unit
     ): View {
         // 마지막으로 확정된 유효 색. 잘못된 입력으로 commit 이 거부될 때 입력칸을 되돌리는 기준.
@@ -1426,7 +1463,9 @@ class SettingsActivity : AppCompatActivity() {
             text = label
             textSize = 14f
             setTextColor(themeColor(R.attr.uiOnSurface))
-            // 예전엔 64dp 고정이라 "배지 배경색"·"메뉴 강조색" 같은 6자 라벨이 잘렸다.
+            // 예전엔 64dp 고정이라 "배지 배경색"·"메뉴 강조색" 같은 6자 라벨이 잘렸다. 대신
+            // labelMinWidthDp 로 필요한 곳(언어별 색상 두 행)만 최소 폭을 줘 정렬을 맞춘다.
+            if (labelMinWidthDp > 0) minWidth = dp(labelMinWidthDp)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).also { it.marginEnd = dp(10) }
@@ -1442,13 +1481,14 @@ class SettingsActivity : AppCompatActivity() {
         // 미리보기 원 또는 색 이름을 누르면 열린다.
         // 열 수는 화면 폭에서 계산한다 — 8열 고정이면 8×(32+3+3)=304dp 가 필요해 폰(360dp)과
         // 폴드 접힌 화면(329dp)에서 카드 밖으로 넘쳐 오른쪽 색들이 잘린다.
+        val startsOpen = key != null && openPaletteKeys.contains(key)
         val palette = GridLayout(this).apply {
             columnCount = paletteColumns()
             setPadding(0, dp(8), 0, 0)
-            visibility = View.GONE
+            visibility = if (startsOpen) View.VISIBLE else View.GONE
         }
         val toggle = TextView(this).apply {
-            text = getString(R.string.settings_color_palette_open)
+            text = getString(if (startsOpen) R.string.settings_color_palette_close else R.string.settings_color_palette_open)
             textSize = 12.5f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(themeColor(R.attr.uiAccent))
@@ -1463,6 +1503,9 @@ class SettingsActivity : AppCompatActivity() {
             toggle.text = getString(
                 if (opening) R.string.settings_color_palette_close else R.string.settings_color_palette_open
             )
+            if (key != null) {
+                if (opening) openPaletteKeys.add(key) else openPaletteKeys.remove(key)
+            }
         }
         toggle.setOnClickListener { togglePalette() }
         preview.isClickable = true
@@ -1771,6 +1814,12 @@ class SettingsActivity : AppCompatActivity() {
      * 색 미리보기 원. [opacityPct] 가 100 미만이면 **밝음→어두움 그라데이션 바탕 위에** 반투명
      * 색을 얹어, 그 바탕이 비쳐 보이는 정도로 불투명도를 눈으로 확인할 수 있게 한다.
      * 카드 표면이 흰색이라 그냥 반투명 색만 칠하면 85%와 100%가 거의 구분되지 않는다.
+     *
+     * ⚠️ 테두리는 테마의 `uiDivider`(항상 옅은 회색)가 아니라 **이 색 자체의 밝기와 대비되는
+     * 흑/백**([ColorMath.readableOn])을 쓴다(사용자 제보, 2026-09) — 사용자 지정 테마 편집기의
+     * 배경/카드 견본([THEME_BG_SWATCHES], 흰색·검정 포함)이 옅은 회색 테두리로는 같은 톤의 카드
+     * 배경과 구분이 안 돼 스와치가 통째로 안 보였다. 32색 팔레트([PALETTE])에도 흰색(#FFFFFF)·
+     * 검정(#000000)이 있어 같은 문제가 있었다 — 색 자체와 대비시키면 어떤 배경 위에서도 보인다.
      */
     private fun swatchDrawable(hex: String, opacityPct: Int = 100): android.graphics.drawable.Drawable {
         val rgb = runCatching { Color.parseColor(hex) }.getOrDefault(Color.GRAY)
@@ -1781,7 +1830,7 @@ class SettingsActivity : AppCompatActivity() {
                     Prefs.alphaFromPercent(opacityPct), Color.red(rgb), Color.green(rgb), Color.blue(rgb)
                 )
             )
-            setStroke(dp(1), themeColor(R.attr.uiDivider))
+            setStroke(dp(1), ColorMath.readableOn(rgb))
         }
         if (opacityPct >= 100) return fill
         val base = GradientDrawable(
@@ -1821,10 +1870,14 @@ class SettingsActivity : AppCompatActivity() {
         /** 테마 카드를 2열로 둘 수 있는 최소 카드 안쪽 폭. 그 아래면 1열. */
         private const val THEME_TWO_COLUMN_MIN_DP = 300
 
+        /** [colorEditor] 의 라벨 최소 폭 — "한국어"(3자) 기준, "영어"(2자)와 나란히 정렬되게. */
+        private const val LANGUAGE_LABEL_MIN_WIDTH_DP = 52
+
         // 재생성(테마 변경·회전) 너머로 살려야 하는 화면 상태.
         private const val STATE_GROUP = "state_group"
         private const val STATE_QUERY = "state_query"
         private const val STATE_IN_DETAIL = "state_in_detail"
+        private const val STATE_OPEN_PALETTES = "state_open_palettes"
 
         // 설정 그룹 id — 기능 하나를 사용자가 찾는 이름 하나로 묶는 단위.
         private const val GROUP_FLASH = "flash"

@@ -160,4 +160,35 @@ class PrefsTest {
             prev = a
         }
     }
+
+    // ── Prefs.encodeSwitchTriggers / decodeSwitchTriggers — 전환 원인 진단 이력 (2026-09) ──
+
+    @Test
+    fun switchTriggers_roundTrip_preservesOrderAndValues() {
+        val list = listOf(
+            Prefs.SwitchTrigger(3000L, "SHIFT_LEFT + SPACE"),
+            Prefs.SwitchTrigger(1000L, ""),
+        )
+        val decoded = Prefs.decodeSwitchTriggers(Prefs.encodeSwitchTriggers(list))
+        assertEquals(list, decoded)
+    }
+
+    @Test
+    fun decodeSwitchTriggers_nullOrBlank_returnsEmpty() {
+        assertEquals(emptyList<Prefs.SwitchTrigger>(), Prefs.decodeSwitchTriggers(null))
+        assertEquals(emptyList<Prefs.SwitchTrigger>(), Prefs.decodeSwitchTriggers(""))
+    }
+
+    /** 손상된 줄(탭 없음, 숫자 아님)은 건너뛰고 나머지는 정상 복원한다 — 저장값 손상이 화면 크래시로 이어지지 않게. */
+    @Test
+    fun decodeSwitchTriggers_malformedLines_areSkipped() {
+        val raw = "not_a_valid_line\n2000\tSPACE\nabc\tSPACE"
+        val decoded = Prefs.decodeSwitchTriggers(raw)
+        assertEquals(listOf(Prefs.SwitchTrigger(2000L, "SPACE")), decoded)
+    }
+
+    @Test
+    fun encodeSwitchTriggers_empty_returnsEmptyString() {
+        assertEquals("", Prefs.encodeSwitchTriggers(emptyList()))
+    }
 }

@@ -157,7 +157,7 @@ class Prefs(context: Context) {
 
     // ---- 추가 기능 3: 전환 원인 진단 ----
     /**
-     * ON 이면 실제 언어 전환이 감지된 시점에 최근 눌린 물리 키 조합을 [lastSwitchTriggerKeys] 로
+     * ON 이면 실제 언어 전환이 감지된 시점에 최근 눌린 물리 키 조합을 [recordSwitchTrigger] 로 이력에
      * 남긴다 — One UI 물리 키보드 설정에 숨어 있는 "언어 전환 바로가기"처럼 원인 모를 자동 전환을
      * 사용자가 직접 찾아낼 수 있게(2026-09 추가). 기본 OFF: 켜져 있으면 이 기능과 무관하게 모든
      * 물리 키가 시스템→앱 필터를 한 번 더 거쳐야 해서(`FLAG_REQUEST_FILTER_KEY_EVENTS`, 키당
@@ -168,18 +168,25 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_DIAGNOSTIC_KEY_LOGGING, false)
         set(v) = sp.edit().putBoolean(KEY_DIAGNOSTIC_KEY_LOGGING, v).apply()
 
-    /** 마지막으로 캡처된 전환 직전 키 조합(예: "SHIFT_LEFT + SPACE"). 없으면 빈 문자열. */
-    var lastSwitchTriggerKeys: String
-        get() = sp.getString(KEY_LAST_TRIGGER_KEYS, "") ?: ""
-        set(v) = sp.edit().putString(KEY_LAST_TRIGGER_KEYS, v).apply()
+    /** 전환 원인 진단 한 건 — 캡처 시각(epoch ms) + 그 순간 눌려 있던 키 조합("" 이면 못 찾음). */
+    data class SwitchTrigger(val atMillis: Long, val keys: String)
 
-    /** [lastSwitchTriggerKeys] 를 캡처한 시각(epoch ms, 화면 표시용). 0 이면 아직 캡처된 적 없음. */
-    var lastSwitchTriggerAt: Long
-        get() = sp.getLong(KEY_LAST_TRIGGER_AT, 0L)
-        set(v) = sp.edit().putLong(KEY_LAST_TRIGGER_AT, v).apply()
+    /**
+     * 최근 캡처된 전환 이력, **최신이 맨 앞**, 최대 [MAX_SWITCH_TRIGGER_HISTORY]건(2026-09: 1건→10건
+     * 확장 — 전환이 반복될 때마다 매번 덮어써 직전 것만 남던 걸, 여러 번의 후보를 나란히 비교해
+     * "매번 공통으로 뜨는 키"를 사람이 직접 찾을 수 있게 했다). 비어 있으면 한 번도 캡처된 적 없음.
+     */
+    var lastSwitchTriggers: List<SwitchTrigger>
+        get() = decodeSwitchTriggers(sp.getString(KEY_LAST_TRIGGER_HISTORY, null))
+        private set(v) = sp.edit().putString(KEY_LAST_TRIGGER_HISTORY, encodeSwitchTriggers(v)).apply()
 
-    fun clearLastSwitchTrigger() =
-        sp.edit().remove(KEY_LAST_TRIGGER_KEYS).remove(KEY_LAST_TRIGGER_AT).apply()
+    /** 새 캡처 1건을 이력 맨 앞에 추가하고 [MAX_SWITCH_TRIGGER_HISTORY] 건으로 자른다. */
+    fun recordSwitchTrigger(keys: String) {
+        lastSwitchTriggers = (listOf(SwitchTrigger(System.currentTimeMillis(), keys)) + lastSwitchTriggers)
+            .take(MAX_SWITCH_TRIGGER_HISTORY)
+    }
+
+    fun clearLastSwitchTrigger() = sp.edit().remove(KEY_LAST_TRIGGER_HISTORY).apply()
 
     // ---- 플로팅 메뉴(배지 탭 래디얼 메뉴) ----
     /**
@@ -431,8 +438,28 @@ class Prefs(context: Context) {
         const val KEY_KEYBOARD_CONNECT_NOTIFY = "keyboard_connect_notify"
         const val KEY_DIAGNOSTIC_PAUSED_BY_TOUCH_EXCLUDE = "diagnostic_paused_by_touch_exclude"
         const val KEY_DIAGNOSTIC_KEY_LOGGING = "diagnostic_key_logging"
-        const val KEY_LAST_TRIGGER_KEYS = "last_switch_trigger_keys"
-        const val KEY_LAST_TRIGGER_AT = "last_switch_trigger_at"
+        const val KEY_LAST_TRIGGER_HISTORY = "last_switch_trigger_history"
+
+        /** [Prefs.lastSwitchTriggers] 가 기억하는 최대 건수. */
+        const val MAX_SWITCH_TRIGGER_HISTORY = 10
+
+        /**
+         * [SwitchTrigger] 목록 인코딩 — 한 줄에 하나, "epochMs\tkeys"(keys 는 비어도 됨). 순수 함수라
+         * JVM 테스트 대상([PrefsTest]). 키 조합 문자열은 [KeyTriggerDiagnostics.describe] 가 만드는
+         * "SHIFT_LEFT + SPACE" 형태(영문 대문자·밑줄·공백·플러스)뿐이라 탭/개행과 절대 충돌하지 않는다.
+         */
+        fun encodeSwitchTriggers(list: List<SwitchTrigger>): String =
+            list.joinToString("\n") { "${it.atMillis}\t${it.keys}" }
+
+        fun decodeSwitchTriggers(raw: String?): List<SwitchTrigger> {
+            if (raw.isNullOrBlank()) return emptyList()
+            return raw.split("\n").mapNotNull { line ->
+                val tab = line.indexOf('\t')
+                if (tab < 0) return@mapNotNull null
+                val at = line.substring(0, tab).toLongOrNull() ?: return@mapNotNull null
+                SwitchTrigger(at, line.substring(tab + 1))
+            }
+        }
         const val KEY_RADIAL_REDUCE_MOTION = "radial_reduce_motion"
         const val KEY_QUICK_MENU_ORDER = "quick_menu_order"
         const val KEY_BADGE_TAP_ACTION = "badge_tap_action"

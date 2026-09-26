@@ -642,19 +642,20 @@ class LangSenseAccessibilityService : AccessibilityService(),
     }
 
     /**
-     * 언어 전환이 감지된 시점의 최근 키 조합을 [Prefs.lastSwitchTriggerKeys] 에 남긴다. 감지된 키가
-     * 없으면(시스템이 이 서비스보다 먼저 키를 가로챘거나, 키 없이 소프트웨어적으로 전환된 경우 등)
-     * **빈 문자열을 그대로 저장한다** — "빈 결과"도 유의미한 진단 정보이지만, 그 뜻을 사람이 읽을
-     * 안내 문구로 바꾸는 건 데이터가 아니라 화면(`SettingsActivity.refreshDiagnosticResult`)의
-     * 몫이다. 여기서 문구까지 박아 넣으면 "값이 없다"와 "값이 이 특정 문장이다"를 구분할 수 없어,
-     * 나중에 문구를 다듬거나 다른 화면에서 다르게 보여주고 싶을 때 저장된 과거 값까지 꼬인다.
+     * 언어 전환이 감지된 시점의 최근 키 조합을 [Prefs.recordSwitchTrigger] 로 이력에 남긴다(최신이
+     * 맨 앞, 최대 [Prefs.MAX_SWITCH_TRIGGER_HISTORY]건 — 2026-09: 마지막 1건만 남기던 걸 이력으로
+     * 확장, 전환이 반복될 때 후보를 나란히 비교할 수 있게). 감지된 키가 없으면(시스템이 이 서비스
+     * 보다 먼저 키를 가로챘거나, 키 없이 소프트웨어적으로 전환된 경우 등) **빈 문자열을 그대로
+     * 기록한다** — "빈 결과"도 유의미한 진단 정보이지만, 그 뜻을 사람이 읽을 안내 문구로 바꾸는 건
+     * 데이터가 아니라 화면(`SettingsActivity.refreshDiagnosticResult`)의 몫이다. 여기서 문구까지
+     * 박아 넣으면 "값이 없다"와 "값이 이 특정 문장이다"를 구분할 수 없어, 나중에 문구를 다듬거나
+     * 다른 화면에서 다르게 보여주고 싶을 때 저장된 과거 값까지 꼬인다.
      */
     private fun captureDiagnosticTrigger() {
         val names = KeyTriggerDiagnostics.recentKeyNames(
             diagKeyCodes, diagKeyAtUptime, diagKeyWriteIndex, SystemClock.uptimeMillis()
         ) { code -> KeyEvent.keyCodeToString(code).removePrefix("KEYCODE_") }
-        prefs.lastSwitchTriggerKeys = KeyTriggerDiagnostics.describe(names) ?: ""
-        prefs.lastSwitchTriggerAt = System.currentTimeMillis()
+        prefs.recordSwitchTrigger(KeyTriggerDiagnostics.describe(names) ?: "")
     }
 
     // ---------------------------------------------------------------------
