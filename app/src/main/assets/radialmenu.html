@@ -531,22 +531,33 @@ body.reduce-motion .orb {
      긴 호 하나로만 이어지고, 1개면 정면이 아니라 왼쪽 위(250°)를 가리켰다. 5개일 때는
      250→110 그대로라 원본 지오메트리와 동일하다. */
   const ARC_STEP = (ARC_END - ARC_START) / (MAX_N - 1);
-  function computePositions(tiltDeg, count) {
+  /* 인접 오브 중심 거리(원본 R=180·35° 기준 ≈108px, 오브 96px 사이 틈 ≈12px).
+     [앱 모드 추가] 배지가 화면 구석이면 팬이 쓸 수 있는 방향이 90° 남짓뿐인데 5개 팬은 140° 라
+     어떤 기울기로도 안 들어간다. 그때 선을 늘려(반지름↑) 이 거리를 유지한 채 각도를 좁힌다 —
+     오브끼리 겹치지 않으면서 팬 전체 각도가 줄어 배지 바로 옆에서 열 수 있다. */
+  const ORB_CHORD = 2 * R * Math.sin(ARC_STEP * Math.PI / 360);
+  function stepFor(radius) {
+    return radius === R ? ARC_STEP : 2 * Math.asin(ORB_CHORD / (2 * radius)) * 180 / Math.PI;
+  }
+  function computePositions(tiltDeg, count, radius) {
     const n = count || N;
-    const top = 180 + ARC_STEP * (n - 1) / 2;
+    const r = radius || R;
+    const step = stepFor(r);
+    const top = 180 + step * (n - 1) / 2;
     return LABELS.slice(0, n).map((_, i) => {
-      const deg = top - ARC_STEP * i + tiltDeg; // n=5: 250 -> 110 (+tilt)
+      const deg = top - step * i + tiltDeg; // n=5, r=R: 250 -> 110 (+tilt)
       const rad = deg * Math.PI / 180;
       return {
-        x: BX + R * Math.cos(rad),
-        y: BY + R * Math.sin(rad),
+        x: BX + r * Math.cos(rad),
+        y: BY + r * Math.sin(rad),
         size: (i === 0 || i === n - 1) ? 88 : 96   // ends 88px, middle 96px
       };
     });
   }
   let positions = computePositions(0, N);
-  /* 현재 적용된 틸트. KikiInit 이 여러 번 와도(창 재사용) 값이 달라질 때만 재배치한다. */
+  /* 현재 적용된 틸트/반지름. KikiInit 이 여러 번 와도(창 재사용) 값이 달라질 때만 재배치한다. */
   let currentTilt = 0;
+  let currentRadius = R;
 
   /* ── SVG lines: spokes (badge->orb) + arc (orb->orb) ──── */
   const linesGlow  = document.getElementById('linesGlow');
@@ -960,7 +971,7 @@ body.reduce-motion .orb {
         LABELS = cfg.labels.slice(0, newCount);
         N = newCount;
         if (countChanged) {
-          positions = computePositions(currentTilt, N);
+          positions = computePositions(currentTilt, N, currentRadius);
           buildOrbs();
           buildLines();
           if (started && !startedReduce) applyLineBreath(false);
@@ -1000,24 +1011,18 @@ body.reduce-motion .orb {
         // 화면이 좁아 하한>상한이 되면(어느 쪽에도 못 들어감) 중앙으로 축퇴.
         const clamp = (v, lo, hi) => hi < lo ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v));
 
-        // ⚠️ 배지가 화면 모서리(특히 구석)에 있으면 팬이 뻗을 공간이 부족해, 예전엔 이 클램프가
-        // ax/ay 를 실제 배지 위치에서 수백 px 까지 안쪽으로 밀어 넣었다 — 그러면 메뉴가 열리는
-        // 지점이 화면에 보이는 진짜 배지와 시각적으로 어긋나(구석 실측: 최대 219px), "배지를
-        // 끝으로 옮기면 특정 자리에서만 제대로 눌리는 것처럼" 느껴졌다(사용자 제보, 2026-09).
-        // 팬 공간이 여유 있을 땐 배지 위치를 옮기는 대신 팬 쪽이 양보해(오브가 화면 가장자리에
-        // 조금 더 붙는 정도) 실제 배지와 정확히 맞물리게 한다("선이 길어져도 좋으니 그 정도까지
-        // 만" 이라는 요청대로 이 값을 한도로 둔다 — 배지 한 변 길이(중간 크기 기준) 정도).
-        // ⚠️ 이 한도는 "가능할 때만" 지킨다: 무조건 적용하면 오브가 화면 밖으로 완전히 밀려나
-        // 아예 눌리지 않는 자리가 생길 수 있다(팬이 화면보다 큰 극단적 구석 — 실측으로 발견,
-        // 안전장치 없이 배포했으면 새 회귀였다). 그래서 한도를 지켜도 팬 전체가 화면 안에 들어오는
-        // 경우에만 쓰고, 안 들어오면 (구석에 몰린 항목이 아예 안 보이는 것보다는 배지에서 좀 멀어
-        // 보이는 쪽이 낫다는 원칙으로) 기존처럼 화면 안에 다 들어오는 값으로 되돌아간다 — "안전(전부
-        // 누를 수 있음)"이 "배지와의 거리"보다 항상 우선한다.
-        const MAX_ANCHOR_DRIFT = 28;
+        // ⚠️ 배지가 화면 구석이면 팬(140°)이 들어갈 방향이 없어, 아래 클램프가 팬을 화면 안으로
+        // 밀면서 팬의 원점이 실제 배지에서 최대 ~220px 떨어졌다(실측) — "배지를 끝으로 옮기면
+        // 엉뚱한 자리에서 열린다"는 사용자 제보(2026-09). 요청("선이 길어져도 좋으니 과하지 않게
+        // 늘려서라도")대로, 반지름(선 길이)을 최대 RADIUS_SCALES 까지 늘리고 각도를 좁힌 후보도
+        // 함께 평가한다. 선을 늘리는 데엔 RADIUS_COST(px당) 비용을 매겨, 배지 이탈을 그만큼 이상
+        // 줄일 때만 늘어난다 — 배지에 여유가 있는 평소엔 반지름·틸트 모두 원본 그대로.
+        const RADIUS_SCALES = [1, 1.25, 1.5];
+        const RADIUS_COST = 0.6;
 
-        // 후보 틸트의 배치 결과: 팬 실측 범위 → 미러 여부 → 클램프된(안전 우선, 여유 있으면 한도 내) 앵커 → 배지 이탈 거리.
-        function evaluate(tilt) {
-          const pts = computePositions(tilt, N);
+        // 후보(틸트, 반지름)의 배치 결과: 팬 실측 범위 → 미러 여부 → 클램프된 앵커 → 배지 이탈 거리.
+        function evaluate(tilt, radius) {
+          const pts = computePositions(tilt, N, radius);
           let minX = BX, maxX = BX, minY = BY, maxY = BY;
           pts.forEach(p => {
             const hw = p.size / 2;
@@ -1031,41 +1036,38 @@ body.reduce-motion .orb {
           const mirror = cfg.anchorX < extLeft && vw - cfg.anchorX > cfg.anchorX;
           const axLo = mirror ? extRight : extLeft, axHi = mirror ? vw - extLeft : vw - extRight;
           const ayLo = extUp, ayHi = vh - extDown;
-          const idealAx = clamp(cfg.anchorX, axLo, axHi);
-          const idealAy = clamp(cfg.anchorY, ayLo, ayHi);
-          // 한도 내로 당긴 값이 여전히 "팬 전체가 화면 안" 범위([axLo,axHi]/[ayLo,ayHi]) 안에 있을
-          // 때만 채택한다 — 그 범위를 벗어나면(팬이 너무 커서 한도 안에서 다 못 들어감) 오브가
-          // 화면 밖으로 밀려나므로, 안전한 idealAx/idealAy 로 되돌아간다.
-          const boundedAx = clamp(idealAx, cfg.anchorX - MAX_ANCHOR_DRIFT, cfg.anchorX + MAX_ANCHOR_DRIFT);
-          const boundedAy = clamp(idealAy, cfg.anchorY - MAX_ANCHOR_DRIFT, cfg.anchorY + MAX_ANCHOR_DRIFT);
-          const ax = (boundedAx >= axLo && boundedAx <= axHi) ? boundedAx : idealAx;
-          const ay = (boundedAy >= ayLo && boundedAy <= ayHi) ? boundedAy : idealAy;
-          // 팬이 화면보다 커서 어떻게 놓아도 잘리는 양(가로 모드에서 세로가 특히 문제) + 위 한도
-          // 때문에 이상적인 위치까지 못 간 나머지(둘 다 "잘림"의 일종이라 overflow 에 합친다).
+          const ax = clamp(cfg.anchorX, axLo, axHi);
+          const ay = clamp(cfg.anchorY, ayLo, ayHi);
+          // 팬이 화면보다 커서 어떻게 놓아도 잘리는 양(가로 모드에서 세로가 특히 문제).
           const overflow = Math.max(0, (extUp + extDown) - vh) +
-                           Math.max(0, (extLeft + extRight) - vw) +
-                           Math.abs(idealAx - ax) + Math.abs(idealAy - ay);
-          // 점수(작을수록 좋음) = 배지 이탈 거리 + 잘림량. 잘림은 항목을 아예 못 누르게 하므로
-          // 이탈보다 무겁게 친다 — 축퇴 클램프가 "이탈 0"으로 보여 잘린 배치를 고르는 걸 막는다.
-          const score = Math.abs(ax - cfg.anchorX) + Math.abs(ay - cfg.anchorY) + overflow * 4;
-          return { tilt, pts, mirror, ax, ay, score, overflow };
+                           Math.max(0, (extLeft + extRight) - vw);
+          // 점수(작을수록 좋음) = 배지 이탈 거리 + 잘림량×4 + 선 연장 비용. 잘림은 항목을 아예 못
+          // 누르게 하므로 이탈보다 무겁게 친다 — 축퇴 클램프가 "이탈 0"으로 보여 잘린 배치를 고르는
+          // 걸 막는다.
+          const score = Math.abs(ax - cfg.anchorX) + Math.abs(ay - cfg.anchorY) + overflow * 4 +
+                        (radius - R) * RADIUS_COST;
+          return { tilt, radius, pts, mirror, ax, ay, score, overflow };
         }
 
-        let best = evaluate(0);
-        // 세로 클램프가 발동했거나(=배지에서 위/아래로 밀림) 팬이 잘릴 때만 틸트를 시도한다.
+        let best = evaluate(0, R);
+        // 클램프가 발동했거나(=배지에서 밀림) 팬이 잘릴 때만 다른 배치를 시도한다.
         // 배지가 화면 위쪽이면 음수 틸트(팬이 아래로), 아래쪽이면 양수 틸트(팬이 위로).
-        if (best.overflow > 0 || Math.abs(best.ay - cfg.anchorY) > 1) {
+        // 작은 반지름·작은 틸트부터 훑고 실질 개선(0.5 초과)일 때만 바꿔, 비기면 원본에 가까운 쪽이 남는다.
+        if (best.overflow > 0 || Math.abs(best.ax - cfg.anchorX) > 1 || Math.abs(best.ay - cfg.anchorY) > 1) {
           const sign = cfg.anchorY < vh / 2 ? -1 : 1;
-          for (const t of [sign * 35, sign * 70]) {
-            const cand = evaluate(t);
-            if (cand.score < best.score - 0.5) best = cand; // 실질 개선일 때만(작은 틸트 우선)
+          for (const s of RADIUS_SCALES) {
+            for (let t = 0; t <= 90; t += 10) {
+              const cand = evaluate(sign * t, R * s);
+              if (cand.score < best.score - 0.5) best = cand;
+            }
           }
         }
-        // countChanged 면 위(라벨 처리)에서 이미 새 개수로 한 번 재빌드했지만, 틸트 후보 평가는
+        // countChanged 면 위(라벨 처리)에서 이미 새 개수로 한 번 재빌드했지만, 후보 평가는
         // 그 개수로 다시 계산된 최신 좌표(best.pts)이므로 한 번 더 반영해도 안전(순수 재구성).
-        if (best.tilt !== currentTilt || countChanged) {
+        if (best.tilt !== currentTilt || best.radius !== currentRadius || countChanged) {
           positions = best.pts;
           currentTilt = best.tilt;
+          currentRadius = best.radius;
           buildLines();
           applyOrbPositions();
           // 이미 시작된 뒤의 재배치(재오픈)면 새 선에도 호흡을 다시 붙인다(buildLines 가 비웠으므로).
