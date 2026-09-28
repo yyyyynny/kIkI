@@ -61,7 +61,7 @@
     <string name="settings_replace">한영타 교체</string>
     <string name="settings_replace_enabled">한영타 교체 켜기</string>
     <string name="settings_replace_confidence">신뢰도 임계값(%)</string>
-    <string name="settings_replace_confidence_desc">영문을 한글 자판 배열로 바꿨을 때 올바른 한글 음절로 조합되는 비율이에요. 값이 높을수록 더 확실한 한영타에만 교체 버튼을 띄웁니다. 예를 들어 dkssud 는 안녕 으로 잘 조합돼 높게, 실제 영어 단어는 조합이 깨져 낮게 나옵니다.</string>
+    <string name="settings_replace_confidence_desc">선택한 영문이 "한글 자판으로 쳐야 할 걸 영문으로 친 것"일 확신도예요. 한국어로 읽었을 때와 영어 단어로 읽었을 때 어느 쪽이 더 자연스러운지 비교해 정합니다. 값이 높을수록 더 확실한 한영타에만 교체 버튼을 띄웁니다. 예를 들어 dkssud(안녕)는 높게, work 처럼 한글로도 조합되지만(재가) 실제 영어 단어인 것은 낮게 나옵니다.</string>
     <string name="settings_color_palette_open">팔레트</string>
     <string name="settings_color_palette_close">팔레트 닫기</string>
     <string name="settings_color_hex">색상코드(#RRGGBB)</string>
@@ -85,9 +85,11 @@
     <string name="settings_diagnostic">전환 원인 진단</string>
     <string name="settings_diagnostic_desc">원인 모를 한/영 자동 전환이 반복될 때 켜보세요. 실제 전환이 감지된 순간 직전에 눌려 있던 물리 키를 기록해 아래에 보여줍니다(예: 삼성 태블릿의 "물리적 키보드 → 언어 전환 바로가기" 설정처럼, 키보드가 아니라 One UI 자체 단축키가 범인인 경우가 많아요). 여러 키가 함께 뜨면 그 순간 타이핑 중이던 다른 키가 섞인 것일 수 있어요 — 그중 의심 가는 키를 하나씩 눌러보며 범인을 좁혀보세요. 다만 시스템이 그 키를 이 앱보다 먼저 가로채면 잡히지 않을 수도 있고, 평소 켜두면 배터리를 조금 더 씁니다 — 원인을 찾았으면 다시 꺼주세요.</string>
     <string name="settings_diagnostic_enabled">전환 키 기록 켜기</string>
-    <string name="settings_diagnostic_result_label">최근 감지: %1$s · %2$s</string>
+    <string name="settings_diagnostic_result_header">최근 전환 기록 (최신순, 최대 %1$d건)</string>
+    <string name="settings_diagnostic_result_label">• %1$s — %2$s</string>
     <string name="settings_diagnostic_result_empty">아직 기록된 전환이 없어요</string>
-    <string name="settings_diagnostic_result_unknown">최근 전환(%1$s): 어떤 키가 원인인지 찾지 못했어요 — 시스템이 이 앱보다 먼저 가로챘을 수 있어요</string>
+    <string name="settings_diagnostic_result_unknown">• %1$s — 원인 키를 찾지 못함</string>
+    <string name="settings_diagnostic_result_unknown_note">원인 키를 찾지 못함: 시스템이 이 앱보다 먼저 키를 가로챘을 수 있어요.</string>
     <string name="settings_diagnostic_clear">지우기</string>
 
     <!-- 플로팅 메뉴(배지 탭 래디얼 메뉴) -->

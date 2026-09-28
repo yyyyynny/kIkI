@@ -491,8 +491,9 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
   `CORRELATE_WINDOW_MS`(2초 — detector 자체의 신호 합치기+백오프+역행 재확인 지연을 넉넉히
   덮는 값) 안에 눌렸던 키들을 순서 보존·중복 제거해 사람이 읽을 수 있는 이름으로 합치고
   (`KeyEvent.keyCodeToString` → `KEYCODE_` 접두사 제거, 예: `"SHIFT_LEFT + SPACE"`),
-  `Prefs.recordSwitchTrigger()`로 저장한다. 설정 화면이 이 값을 "최근 감지: {키} · {상대 시각}"
-  형태로 최신순 최대 `Prefs.MAX_SWITCH_TRIGGER_HISTORY`(**10**건) 목록으로 보여주고, 지우기
+  `Prefs.recordSwitchTrigger()`로 저장한다. 설정 화면이 머리말 1줄 + 항목마다 "• {상대 시각} —
+  {키}" 한 줄로 최신순 최대 `Prefs.MAX_SWITCH_TRIGGER_HISTORY`(**10**건)를 보여주고("원인 키를
+  찾지 못함" 뜻풀이는 끝에 한 번만 — 건마다 긴 문장을 반복하면 10건이 한 문단이 된다), 지우기
   버튼으로 전체 리셋할 수 있다(2026-09: 1건 단일 슬롯 → 이력 리스트로 확장 — 한 번의 확인
   세션에서 여러 전환을 유발해도 앞선 것들이 다음 캡처에 덮여 사라지지 않게 함).
   `Prefs.lastSwitchTriggers`(`List<SwitchTrigger>`)에 최신이 앞에 오도록 저장하며, 기존
@@ -683,6 +684,12 @@ SettingsActivity  — 2단(목록+상세) IA, 2026-09 재구성
       태블릿 가로(상세만 1037dp)에서 한 줄이 화면 끝까지 늘어나지 않게 가운데로 모은다
       (온보딩 `MainActivity.capContentWidth` 도 같은 상한을 쓴다). 접기/펴기·분할화면 크기 변경은 `configChanges` 를 선언하지
       않아 액티비티 재생성으로 처리되고, `onSaveInstanceState` 가 보던 그룹·검색어를 유지한다.
+      ⚠️ **초기 포커스는 루트가 잡는다(2026-09 발견·수정)**: 화면 루트가 `isFocusableInTouchMode`
+      + `requestFocus()`, 매니페스트는 `windowSoftInputMode="stateHidden"`. 예전엔 첫 입력칸(2단은
+      검색칸, 1단 상세는 색 코드 칸)이 포커스를 가져가, 대화면(태블릿)에서는 화면 키보드가 자동으로
+      떠 화면 절반을 덮고 외장 키보드로 친 글자가 색 코드 칸에 들어갔다(Robolectric 으로 플래시·배지
+      그룹의 EditText 포커스 확인). 루트엔 `defaultFocusHighlightEnabled=false`(외장 키보드 모드에서
+      화면 전체 하이라이트 방지).
 
 ThemeManager — 앱 화면 테마 7종 적용(setDefaultNightMode + setTheme 두 축, 사용자 지정은 런타임 팔레트)
 UiDrawables  — 공용 배경(카드·필·칩·버튼)을 코드로 생성 + XML 역할 태그 바인딩(사용자 지정 색이 닿게)

@@ -171,6 +171,13 @@ class SettingsActivity : AppCompatActivity() {
 
         val screen = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            // 루트가 초기 포커스를 먼저 잡는다 — 아니면 첫 입력칸(2단은 검색칸, 1단 상세는 색 코드
+            // 칸)이 포커스를 가져가, 태블릿(대화면)에서는 화면 키보드가 자동으로 떠 화면 절반을
+            // 덮고, 외장 키보드로 친 글자는 색 코드 칸으로 들어갔다. 그룹을 바꿔 포커스된 입력칸이
+            // 사라질 때도 포커스가 다음 입력칸이 아니라 이 루트로 돌아온다.
+            isFocusableInTouchMode = true
+            // 외장 키보드(비터치 모드)에서 포커스된 루트에 기본 하이라이트가 화면 전체로 칠해지지 않게.
+            defaultFocusHighlightEnabled = false
             addView(topBar())
             addView(
                 body,
@@ -178,6 +185,7 @@ class SettingsActivity : AppCompatActivity() {
             )
         }
         setContentView(screen)
+        screen.requestFocus()
         ThemeManager.applyWindow(this)
 
         capDetailWidth()
@@ -1243,9 +1251,21 @@ class SettingsActivity : AppCompatActivity() {
         diagnosticResultText.text = if (history.isEmpty()) {
             getString(R.string.settings_diagnostic_result_empty)
         } else {
-            history.joinToString("\n") { t ->
-                if (t.keys.isEmpty()) getString(R.string.settings_diagnostic_result_unknown, relativeTime(t.atMillis))
-                else getString(R.string.settings_diagnostic_result_label, t.keys, relativeTime(t.atMillis))
+            // 10건이 쌓여도 읽히게: 머리말 1줄 + 항목마다 "• 시각 — 키" 한 줄. "못 찾음"의 뜻풀이는
+            // 항목마다 반복하지 않고 끝에 한 번만 붙인다(예전엔 긴 문장이 건마다 반복돼 문단이 됐다).
+            buildString {
+                append(getString(R.string.settings_diagnostic_result_header, Prefs.MAX_SWITCH_TRIGGER_HISTORY))
+                history.forEach { t ->
+                    append('\n')
+                    append(
+                        if (t.keys.isEmpty()) getString(R.string.settings_diagnostic_result_unknown, relativeTime(t.atMillis))
+                        else getString(R.string.settings_diagnostic_result_label, relativeTime(t.atMillis), t.keys)
+                    )
+                }
+                if (history.any { it.keys.isEmpty() }) {
+                    append("\n\n")
+                    append(getString(R.string.settings_diagnostic_result_unknown_note))
+                }
             }
         }
     }
