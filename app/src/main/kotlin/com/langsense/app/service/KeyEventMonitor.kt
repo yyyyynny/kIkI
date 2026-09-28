@@ -132,16 +132,18 @@ class KeyEventMonitor(
     }
 
     /**
-     * 실제 문자를 만들어내는 키만 카운트.
-     * 제외: Shift/Ctrl/Alt/Meta 등 모디파이어, Ctrl/Alt/Meta 조합 단축키, dead key.
+     * 실제 글자를 만들어내는 키만 카운트.
+     * 제외: Shift/Ctrl/Alt/Meta 등 모디파이어, Ctrl/Alt/Meta 조합 단축키, 공백·제어 문자 키.
      */
     private fun isTypingKey(event: KeyEvent): Boolean {
         if (KeyEvent.isModifierKey(event.keyCode)) return false
         // Ctrl/Alt/Meta 가 눌린 조합은 단축키이지 타이핑이 아니다.
         if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed) return false
-        // unicodeChar != 0 이면 문자 생성 키 (스페이스 포함). 조합(dead key) 플래그는 제외.
         val unicode = event.unicodeChar and KeyCharacterMap.COMBINING_ACCENT.inv()
-        return unicode != 0
+        // ⚠️ 스페이스·엔터·탭도 unicodeChar 가 0 이 아니지만, 입력칸이 없을 땐 스크롤·링크 실행·
+        // 포커스 이동 같은 탐색 키다 — 셌더니 웹페이지를 스페이스로 스크롤만 해도 경고가 떴다.
+        // 입력칸 없이 흘러가는 진짜 오입력은 글자 키로 충분히 잡힌다.
+        return unicode > ' '.code
     }
 
     companion object {

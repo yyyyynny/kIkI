@@ -493,9 +493,11 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         val e = selEnd.coerceIn(s, fullText.length)
         val original = fullText.substring(s, e)
 
-        // 노드가 갱신되었을 수 있으므로 최신 텍스트를 우선 사용(없으면 캡처된 fullText).
-        // 칩이 떠 있던 최대 2초 사이 창이 사라졌으면 노드가 stale 이라 접근 자체가 던질 수 있다.
-        val liveText = runCatching { node.text?.toString() }.getOrNull() ?: fullText
+        // ⚠️ node 는 이벤트 시점의 스냅샷이라 refresh() 없이 읽으면 칩이 떠 있던 최대 2초 사이
+        // 사용자가 친 글자가 안 보이고, ACTION_SET_TEXT 가 옛 전체 텍스트로 덮어써 그 글자를 지운다.
+        // refresh 실패(창·뷰가 사라짐)나 빈 텍스트면 엉뚱하게 덮어쓰지 않도록 교체를 포기한다.
+        if (!runCatching { node.refresh() }.getOrDefault(false)) return
+        val liveText = runCatching { node.text?.toString() }.getOrNull() ?: return
         val (es, ee) = resolveReplaceRange(liveText, s, e, original) ?: return
         val newText = liveText.substring(0, es) + converted + liveText.substring(ee)
 
