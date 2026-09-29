@@ -30,6 +30,7 @@ import com.langsense.app.R
 import com.langsense.app.util.ColorMath
 import com.langsense.app.util.ImeLocaleParser
 import com.langsense.app.util.Prefs
+import com.langsense.app.util.SettingsSearch
 import com.langsense.app.util.ThemeManager
 import com.langsense.app.util.UiPalette
 import com.langsense.app.util.themeColor
@@ -358,13 +359,21 @@ class SettingsActivity : AppCompatActivity() {
             groupDefs().forEach { railList.addView(groupRow(it)) }
             return
         }
-        val hits = searchIndex().filter { it.matches(q) }
-        if (hits.isEmpty()) {
+        val result = SettingsSearch.search(searchIndex(), q)
+        if (result.hits.isEmpty()) {
             railList.addView(descRow(getString(R.string.settings_search_empty, q)))
             return
         }
-        railList.addView(subsectionTitleText(getString(R.string.settings_search_result, hits.size)))
-        hits.forEach { hit -> railList.addView(searchResultRow(hit)) }
+        railList.addView(subsectionTitleText(getString(R.string.settings_search_result, result.hits.size)))
+        // 보정 검색이면 무엇으로 찾았는지 먼저 알린다 — 조용히 다른 결과를 보여 주면 혼란스럽다.
+        when (result.mode) {
+            SettingsSearch.Mode.KEYBOARD_FIX ->
+                railList.addView(descRow(getString(R.string.settings_search_fixed, q, result.corrected)))
+            SettingsSearch.Mode.TYPO -> railList.addView(descRow(getString(R.string.settings_search_typo)))
+            SettingsSearch.Mode.DIRECT -> Unit
+        }
+        val highlight = result.corrected ?: q
+        result.hits.forEach { hit -> railList.addView(searchResultRow(hit, highlight)) }
     }
 
     /** 그룹 한 줄: 아이콘 + 이름 + 현재 상태 요약(+ 아직 안 본 새 기능이면 NEW). */
@@ -446,26 +455,110 @@ class SettingsActivity : AppCompatActivity() {
         ).also { it.marginStart = dp(6) }
     }
 
-    private fun searchResultRow(hit: SearchEntry): View {
+    /** 검색 결과 한 줄: 이름(일치 부분 강조) + 경로 + 태그로 걸렸으면 그 태그. 누르면 그 설정 줄로 간다. */
+    private fun searchResultRow(hit: SettingsSearch.Hit, query: String): View {
+        val item = hit.item
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(11), dp(9), dp(11), dp(9))
             isClickable = true
             isFocusable = true
             background = rippleBoundedBackground()
-            setOnClickListener { showGroup(hit.group) }
+            setOnClickListener { showGroup(item.group); revealAnchor(item.anchors) }
         }
         row.addView(TextView(this).apply {
-            text = hit.name
+            text = highlightTerms(item.name, query)
             textSize = 14f
             setTextColor(themeColor(R.attr.uiOnSurface))
         })
         row.addView(TextView(this).apply {
-            text = hit.path
+            text = item.path
             textSize = 11.5f
             setTextColor(themeColor(R.attr.uiOnSurfaceMuted))
         })
+        hit.matchedTag?.let { tag ->
+            row.addView(TextView(this).apply {
+                text = getString(R.string.settings_search_tag, tag)
+                textSize = 11f
+                setTextColor(themeColor(R.attr.uiOnAccentContainer))
+                background = UiDrawables.pill(this@SettingsActivity, themeColor(R.attr.uiAccentContainer))
+                setPadding(dp(7), dp(1), dp(7), dp(2))
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                ).also { it.topMargin = dp(4) }
+            })
+        }
         return row
+    }
+
+    /** [text] 안에서 검색 단어와 글자 그대로 겹치는 부분을 강조색 굵게(띄어쓰기·대소문자 무시). */
+    private fun highlightTerms(text: String, query: String): CharSequence {
+        val out = android.text.SpannableString(text)
+        val accent = themeColor(R.attr.uiAccent)
+        query.split(Regex("\\s+")).map { SettingsSearch.normalize(it) }.filter { it.isNotEmpty() }.forEach { term ->
+            // 원문 인덱스를 보존한 채 공백을 건너뛰며 비교한다.
+            val lower = text.lowercase()
+            var start = 0
+            while (start < lower.length) {
+                var i = start
+                var k = 0
+                while (i < lower.length && k < term.length) {
+                    if (lower[i].isWhitespace()) { if (k == 0) break; i++; continue }
+                    if (lower[i] != term[k]) break
+                    i++; k++
+                }
+                if (k == term.length) {
+                    out.setSpan(android.text.style.ForegroundColorSpan(accent), start, i, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    out.setSpan(android.text.style.StyleSpan(Typeface.BOLD), start, i, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    start = i
+                } else {
+                    start++
+                }
+            }
+        }
+        return out
+    }
+
+    /**
+     * 검색 결과로 들어온 설정 줄을 찾아 보이게 스크롤하고 잠깐 강조한다. [anchors] 는 그 줄에 보이는
+     * 문구 후보(앞에서부터 첫 번째로 찾은 것). 못 찾으면 그룹 맨 위에 그대로 둔다.
+     */
+    private fun revealAnchor(anchors: List<String>) {
+        detailScroll.post {
+            val target = anchors.firstNotNullOfOrNull { findTextView(detailContainer, it) } ?: return@post
+            // 라벨 자체보다 그 설정 줄(라벨의 부모 줄)을 강조해야 스위치·슬라이더까지 한눈에 들어온다.
+            val row = (target.parent as? View)?.takeIf { it !== detailContainer } ?: target
+            var y = 0
+            var v: View = row
+            while (v !== detailContainer) {
+                y += v.top
+                v = v.parent as? View ?: break
+            }
+            detailScroll.smoothScrollTo(0, (y - dp(24)).coerceAtLeast(0))
+            val flash = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(10).toFloat()
+                setColor(themeColor(R.attr.uiAccentContainer))
+                alpha = 0
+            }
+            row.foreground = flash
+            android.animation.ValueAnimator.ofInt(0, 200, 200, 0).apply {
+                duration = 1400
+                addUpdateListener { flash.alpha = it.animatedValue as Int; row.invalidate() }
+                addListener(object : android.animation.AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: android.animation.Animator) { row.foreground = null }
+                })
+                start()
+            }
+        }
+    }
+
+    /** [root] 아래에서 글자가 정확히 [text] 인 첫 TextView(보이는 것만). */
+    private fun findTextView(root: View, text: String): TextView? {
+        if (root.visibility != View.VISIBLE) return null
+        if (root is TextView && root.text?.toString() == text) return root
+        if (root is ViewGroup) for (i in 0 until root.childCount) findTextView(root.getChildAt(i), text)?.let { return it }
+        return null
     }
 
     // ── 우측 상세 ────────────────────────────────────────────────────────────────
@@ -597,15 +690,6 @@ class SettingsActivity : AppCompatActivity() {
         val whatRes: Int,
         val whereRes: Int
     )
-
-    private class SearchEntry(val name: String, val path: String, val group: String, val kw: String) {
-        fun matches(q: String): Boolean {
-            val needle = q.lowercase()
-            return name.lowercase().contains(needle) ||
-                path.lowercase().contains(needle) ||
-                kw.lowercase().contains(needle)
-        }
-    }
 
     private fun onOff(v: Boolean): String =
         getString(if (v) R.string.quick_state_on else R.string.quick_state_off)
@@ -1056,43 +1140,119 @@ class SettingsActivity : AppCompatActivity() {
         else -> R.string.settings_theme_system_desc
     }
 
-    /** 검색 색인 캐시 — 글자를 칠 때마다 25개 항목을 새로 만들 이유가 없다(저사양 원칙). */
-    private var searchIndexCache: List<SearchEntry>? = null
+    /** 검색 색인 캐시 — 글자를 칠 때마다 수십 개 항목을 새로 만들 이유가 없다(저사양 원칙). */
+    private var searchIndexCache: List<SettingsSearch.Item>? = null
 
-    private fun searchIndex(): List<SearchEntry> =
+    private fun searchIndex(): List<SettingsSearch.Item> =
         searchIndexCache ?: buildSearchIndex().also { searchIndexCache = it }
 
-    /** 검색 색인 — 설정 이름·경로·동의어(keyword)를 함께 훑는다. */
-    private fun buildSearchIndex(): List<SearchEntry> {
-        fun e(nameRes: Int, pathRes: Int, group: String, kw: String) =
-            SearchEntry(getString(nameRes), getString(pathRes), group, kw)
+    /**
+     * 검색 색인 — 설정 화면의 모든 설정을 항목마다 **태그 여러 개**와 함께 둔다. 태그는 사용자가 떠올릴
+     * 법한 다른 말(동의어·구어체·영어·증상 표현: "키보드가 자꾸 바뀜", "번쩍임")을 쉼표로 나열한다.
+     * 이름·경로·태그 매칭과 초성·한영타·오타 보정은 [SettingsSearch] 가 한다.
+     * 항목을 추가할 땐 **anchors 에 화면에 실제로 보이는 문구**(스위치·슬라이더 라벨이나 카드 제목)를
+     * 넣어야 결과를 눌렀을 때 그 줄로 스크롤된다(못 찾으면 그룹 맨 위).
+     */
+    private fun buildSearchIndex(): List<SettingsSearch.Item> {
+        fun s(res: Int) = getString(res)
+        fun path(groupRes: Int, cardRes: Int? = null) =
+            if (cardRes == null) s(groupRes) else "${s(groupRes)} › ${s(cardRes)}"
+        fun item(name: String, path: String, group: String, tags: String, vararg anchors: String) =
+            SettingsSearch.Item(
+                name, path, group,
+                tags.split(',').map { it.trim() }.filter { it.isNotEmpty() },
+                if (anchors.isEmpty()) listOf(name) else anchors.toList()
+            )
+        val flash = R.string.settings_group_flash
+        val badge = R.string.settings_group_badge
+        val menu = R.string.settings_group_menu
+        val theme = R.string.settings_group_theme
+        val quickActions = listOf(
+            R.string.quick_app, R.string.quick_settings, R.string.quick_flash, R.string.quick_replace,
+            R.string.quick_badge, R.string.quick_nofocus, R.string.quick_touchkb, R.string.quick_lowspec,
+            R.string.quick_badge_size
+        ).joinToString(",") { s(it) }
         return listOf(
-            e(R.string.settings_flash_enabled, R.string.settings_group_flash, GROUP_FLASH, "번쩍 플래시 전환"),
-            e(R.string.settings_flash_duration, R.string.settings_group_flash, GROUP_FLASH, "속도 시간 빠르게"),
-            e(R.string.settings_flash_count, R.string.settings_group_flash, GROUP_FLASH, "횟수 번"),
-            e(R.string.settings_flash_opacity, R.string.settings_group_flash, GROUP_FLASH, "투명 불투명 알파 흐리게 진하게"),
-            e(R.string.settings_flash_colors, R.string.settings_group_flash, GROUP_FLASH, "색 컬러 빨강 파랑"),
-            e(R.string.settings_languages, R.string.settings_group_flash, GROUP_FLASH, "한국어 영어 언어"),
-            e(R.string.settings_badge_enabled, R.string.settings_group_badge, GROUP_BADGE, "배지 표시"),
-            e(R.string.settings_badge_size, R.string.settings_group_badge, GROUP_BADGE, "크기 소 중 대"),
-            e(R.string.settings_badge_bg_color, R.string.settings_group_badge, GROUP_BADGE, "색 컬러 배경"),
-            e(R.string.settings_badge_bg_opacity, R.string.settings_group_badge, GROUP_BADGE, "투명 불투명 알파"),
-            e(R.string.settings_badge_text_color, R.string.settings_group_badge, GROUP_BADGE, "색 컬러 글씨"),
-            e(R.string.settings_badge_tap, R.string.settings_group_badge, GROUP_BADGE, "탭 눌렀을 때 동작"),
-            e(R.string.settings_quick_menu_order, R.string.settings_group_menu, GROUP_MENU, "퀵메뉴 항목 순서 드래그"),
-            e(R.string.settings_radial_accent_color, R.string.settings_group_menu, GROUP_MENU, "색 컬러 강조"),
-            e(R.string.settings_radial_glow_color, R.string.settings_group_menu, GROUP_MENU, "색 컬러 발광 빛"),
-            e(R.string.settings_radial_reduce_motion, R.string.settings_group_menu, GROUP_MENU, "저사양 움직임 애니메이션"),
-            e(R.string.settings_replace_enabled, R.string.settings_group_replace, GROUP_REPLACE, "한영타 교체 dkssud"),
-            e(R.string.settings_replace_confidence, R.string.settings_group_replace, GROUP_REPLACE, "신뢰도 정확도"),
-            e(R.string.settings_nofocus_enabled, R.string.settings_group_nofocus, GROUP_NOFOCUS, "포커스 경고 선택되지않음"),
-            e(R.string.settings_nofocus_threshold, R.string.settings_group_nofocus, GROUP_NOFOCUS, "임계 횟수"),
-            e(R.string.settings_exclude_touch_kb, R.string.settings_group_keyboard, GROUP_KEYBOARD, "터치 키보드 제외 외장"),
-            e(R.string.settings_keyboard_connect_notify, R.string.settings_group_keyboard, GROUP_KEYBOARD, "블루투스 연결 알림 배터리"),
-            e(R.string.settings_diagnostic_enabled, R.string.settings_group_diag, GROUP_DIAG, "진단 범인 원인 단축키"),
-            e(R.string.settings_diagnostic_pause_with_touch_kb, R.string.settings_group_diag, GROUP_DIAG, "진단 일시정지 터치 키보드"),
-            e(R.string.settings_group_theme, R.string.settings_group_theme, GROUP_THEME, "테마 다크 라이트 베이지 사이버펑크 고대비 색"),
-            e(R.string.settings_theme_custom, R.string.settings_group_theme, GROUP_THEME, "사용자 지정 커스텀 팔레트 배경 카드 글자 강조 색")
+            // ── 언어 전환 플래시 ──
+            item(s(R.string.settings_flash_enabled), path(flash, R.string.settings_flash), GROUP_FLASH,
+                "플래시, 번쩍, 번쩍임, 깜박임, 깜빡임, 화면 색, 전환 알림, 한영 전환 표시, 언어 바뀜, flash, 끄기, 켜기"),
+            item(s(R.string.settings_flash_duration), path(flash, R.string.settings_flash), GROUP_FLASH,
+                "속도, 시간, 길이, 빠르게, 느리게, 오래, 짧게, ms, 밀리초, duration"),
+            item(s(R.string.settings_flash_count), path(flash, R.string.settings_flash), GROUP_FLASH,
+                "횟수, 번, 몇 번, 여러 번, 두 번, 반복, count"),
+            item(s(R.string.settings_flash_opacity), path(flash, R.string.settings_flash), GROUP_FLASH,
+                "투명, 투명도, 불투명, 알파, 흐리게, 진하게, 연하게, 눈부심, 눈 아픔, opacity, alpha"),
+            item(s(R.string.settings_languages), path(flash), GROUP_FLASH,
+                "언어, 한국어, 영어, 한글, 영문, 언어별 켜기, 특정 언어만, language"),
+            item(s(R.string.settings_flash_colors), path(flash), GROUP_FLASH,
+                "색, 색상, 컬러, 빨강, 파랑, 한국어 색, 영어 색, 팔레트, 색상코드, hex, color"),
+            // ── 상시 배지 ──
+            item(s(R.string.settings_badge_enabled), path(badge, R.string.settings_badge), GROUP_BADGE,
+                "배지, 뱃지, 표시, 아이콘, 한, EN, 떠 있는, 항상, 숨기기, 없애기, 다시 켜기, badge, 위치, 드래그, 옮기기"),
+            item(s(R.string.settings_badge_size), path(badge, R.string.settings_badge), GROUP_BADGE,
+                "크기, 사이즈, 작게, 크게, 소, 중, 대, size"),
+            item(s(R.string.settings_badge_bg_color), path(badge, R.string.settings_badge), GROUP_BADGE,
+                "배경, 배경색, 색, 색상, 컬러, 검정, 팔레트, 색상코드, hex, color"),
+            item(s(R.string.settings_badge_bg_opacity), path(badge, R.string.settings_badge), GROUP_BADGE,
+                "투명, 투명도, 불투명, 알파, 흐리게, 진하게, 비치게, opacity"),
+            item(s(R.string.settings_badge_text_color), path(badge, R.string.settings_badge), GROUP_BADGE,
+                "글씨, 글자, 글씨색, 글자색, 텍스트, 색, 컬러, 흰색, text color"),
+            item(s(R.string.settings_badge_tap), path(badge), GROUP_BADGE,
+                "탭, 누르기, 눌렀을 때, 터치, 클릭, 동작, 바로 실행, 단축, 메뉴 열기, $quickActions"),
+            item(getString(R.string.settings_search_item_long_press), path(badge, R.string.settings_badge_tap), GROUP_BADGE,
+                "길게, 길게 누르기, 롱프레스, 꾹, 입력기, 입력기 선택, 키보드 바꾸기, 언어 바꾸기, 서브타입, long press",
+                s(R.string.settings_badge_tap)),
+            // ── 빠른 메뉴 ──
+            item(s(R.string.settings_quick_menu_order), path(menu), GROUP_MENU,
+                "퀵메뉴, 빠른 메뉴, 래디얼, 원형 메뉴, 부채꼴, 항목, 순서, 드래그, 추가, 빼기, 삭제, 최대 5개, $quickActions"),
+            item(s(R.string.settings_radial_accent_color), path(menu, R.string.settings_radial), GROUP_MENU,
+                "강조, 강조색, 색, 컬러, 하늘색, 메뉴 색, 오브, 물방울, accent"),
+            item(s(R.string.settings_radial_glow_color), path(menu, R.string.settings_radial), GROUP_MENU,
+                "발광, 빛, 글로우, 후광, 선 색, 색, 컬러, 파랑, glow"),
+            item(s(R.string.settings_radial_reduce_motion), path(menu, R.string.settings_radial), GROUP_MENU,
+                "저사양, 움직임, 애니메이션, 버벅, 느림, 렉, 배터리, 가볍게, 모션, reduce motion"),
+            // ── 한영타 교체 ──
+            item(s(R.string.settings_replace_enabled), path(R.string.settings_group_replace), GROUP_REPLACE,
+                "한영타, 영타, 오타, 교체, 변환, 교체 버튼, 자동 수정, dkssud, 안녕, 잘못 친, 영어로 쳐짐"),
+            item(s(R.string.settings_replace_confidence), path(R.string.settings_group_replace), GROUP_REPLACE,
+                "신뢰도, 정확도, 민감도, 임계값, 기준, 너무 자주 뜸, 안 뜸, 오탐, threshold"),
+            // ── 입력 경고 ──
+            item(s(R.string.settings_nofocus_enabled), path(R.string.settings_group_nofocus), GROUP_NOFOCUS,
+                "포커스, 경고, 선택되지 않음, 입력칸, 커서 없음, 허공에 입력, 글자 안 들어감, focus"),
+            item(s(R.string.settings_nofocus_threshold), path(R.string.settings_group_nofocus), GROUP_NOFOCUS,
+                "임계, 횟수, 몇 번, 민감도, 몇 글자"),
+            // ── 키보드 ──
+            item(s(R.string.settings_exclude_touch_kb_enabled), path(R.string.settings_group_keyboard, R.string.settings_exclude_touch_kb),
+                GROUP_KEYBOARD, "터치 키보드, 화면 키보드, 가상 키보드, 소프트 키보드, 제외, 외장 키보드만, 블루투스 키보드만, 끄기"),
+            item(s(R.string.settings_keyboard_connect_notify), path(R.string.settings_group_keyboard), GROUP_KEYBOARD,
+                "블루투스, 연결, 끊김, 해제, 알림, 토스트, 배터리, 외장 키보드, bluetooth"),
+            // ── 전환 원인 진단 ──
+            item(s(R.string.settings_diagnostic_enabled), path(R.string.settings_group_diag), GROUP_DIAG,
+                "진단, 원인, 범인, 단축키, 자동 전환, 저절로 바뀜, 멋대로 바뀜, 키보드가 자꾸 바뀜, 한영이 바뀜, 기록, 로그, 스페이스"),
+            item(getString(R.string.settings_search_item_diag_history), path(R.string.settings_group_diag), GROUP_DIAG,
+                "기록, 이력, 로그, 지우기, 삭제, 초기화, 최근 감지", s(R.string.settings_diagnostic_clear)),
+            item(s(R.string.settings_diagnostic_pause_with_touch_kb), path(R.string.settings_group_diag), GROUP_DIAG,
+                "일시정지, 멈춤, 터치 키보드, 화면 키보드, 하위 옵션"),
+            // ── 화면 테마 ──
+            item(s(theme), path(theme), GROUP_THEME,
+                "테마, 모드, 색, 스킨, 배경색, 어둡게, 밝게, 야간, 밤, 눈 편한, theme"),
+            item(s(R.string.settings_theme_system), path(theme), GROUP_THEME, "시스템, 기본, 자동, 기기 설정 따라, system"),
+            item(s(R.string.settings_theme_light), path(theme), GROUP_THEME, "라이트, 밝게, 흰색, 화이트, light"),
+            item(s(R.string.settings_theme_dark), path(theme), GROUP_THEME, "다크, 어둡게, 검정, 블랙, 야간, 다크모드, dark"),
+            item(s(R.string.settings_theme_beige), path(theme), GROUP_THEME, "베이지, 종이, 미색, 따뜻한, 세피아, 눈 편한, beige"),
+            item(s(R.string.settings_theme_cyber), path(theme), GROUP_THEME, "사이버펑크, 네온, 시안, 마젠타, 보라, cyberpunk"),
+            item(s(R.string.settings_theme_high_contrast), path(theme), GROUP_THEME,
+                "고대비, 대비, 잘 보이게, 저시력, 노랑, 선명, high contrast"),
+            item(s(R.string.settings_theme_custom), path(theme), GROUP_THEME,
+                "사용자 지정, 커스텀, 직접, 내 색, 나만의, 팔레트, custom"),
+            item(s(R.string.settings_theme_custom_title), path(theme, R.string.settings_theme_custom), GROUP_THEME,
+                "배경, 카드, 글자, 강조, 네 가지 색, 4색, 가독성 보정",
+                s(R.string.settings_theme_custom_title), s(R.string.settings_theme_custom)),
+            item(s(R.string.settings_theme_custom_start_from), path(theme, R.string.settings_theme_custom), GROUP_THEME,
+                "다른 테마, 가져오기, 복사, 시작하기, 불러오기",
+                s(R.string.settings_theme_custom_start_from), s(R.string.settings_theme_custom)),
+            item(s(R.string.settings_theme_scope_title), path(theme), GROUP_THEME,
+                "적용 범위, 오버레이, 플래시 색, 배지 색, 안 바뀜"),
         )
     }
 

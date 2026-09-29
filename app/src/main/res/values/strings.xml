@@ -140,9 +140,14 @@
     <!-- 설정 슬라이더 현재 값(우측 정렬 표시): "값접미사" (예: "200ms") -->
     <string name="slider_value_short_format">%1$d%2$s</string>
     <!-- ── 설정 화면 구조(그룹 / 검색 / 이사 안내 / NEW) ───────────────────── -->
-    <string name="settings_search_hint">설정 검색 (색, 투명도, 진단…)</string>
+    <string name="settings_search_hint">설정 검색 (색, 투명도, ㅂㅈ, 여러 단어…)</string>
     <string name="settings_search_result">검색 결과 %1$d개</string>
     <string name="settings_search_empty">“%1$s”에 해당하는 설정이 없어요. 다른 말로 찾아보세요.</string>
+    <string name="settings_search_fixed">“%1$s”를 한/영을 바꿔 “%2$s”(으)로 찾았어요</string>
+    <string name="settings_search_typo">정확히 맞는 설정이 없어 비슷한 설정을 보여드려요</string>
+    <string name="settings_search_tag">태그: %1$s</string>
+    <string name="settings_search_item_long_press">배지 길게 누르기 (입력기 선택)</string>
+    <string name="settings_search_item_diag_history">최근 전환 기록 지우기</string>
     <string name="settings_new_badge">NEW</string>
     <string name="settings_moved_format">「%1$s」은 %2$s로 이사 갔어요</string>
     <string name="settings_moved_hint">눌러서 바로 가기</string>
