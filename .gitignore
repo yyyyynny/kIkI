@@ -35,3 +35,6 @@ google-services.json
 
 # Kotlin 2.x 빌드 세션/에러 로그 (산출물)
 .kotlin/
+
+# 한영타 검증용 공개 데이터(tools/eval-data/fetch.sh 로 받음, 약 55MB — 저장소에 넣지 않는다)
+tools/eval-data/data/

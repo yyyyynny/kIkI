@@ -874,7 +874,9 @@ langsense/
 ├── docs/
 │   ├── features.md            ← 기능 상세 명세 + HangulConverter 스펙
 │   ├── architecture.md        ← 아키텍처 다이어그램
-│   └── 개선_아이디어.md        ← 검토 중인 개선 아이디어 백로그(미확정, 작업 순위 아님)
+│   ├── 개선_아이디어.md        ← 검토 중인 개선 아이디어 백로그(미확정, 작업 순위 아님)
+│   └── 한영타_검증.md          ← 한영타 판정 실측 검증: 데이터 출처·실행법·기록 수치(규칙 바꾸면 갱신)
+├── tools/eval-data/fetch.sh    ← 검증용 공개 데이터(약 55MB) 내려받기 — 원본은 저장소에 안 넣음(.gitignore)
 ├── app/
 │   ├── build.gradle.kts
 │   ├── src/main/
