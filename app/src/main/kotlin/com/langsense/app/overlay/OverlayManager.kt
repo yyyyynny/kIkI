@@ -450,10 +450,17 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         removeChip() // 이전 칩이 있었다면 그 노드까지 함께 회수
         pendingNode = node
         val view = ReplaceChipView(context)
-        view.bind(converted) {
-            applyReplacement(node, fullText, selStart, selEnd, converted)
-            removeChip()
-        }
+        view.bind(
+            converted,
+            onTap = {
+                applyReplacement(node, fullText, selStart, selEnd, converted)
+                removeChip()
+            },
+            onLongPress = {
+                addSelectionAsTypoException(fullText.substring(selStart.coerceIn(0, fullText.length), selEnd.coerceIn(0, fullText.length)))
+                removeChip()
+            },
+        )
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -473,6 +480,18 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         lastChipSelEnd = selEnd
 
         chipDismiss = Runnable { removeChip() }.also { handler.postDelayed(it, CHIP_TIMEOUT_MS) }
+    }
+
+    /** 칩을 길게 누름: 선택한 라틴 단어 하나를 한영타 예외로 등록하고 토스트로 알린다. */
+    private fun addSelectionAsTypoException(selected: String) {
+        val word = Prefs.typoExceptionCandidate(selected)
+        val msg = when {
+            word == null -> context.getString(R.string.chip_exception_single_word)
+            prefs.addTypoException(word) == null ->
+                context.getString(R.string.settings_replace_exceptions_full, Prefs.MAX_TYPO_EXCEPTIONS)
+            else -> context.getString(R.string.chip_exception_added, word)
+        }
+        runCatching { Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() }
     }
 
     /**

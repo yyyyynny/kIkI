@@ -299,4 +299,100 @@ class HangulConverterTest {
             assertTrue("$w conf=$c", c < 0.7f)
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 2026-09 재설계(가설별 판정) 회귀 고정 — 근거·수치는 docs/한영타_검증.md
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Shift 물리: 두벌식에서 Shift 가 의미 있는 키는 Q·W·E·R·T·O·P(쌍자음·ㅒㅖ) 뿐이다. 그 외 키의
+     * 대문자는 한글을 치던 사람이 누를 이유가 없어 오히려 약어·화학식의 증거다. 예전엔 첫 글자 외
+     * 대문자면 무조건 가산점이라 `sNl` 89.7%, `CoA`/`GPa`/`SBTi` 가 오탐이었다.
+     */
+    @Test
+    fun analyze_needlessShift_isEvidenceAgainstTypo() {
+        for (w in listOf("sNl", "CoA", "GPa", "SBTi", "DoS", "WLANs")) {
+            assertTrue(w, HangulConverter.detectEnglishToKorean(w) < 0.70f)
+        }
+        // Q·W·E·R·T·O·P 대문자는 여전히 한영타 신호(함께·했다)
+        for (w in listOf("gkaRp", "goTek")) assertTrue(w, HangulConverter.detectEnglishToKorean(w) >= 0.70f)
+    }
+
+    /**
+     * CapsLock 을 켠 채 친 한영타 — 대소문자를 뒤집어 판정하고 교체도 뒤집어 변환한다. 예전엔 전부
+     * 대문자면 약어로 보고 건너뛰었고(`DKSSUD` 0%), `GKArP` 는 감지는 되는데 "GKA계"로 망가뜨렸다.
+     */
+    @Test
+    fun analyze_capsLockTypo_detectedAndConverted() {
+        val cases = mapOf(
+            "DKSSUD" to "안녕",
+            "WJDAKF WHGEK" to "정말 좋다",
+            "GKArP" to "함께",
+            "GOtEK" to "했다", // CapsLock 중 Shift+T = 소문자 t = ㅆ
+            "QOTHD" to "배송",
+            "RKAKSGO" to "가만해",
+        )
+        for ((typo, want) in cases) {
+            val a = HangulConverter.analyze(typo)
+            assertTrue("$typo conf=${a.confidence}", a.confidence >= 0.70f)
+            assertEquals(typo, want, a.converted)
+        }
+    }
+
+    /**
+     * 3글자 전부 대문자는 약어가 압도적이라(한국어 글 속 3글자 라틴 토큰의 약 70%) CapsLock 으로
+     * 뒤집어 보지 않는다 — 뒤집기만 하면 그중 10%가 오탐(`DLC`→잋, `DLF`→일)이었다.
+     */
+    @Test
+    fun analyze_shortAllCapsAcronyms_notTreatedAsCapsLock() {
+        for (w in listOf("SNS", "DLC", "DLF", "GKS", "FPS", "TBS", "NASA", "KOREA")) {
+            assertTrue(w, HangulConverter.detectEnglishToKorean(w) < 0.70f)
+        }
+        // CapsLock 한영타 문장 옆의 약어는 약어로 남는다
+        assertEquals("GUI 정말 좋다", HangulConverter.analyze("GUI wjdakf whgek").converted)
+    }
+
+    /**
+     * Shift 증인 사전: 한국어 글에서 Shift 가 무의미한 키에 대문자로 쓰인 적이 있는 라틴 문자열은
+     * 한글 영타일 수 없다 — 소문자로 써도 약어로 본다. 예전 오탐: `sns`→눈 74.6%, `snl`→뉘 76.3%,
+     * 스팀 리뷰 10만 건에서 `dlc` 432회·`fps` 143회.
+     */
+    @Test
+    fun analyze_lowercaseAcronymsInKoreanText_notDetected() {
+        for (w in listOf("sns", "snl", "dlc", "fps", "Sns", "Dlc")) {
+            assertTrue(w, HangulConverter.analyze(w).confidence < 0.70f)
+            assertTrue("$w (한국어 문맥)", HangulConverter.analyze(w, koreanContext = true).confidence < 0.70f)
+        }
+        assertTrue(HangulConverter.analyze("오랜만에 sns에서 핫해서", koreanContext = true).confidence < 0.70f)
+    }
+
+    /**
+     * 어절 위치별 모델 + 자주 쓰는 어절 기억: 예전에 가장 많이 놓친 한영타는 드문 단어가 아니라 가장
+     * 흔한 짧은 단어였다(`sjan`=너무 — NSMC 5만 문장에서 2,803회 누락, `rmsid`=그냥, `dho`=왜).
+     */
+    @Test
+    fun analyze_commonShortWords_detected() {
+        for (w in listOf("sjan", "rmsid", "dho", "dks", "wkf")) {
+            assertTrue(w, HangulConverter.detectEnglishToKorean(w) >= 0.70f)
+        }
+    }
+
+    /** 주변(선택 안 포함)에 한글이 있으면 짧은 조각도 한영타 쪽으로 기운다 — 영어 단어는 그대로 영어. */
+    @Test
+    fun analyze_koreanContext_helpsShortTyposOnly() {
+        assertTrue(HangulConverter.analyze("wha").confidence < 0.70f)
+        assertTrue(HangulConverter.analyze("wha", koreanContext = true).confidence >= 0.70f)
+        for (w in listOf("hello", "computer", "keyboard", "language", "video", "check")) {
+            assertTrue(w, HangulConverter.analyze(w, koreanContext = true).confidence < 0.70f)
+        }
+    }
+
+    /** 사용자 예외 단어(설정): 판정도 교체도 하지 않는다 — 같은 선택의 다른 한영타만 바뀐다. */
+    @Test
+    fun analyze_userExceptions_skipped() {
+        assertEquals(0f, HangulConverter.analyze("dkssud", exceptions = setOf("dkssud")).confidence, 0.0001f)
+        val a = HangulConverter.analyze("dkssud wjdakf whgek", exceptions = setOf("dkssud"))
+        assertTrue(a.confidence >= 0.70f)
+        assertEquals("dkssud 정말 좋다", a.converted)
+    }
 }

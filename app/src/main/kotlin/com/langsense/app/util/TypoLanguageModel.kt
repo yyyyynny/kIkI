@@ -1,51 +1,47 @@
 package com.langsense.app.util
 
 /**
- * 한영타 판정용 통계 언어 모델 — "이 라틴 문자열은 실제 영어인가, 아니면 한글을 영문 자판에서
- * 친 것인가"를 **두 가설의 우도비(likelihood ratio)** 로 판정한다(2026-09 도입).
+ * 한영타 판정용 통계 언어 모델 — "이 라틴 문자열은 실제 영어(또는 약어)인가, 아니면 한글을 영문
+ * 자판에서 친 것인가"를 **가설끼리의 우도비(likelihood ratio)** 로 판정한다.
  *
- * ## 왜 우도비인가
- * 이전 방식은 "영어스러움"(영어 문자 bigram 점수)만 봤다. 그러면 `work`(→재가)처럼 영어로도
- * 흔하고 한글로도 그럴듯하게 조합되는 단어에서 판단 근거가 한쪽뿐이라 흔들린다. 실제로 대량
- * 검증에서 `work` 가 진짜 한영타인 `dkssud`(→안녕)보다 "더 한영타 같다"고 나오는 역전까지
- * 있었다. 두 가설을 **함께** 보면 이 역전이 사라진다:
+ * ## 판정 구조([judge], 2026-09 재설계)
+ * 한영타 가설 두 개(CapsLock 꺼짐/켜짐)를 대안 설명 세 개(영어 단어 / 한국어 글 속 알려진 라틴
+ * 문자열 / 약어)와 각각 맞붙이고, 가설마다 가장 강한 반론을 상한으로 삼는다. 자세한 내용은 [judge].
  *
- *   점수 = [log P(변환결과 | 한국어 모델) − log P(원문 | 영어 모델)] / 라틴 글자 수
+ *   영어 단어와의 비교(기존 척도) = [log P(변환결과 | 한국어) − log P(원문 | 영어)] / 라틴 글자 수
  *
  * 두 로그확률을 **같은 분모**(라틴 글자 수)로 나누는 게 핵심이다 — 한쪽은 음절당, 다른 쪽은
- * 글자당으로 정규화하면 한글 음절 수와 라틴 글자 수의 비(보통 1:2~3)가 섞여 위 역전이 생긴다.
+ * 글자당으로 정규화하면 한글 음절 수와 라틴 글자 수의 비(보통 1:2~3)가 섞여 `work`(→재가)가
+ * 진짜 한영타 `dkssud`(→안녕)보다 "더 한영타 같다"는 역전이 생긴다.
  *
- * ## 두 모델
- * - **한국어 음절 unigram**([KO_SYLLABLE_TABLE]): 완성형 11,172자 각각의 로그확률. 실제
- *   한국어에서 쓰이는 음절은 그중 일부(실측 약 2천여 개)뿐이라, 영어 단어를 두벌식으로 변환했을
- *   때 나오는 `뮴`/`쳔`/`퍙` 같은 음절은 확률이 바닥이다 — 이것이 가장 강한 신호다. 조합에
- *   실패해 낱자모로 남은 것은 실제 한국어 단어에 없으므로 [KO_FLOOR](최저 확률)로 처리한다.
- * - **영어 문자 trigram**([EN_TRIGRAM_TABLE]): 소문자 26자 + 단어 경계(`^`) 27심볼의 3연속
- *   조합 로그확률(27³=19,683칸). 단어 경계를 심볼로 넣어 "영어 단어가 그렇게 시작/끝나는가"까지
- *   본다.
+ * ## 모델과 표
+ * - **한국어: 어절 위치별 음절 모델 + 자주 쓰는 어절 기억**([koreanWordLogProb], [TypoTables]).
+ *   같은 음절이라도 어절의 홀로/첫/가운데/끝 어디에 오느냐에 따라 확률이 다르다(`왜`는 홀로, `다`는
+ *   끝에 흔함). 상위 1천 어절은 실제 빈도와 섞는다(`너무`·`그냥`). 한국어 위키·뉴스·KLUE·NSMC
+ *   train·혐오표현/챗봇 말뭉치 약 2,500만 어절로 셌다.
+ * - **영어 문자 trigram**([EN_TRIGRAM_TABLE]): 소문자 26자 + 단어 경계 27심볼(27³칸). Project
+ *   Gutenberg 29권 + AG News(4,890만 자)로 학습.
+ * - **Shift 증인 사전**([lexiconLogProb]): 한국어 글에서 Shift 가 무의미한 키에 대문자가 있는 모양
+ *   (`SNS`, `tvN`)으로 쓰인 라틴 문자열 — 한글을 치다 생길 수 없는 모양이라 라벨 없이 원문에서
+ *   자동 채굴된다. 판정에 영향을 주는 643개만 담았다.
+ * - **약어 글자 bigram**([acronymLogProb]): 사전에 없는 약어·모델명의 일반화.
+ * - **음절 unigram**([KO_SYLLABLE_TABLE]) + **구어체 단위 전이**([UNIT_TRANSITION_TABLE]):
+ *   교체 문자열을 정할 때만 쓴다([koreanInformal]).
  *
- * ## 학습 데이터(2026-09)
- * 단어 목록이 아니라 **실제 글**에서 빈도 가중으로 학습했다 — 단어 목록은 흔한 단어와 사어를
- * 똑같이 1회로 세어 실제 분포를 왜곡한다.
- * - 영어: Project Gutenberg 고전 소설·에세이 29권 + AG News 뉴스 기사(총 4,890만 자,
- *   고유 단어 93,992개, 연 출현 834만 회)
- * - 한국어: KorQuAD(한국어 위키 본문) + KLUE-YNAT(뉴스 제목) + 한국어 위키백과 전체 덤프
- *
- * ## 성능(학습에 전혀 쓰지 않은 데이터로 측정)
- * 영어 사전 37만 단어 중 학습에 없던 34만 단어를 오탐 평가에, 실제 한국어 말뭉치에서 뽑은
- * 토큰을 [HangulConverter.convertKorToEng] 로 되돌린 "진짜 한영타" 14.7만 건을 감지 평가에 썼다.
- * 기본 임계값([TYPO_THRESHOLD]=3.0, 라틴 3글자 이상)에서 **오탐 0.03%, 감지율 98.2%**.
- * 직전 방식(스톱워드 + 영어 bigram)은 같은 사전 기준 오탐 0.96% 였다.
+ * ## 성능(학습에 쓰지 않은 데이터, 설정 기본값 70%) — 상세는 docs/한영타_검증.md
+ * 한영타 감지 96.4%(한국어 문맥이면 97.5%, 이전 94.0%) · CapsLock 한영타 96.0%(이전 16%) ·
+ * 영어 기사 오탐 0.0010%(이전 0.0016%) · 영어 사전 오탐 0.022%(동일) · 한국어 글 속 라틴
+ * 토큰(약어 등) 오탐 42회/10.3만(이전 730회).
  *
  * ## 테이블 표현
- * 두 표 모두 로그확률을 [LEVELS](91)단계로 선형 양자화해 인쇄 가능 ASCII 문자 하나에 대응시킨
- * 문자열이다(Kotlin 리터럴에서 이스케이프가 필요한 `"` `\` `$` 는 제외). 합쳐 약 30KB로,
- * 외부 파일·라이브러리 없이 순수 Kotlin 상수만 쓴다(최소 의존성 원칙). 조회는 배열 인덱싱
- * 한 번이라 저사양 기기에서도 토큰당 O(글자 수)로 끝난다.
+ * 모든 표는 로그확률을 [LEVELS](91)단계로 선형 양자화해 인쇄 가능 ASCII 문자 하나에 대응시킨
+ * 문자열이다(Kotlin 리터럴에서 이스케이프가 필요한 `"` `\` `$` 는 제외). 외부 파일·라이브러리
+ * 없이 순수 Kotlin 상수만 쓴다(최소 의존성 원칙). 조회는 배열 인덱싱·이진 탐색이라 저사양
+ * 기기에서도 토큰당 O(글자 수)로 끝난다. 어절·사전 맵은 첫 판정 때 한 번만 만든다.
  */
 internal object TypoLanguageModel {
 
-    /** 기본 판정 임계값(점수 ≥ 이 값이면 한영타로 본다) — 위 "성능" 항목의 보정 결과. */
+    /** 글자당 점수 척도의 기준점(점수 3.0 = 보정 전 70%). 최종 보정은 [CALIBRATION_SHIFT]. */
     const val TYPO_THRESHOLD = 3.0
 
     /**
@@ -375,54 +371,417 @@ internal object TypoLanguageModel {
 
     private fun symbolIndex(ch: Char): Int = if (ch in 'a'..'z') ch - 'a' else 26
 
-    /**
-     * 첫 글자를 제외한 위치의 대문자에 주는 가산점. 두벌식에서 쌍자음(ㄲㄸㅃㅆㅉ)·복합모음(ㅒㅖ)은
-     * Shift 로 치므로 진짜 한영타에는 단어 중간 대문자가 흔하다(`했다`→`goTek`, `함께`→`gkaRp`).
-     * 실측: 진짜 한영타의 12.1%가 이 형태인 반면 실제 영어 글에서는 0.26%(camelCase·약어 일부)
-     * 뿐이라 약 50배 차이의 증거다. 영어 단어는 대부분 소문자라 이 가산점이 붙지 않으므로 오탐은
-     * 늘지 않고(검증에서 변화 없음) 미탐만 줄어든다.
-     */
-    private const val INNER_UPPERCASE_BONUS = 2.0
+    // ─────────────────────────────────────────────────────────────────────
+    // 토큰 판정(2026-09 재설계) — 가설별 맞대결
+    // ─────────────────────────────────────────────────────────────────────
+
+    /** [judge] 결과. */
+    class Judgement(
+        /** 최종 신뢰도(0~1) — 설정의 "신뢰도 임계값(%)"과 그대로 비교한다. */
+        val confidence: Float,
+        /** CapsLock 을 켠 채 친 한영타라는 가설이 이겼는가 — 교체 때 대소문자를 뒤집어 변환한다. */
+        val capsLock: Boolean,
+    )
 
     /**
-     * 한영타 점수 — 클수록 "한글을 영문 자판에서 친 것"에 가깝다. [latin] 은 선택된 토큰의 글자만
-     * 소문자로 모은 것, [converted] 는 원문 토큰을 [HangulConverter.convertEngToKor] 로 변환한
-     * 결과, [innerUppercase] 는 첫 글자 외에 대문자가 있었는지([INNER_UPPERCASE_BONUS] 참조).
-     * 변환 결과에 한글이 전혀 없으면(판단 근거 없음) null.
+     * 라틴 토큰 하나가 한영타일 신뢰도. 두 "한영타 가설"을 각각 여러 "대안 설명"과 맞붙여,
+     * 가설마다 **가장 강한 반론을 상한**으로 삼고(min) 두 가설 중 나은 쪽을 쓴다(max).
+     *
+     * 한영타 가설
+     * - **CapsLock 꺼짐**: 원문 그대로 두벌식 변환.
+     * - **CapsLock 켜짐**(대문자가 과반일 때만): 대소문자를 뒤집어 변환(`DKSSUD`→안녕,
+     *   `GOtEK`→했다 — CapsLock 중 Shift 를 누르면 소문자가 나오므로 소문자 t 가 ㅆ).
+     *
+     * 대안 설명(각각 로그오즈로 비교)
+     * 1. **영어 단어**: 기존 글자당 점수([confidence] 척도) — `(한국어 − 영어) / 글자 수`.
+     * 2. **한국어 글 속 알려진 라틴 문자열**([lexiconLogProb], "Shift 증인" 사전): `sns`/`dlc`/`fps`.
+     * 3. **약어**([acronymLogProb]): 사전에 없는 약어·모델명(`cmd`, `SBTi`)의 일반화.
+     *
+     * **Shift 물리**: 두벌식에서 Shift 가 의미 있는 키는 Q·W·E·R·T·O·P(쌍자음·ㅒㅖ) 뿐이다. 그 외
+     * 키의 대문자(`sNl` 의 N, `CoA` 의 A)는 한글을 치던 사람이 굳이 누를 이유가 없으니 **반대 증거**
+     * 로 벌점([NEEDLESS_SHIFT_PENALTY]), Q·W·E·R·T·O·P 대문자만 있으면 가산([SHIFT_BONUS]).
+     * CapsLock 가설에선 같은 규칙을 소문자에 적용한다. (예전엔 첫 글자 외 대문자면 무조건 +2.0 이라
+     * `sNl`→89.7%, `CoA`/`QoS`/`GPa` 같은 과학 약어가 줄줄이 오탐이었다.)
+     *
+     * [koreanContext] = 선택 주변에 한글이 있다(한국어 문서). 그러면 "영어 단어" 가설의 사전확률만
+     * [CONTEXT_LOG_ODDS] 만큼 낮춘다 — 약어·알려진 라틴 문자열은 원래 한국어 글에서 센 값이라 그대로.
+     *
+     * 실측 근거와 수치는 docs/한영타_검증.md.
      */
-    fun score(latin: String, converted: String, innerUppercase: Boolean = false): Double? {
-        val koTotal = koreanLogProb(converted) ?: return null
-        val base = (koTotal - englishLogProb(latin)) / latin.length.coerceAtLeast(1)
-        return if (innerUppercase) base + INNER_UPPERCASE_BONUS else base
-    }
+    fun judge(text: String, letters: String, mappable: Int, allUpper: Boolean, koreanContext: Boolean): Judgement {
+        val n = letters.length
+        if (n == 0) return NO_JUDGEMENT
+        // 라틴(ASCII) 글자의 대소문자 모양
+        var latin = 0
+        var upper = 0
+        var needlessOff = 0 // CapsLock 꺼짐 가설에서 의미 없는 Shift(첫 글자 제외, Q·W·E·R·T·O·P 외 대문자)
+        var needlessOn = 0  // CapsLock 켜짐 가설에서 의미 없는 Shift(Q·W·E·R·T·O·P 외 소문자)
+        var shiftedInner = false
+        var shiftedLower = false
+        var firstUpper = false
+        for (c in text) {
+            val isUpper = c in 'A'..'Z'
+            if (!isUpper && c !in 'a'..'z') continue
+            val shiftKey = c.lowercaseChar() in SHIFT_KEYS
+            if (isUpper) {
+                if (latin == 0) firstUpper = true
+                else if (shiftKey) shiftedInner = true
+                else needlessOff++
+                upper++
+            } else if (shiftKey) {
+                shiftedLower = true
+            } else {
+                needlessOn++
+            }
+            latin++
+        }
+        val caseLog = when {
+            upper == 0 -> ACRONYM_CASE_LOWER
+            upper == latin -> ACRONYM_CASE_UPPER
+            firstUpper && upper == 1 -> ACRONYM_CASE_TITLE
+            else -> ACRONYM_CASE_MIXED
+        }
+        val acronym = caseLog + acronymLogProb(letters)
+        val context = if (koreanContext) CONTEXT_LOG_ODDS else 0.0
+        val lexLower = lexiconLogProb(text, upper = false)
+        var best = Double.NEGATIVE_INFINITY
+        var bestCaps = false
 
-    /**
-     * 두벌식 변환 결과가 한국어 음절 모델에서 나올 로그확률(합). 한글이 전혀 없으면 null.
-     * 조합 실패한 낱자모는 [KO_FLOOR] — 실제 한국어 단어엔 없는 형태라 최저값이다.
-     */
-    fun koreanLogProb(converted: String): Double? {
-        var total = 0.0
-        var units = 0
-        for (ch in converted) {
-            val code = ch.code
-            when {
-                code in HANGUL_FIRST..HANGUL_LAST -> {
-                    total += decode(KO_SYLLABLE_TABLE[code - HANGUL_FIRST], KO_LO, KO_HI)
-                    units++
+        if (!allUpper) {
+            koreanWordLogProb(HangulConverter.convertEngToKor(text))?.let { ko ->
+                val shift = when {
+                    needlessOff > 0 -> -NEEDLESS_SHIFT_PENALTY * needlessOff
+                    shiftedInner -> SHIFT_BONUS
+                    else -> 0.0
                 }
-                code in JAMO_FIRST..JAMO_LAST -> {
-                    total += KO_FLOOR
-                    units++
+                var z = wordLogit((ko - englishLogProb(letters) + context) / n + shift)
+                if (lexLower != null) z = minOf(z, ko - lexLower)
+                z = minOf(z, ko - acronym - NEEDLESS_SHIFT_PENALTY * needlessOff)
+                if (z > best) best = z
+            }
+        }
+        if (upper * 2 > latin) {
+            koreanWordLogProb(HangulConverter.convertEngToKor(swapCase(text)))?.let { ko ->
+                val shift = when {
+                    needlessOn > 0 -> -NEEDLESS_SHIFT_PENALTY * needlessOn
+                    shiftedLower -> SHIFT_BONUS
+                    else -> 0.0
+                }
+                val english = if (allUpper) {
+                    logAddExp(LOG_SHOUTED_WORD + englishLogProb(letters), LOG_ACRONYM + acronymLogProb(letters))
+                } else {
+                    englishLogProb(letters)
+                }
+                val short = if (n <= 3) CAPS_SHORT_LOG_ODDS else 0.0
+                val prior = CAPS_PRIOR + short
+                var z = wordLogit((ko - english + context) / n + shift + CAPS_WORD_BONUS) + short
+                lexiconLogProb(text, upper = true)?.let { z = minOf(z, prior + ko - it) }
+                z = minOf(z, prior + ko - acronym - NEEDLESS_SHIFT_PENALTY * needlessOn)
+                if (z > best) {
+                    best = z
+                    bestCaps = true
                 }
             }
         }
-        return if (units == 0) null else total
+        acronymTailLogit(text, lexLower)?.let { z ->
+            if (z > best) {
+                best = z
+                bestCaps = false
+            }
+        }
+        if (best == Double.NEGATIVE_INFINITY) return NO_JUDGEMENT
+        val conf = 1.0 / (1.0 + Math.exp(-(best - CALIBRATION_SHIFT))) * mappable / n
+        return Judgement(conf.toFloat(), bestCaps)
+    }
+
+    private val NO_JUDGEMENT = Judgement(0f, false)
+
+    /**
+     * "대문자 약어 + 영타 꼬리"(`GUIdml`=GUI의, `CGrk`=CG가). 토큰 통째로 보면 약어까지 한글로
+     * 변환돼(`혀ㅑ의`) 점수가 깎이므로 꼬리만 재고, 약어 바로 뒤에 소문자가 붙은 구조 자체를
+     * [ACRONYM_TAIL_BONUS] 로 더한다. 꼬리가 2글자면 정보가 한 음절뿐이라 흔한 조사·어미
+     * ([AFTER_ACRONYM_PARTICLES])로 변환될 때만 인정한다 — 영어 쪽 오탐 후보(`CNNfn`→루, `WEek`→다,
+     * `NDak`→마)가 전부 2글자 꼬리였다(실측: 영어 1,452회 중 오탐 0, NSMC 약어+조사 94.9% 감지).
+     */
+    private fun acronymTailLogit(token: String, lexLower: Double?): Double? {
+        val text = token.trim { it !in 'a'..'z' && it !in 'A'..'Z' } // 문장 끝 마침표·괄호(`GUIdml.`)
+        var i = 0
+        while (i < text.length && text[i] in 'A'..'Z') i++
+        if (i < 2 || i == text.length) return null
+        val tail = text.substring(i)
+        // 꼬리 안의 Q·W·E·R·T·O·P 대문자는 쌍자음·ㅒㅖ 라 정상이다(`SFdudghkrPdml`=SF영화계의).
+        if (tail.length < 2 || !tail.all { it in 'a'..'z' || it in SHIFT_KEYS_UPPER }) return null
+        val tailKo = HangulConverter.convertEngToKor(tail)
+        if (tail.length == 2 && tailKo !in AFTER_ACRONYM_PARTICLES) return null
+        val ko = koreanSuffixLogProb(tailKo) ?: return null
+        var z = wordLogit((ko - englishLogProb(tail.lowercase())) / tail.length + ACRONYM_TAIL_BONUS)
+        if (lexLower != null) {
+            koreanWordLogProb(HangulConverter.convertEngToKor(token))?.let { whole -> z = minOf(z, whole - lexLower) }
+        }
+        return z
+    }
+
+    /** 대문자 약어 바로 뒤에 소문자가 붙는 구조 자체의 가산점(실측으로 오탐 0 을 유지하는 보수적 값). */
+    private const val ACRONYM_TAIL_BONUS = 1.0
+
+    /** 약어 뒤 2글자 꼬리를 한영타로 인정하는 한 음절(조사·어미). NSMC 실측 빈도 상위 기준. */
+    private val AFTER_ACRONYM_PARTICLES = setOf(
+        "이", "가", "도", "에", "로", "나", "만", "랑", "야", "요", "고", "지", "게", "서",
+        "는", "은", "를", "을", "의", "와", "과",
+    )
+
+    /** 두벌식에서 Shift 가 의미 있는 키(쌍자음 ㅃㅉㄸㄲㅆ · 복합모음 ㅒㅖ). */
+    private const val SHIFT_KEYS = "qwertop"
+    private const val SHIFT_KEYS_UPPER = "QWERTOP"
+
+    /** 의미 없는 Shift 1개의 벌점(글자당 점수 단위 / 약어 비교에선 로그오즈). 실측으로 정함. */
+    private const val NEEDLESS_SHIFT_PENALTY = 3.0
+
+    /** Q·W·E·R·T·O·P 에만 대문자가 있을 때의 가산점(글자당). 예전 +2.0 은 과했다(오탐 증가, 감지 동일). */
+    private const val SHIFT_BONUS = 1.0
+
+    /**
+     * CapsLock 가설의 글자당 보정. 전부 대문자 토큰의 영어 쪽은 "약어" 부류가 주도하는데, 약어
+     * 모델은 글자당 확률이 후해(글자당 약 -4, 영어 단어 모델은 비단어에 -9 안팎) 같은 척도로 두면
+     * 진짜 CapsLock 한영타도 못 넘는다. 실측: CapsLock 한영타는 한글 변환이 글자당 약 -3, 진짜
+     * 대문자 약어는 약 -20(대부분 깨진 자모)이라 둘 사이 간격이 매우 넓다.
+     */
+    private const val CAPS_WORD_BONUS = 3.0
+
+    /** CapsLock 가설의 사전 로그오즈(평소 입력 대비 약 5%) — 사전·약어 비교에 쓴다. */
+    private const val CAPS_PRIOR = -3.0
+
+    /**
+     * 3글자 이하 CapsLock 가설 추가 벌점. 한국어 글 속 3글자 라틴 토큰의 약 70%가 전부 대문자
+     * 약어(DLC/FPS/SNS…)라, 3글자 대문자를 뒤집어 보면 오탐이 쏟아진다(뒤집기만 하면 10%).
+     */
+    private const val CAPS_SHORT_LOG_ODDS = -2.0
+
+    /** 전부 대문자 토큰이 "대문자로 쓴 일반 단어"일 몫 / "약어"일 몫(로그). */
+    private val LOG_SHOUTED_WORD = Math.log(0.3)
+    private val LOG_ACRONYM = Math.log(0.7)
+
+    /** 약어 부류가 그 대소문자 모양으로 쓰일 로그확률 — 약어는 대부분 전부 대문자, 소문자·첫 대문자는 드묾. */
+    private const val ACRONYM_CASE_LOWER = -4.0
+    private const val ACRONYM_CASE_UPPER = -0.5
+    private const val ACRONYM_CASE_MIXED = -3.0
+    private const val ACRONYM_CASE_TITLE = -4.0
+
+    /** 선택 주변에 한글이 있을 때 "영어 단어" 가설에 주는 불리함(총 로그오즈). */
+    private const val CONTEXT_LOG_ODDS = 3.0
+
+    /**
+     * 최종 보정: 기존 영어 오탐 수준(영어 사전 47만 단어 중 102개)에서의 판정 경계가 설정 기본값
+     * 70% 에 오도록 로짓을 민다 — 사용자가 보는 "70%"의 의미(오탐 수준)를 예전과 같게 유지.
+     */
+    private const val CALIBRATION_SHIFT = 0.225
+
+    /** 글자당 점수 → 로짓(= [confidence] 의 로지스틱 안쪽). */
+    private fun wordLogit(score: Double): Double = (score - CENTER) / SCALE
+
+    private fun logAddExp(a: Double, b: Double): Double {
+        val hi = maxOf(a, b)
+        return hi + Math.log(Math.exp(a - hi) + Math.exp(b - hi))
+    }
+
+    /** 대소문자 뒤집기(CapsLock 가설). */
+    fun swapCase(s: String): String {
+        val sb = StringBuilder(s.length)
+        for (c in s) sb.append(if (c.isUpperCase()) c.lowercaseChar() else if (c.isLowerCase()) c.uppercaseChar() else c)
+        return sb.toString()
+    }
+
+    // ── 한국어 쪽: 어절 위치별 음절 모델 + 자주 쓰는 어절 기억([TypoTables]) ──────────────
+
+    /**
+     * 두벌식 변환 결과가 한국어 **어절**로 나올 로그확률. 한글이 전혀 없으면 null.
+     *
+     * 예전 음절 unigram 은 음절이 어디에 있든 같은 확률을 줘서 "홀로 쓰이는 흔한 말"(왜/좀/난)과
+     * "단어로서 흔한 말"(너무/그냥/내가)을 몰랐다 — 실측에서 가장 많이 놓친 한영타가 드문 단어가
+     * 아니라 `sjan`(너무, NSMC 5만 문장에서 2,803회 누락)·`rmsid`(그냥)·`dho`(왜)였다.
+     * 이제 한글 구간마다 길이 확률 × 음절별 위치(홀로/첫/가운데/끝) 확률을 곱하고, 변환 결과가
+     * 자주 쓰는 어절이면 그 실제 빈도와 반반 섞는다. 조합 실패한 낱자모는 [KO_FLOOR].
+     */
+    fun koreanWordLogProb(converted: String): Double? {
+        var total = 0.0
+        var units = 0
+        var runs = 0
+        var runStart = -1
+        var runEnd = -1
+        var allSyllables = true
+        var i = 0
+        val len = converted.length
+        while (i < len) {
+            if (!isHangulUnit(converted[i])) {
+                i++
+                continue
+            }
+            var j = i
+            while (j < len && isHangulUnit(converted[j])) j++
+            val k = j - i
+            total += TypoTables.POS_LEN[minOf(k, POS_LEN_MAX) - 1]
+            for (p in i until j) {
+                val c = converted[p]
+                if (c.code in HANGUL_FIRST..HANGUL_LAST) {
+                    val pos = when {
+                        k == 1 -> POS_SINGLE
+                        p == i -> POS_FIRST
+                        p == j - 1 -> POS_LAST
+                        else -> POS_MID
+                    }
+                    total += positionalLogProb(c, pos)
+                } else {
+                    total += KO_FLOOR
+                    allSyllables = false
+                }
+            }
+            units += k
+            runs++
+            runStart = i
+            runEnd = j
+            i = j
+        }
+        if (units == 0) return null
+        if (runs == 1 && allSyllables) {
+            eojeolLogProb(converted.substring(runStart, runEnd))?.let { eojeol ->
+                return logAddExp(LOG_HALF + total, LOG_HALF + eojeol)
+            }
+        }
+        return total
     }
 
     /**
-     * [koreanLogProb] 의 구어체판 — 낱자모를 [KO_FLOOR] 대신 실제 구어체 빈도로 본다.
-     * **교체 문자열을 정할 때만** 쓴다([HangulConverter] 의 문맥 변환). 감지 자체는 여전히
-     * [koreanLogProb](정제된 글로 학습)를 쓴다 — 검증된 오탐/감지율 수치를 건드리지 않기 위해서다.
+     * 약어 뒤 꼬리(`CG`+`가`, `SF`+`영화계의`)의 로그확률 — 꼬리는 약어에서 시작한 어절의 **이어지는
+     * 부분**이라 음절을 가운데…끝 위치로 채점하고 길이 확률은 넣지 않는다. [koreanWordLogProb] 로
+     * 재면 조사 한 음절(`가`)을 "홀로 쓰인 어절"로 봐 확률이 바닥이 된다(실측: 약어+조사 감지
+     * 94.9%→91.0% 로 떨어졌던 원인).
+     */
+    private fun koreanSuffixLogProb(converted: String): Double? {
+        var last = -1
+        for (idx in converted.indices) if (isHangulUnit(converted[idx])) last = idx
+        if (last < 0) return null
+        var total = 0.0
+        for (idx in 0..last) {
+            val c = converted[idx]
+            if (!isHangulUnit(c)) continue
+            total += if (c.code in HANGUL_FIRST..HANGUL_LAST) {
+                positionalLogProb(c, if (idx == last) POS_LAST else POS_MID)
+            } else {
+                KO_FLOOR
+            }
+        }
+        return total
+    }
+
+    private fun isHangulUnit(c: Char): Boolean =
+        c.code in HANGUL_FIRST..HANGUL_LAST || c.code in JAMO_FIRST..JAMO_LAST
+
+    private const val POS_SINGLE = 0
+    private const val POS_FIRST = 1
+    private const val POS_MID = 2
+    private const val POS_LAST = 3
+    private const val POS_LEN_MAX = 12
+    private val LOG_HALF = Math.log(0.5)
+
+    /** 음절 [c] 가 어절 안 위치 [pos] 에 올 로그확률. 학습 글에 없던 음절은 위치별 바닥값. */
+    private fun positionalLogProb(c: Char, pos: Int): Double {
+        val syl = TypoTables.POS_SYLLABLES
+        var lo = 0
+        var hi = syl.length - 1
+        while (lo <= hi) {
+            val mid = (lo + hi) ushr 1
+            val m = syl[mid]
+            when {
+                m < c -> lo = mid + 1
+                m > c -> hi = mid - 1
+                else -> return decode(TypoTables.POS_TABLE[pos * syl.length + mid], TypoTables.POS_LO, TypoTables.POS_HI)
+            }
+        }
+        return TypoTables.POS_FLOOR[pos]
+    }
+
+    /** 자주 쓰는 어절(상위 1천 개)의 실제 빈도. 처음 쓸 때 한 번만 푼다(첫 선택 전까지 메모리 0). */
+    private val eojeols: Map<String, Double> by lazy {
+        val words = TypoTables.EOJ_WORDS.split(',')
+        HashMap<String, Double>(words.size * 2).also { map ->
+            words.forEachIndexed { idx, w -> map[w] = decode(TypoTables.EOJ_LEVELS[idx], TypoTables.EOJ_LO, TypoTables.EOJ_HI) }
+        }
+    }
+
+    private fun eojeolLogProb(w: String): Double? = eojeols[w]
+
+    // ── 라틴 쪽: Shift 증인 사전 + 약어 모델 ─────────────────────────────────────
+
+    /**
+     * "Shift 증인" 사전 — 한국어 글에서 **Shift 가 무의미한 키에 대문자가 있는 모양**으로 쓰인
+     * 적이 있는 라틴 문자열(`SNS`, `DLC`, `tvN`)은 한글을 치다 생길 수 없으므로 진짜 라틴 문자열이다.
+     * 이 원리로 라벨 없이 한국어 원문(뉴스·위키·리뷰 등 학습 분할의 라틴 토큰 77만 회)에서 자동 채굴했고, 그중
+     * 판정에 영향을 주는 643개만 담았다. 값은 한국어 글 속 라틴 토큰 가운데 그 문자열의 비율:
+     * 소문자는 (소문자 출현 + 0.2×대문자 증인), 대문자는 전부 대문자 출현.
+     */
+    private class LexEntry(val lower: Double, val upper: Double)
+
+    private val lexicon: Map<String, LexEntry> by lazy {
+        val words = TypoTables.LEX_WORDS.split(',')
+        HashMap<String, LexEntry>(words.size * 2).also { map ->
+            words.forEachIndexed { idx, w ->
+                val u = TypoTables.LEX_UPPER[idx]
+                map[w] = LexEntry(
+                    decode(TypoTables.LEX_LOWER[idx], TypoTables.LEX_LO, TypoTables.LEX_HI),
+                    if (u == ' ') Double.NaN else decode(u, TypoTables.LEX_LO, TypoTables.LEX_HI),
+                )
+            }
+        }
+    }
+
+    /**
+     * [text] 의 라틴 연속 구간이 **전부** 증인 사전에 있으면 그 로그확률 합, 하나라도 없으면 null.
+     * [upper] = 전부 대문자 형태의 빈도(CapsLock 가설용).
+     */
+    fun lexiconLogProb(text: String, upper: Boolean): Double? {
+        var total = 0.0
+        var any = false
+        var i = 0
+        while (i < text.length) {
+            if (!isAsciiLetter(text[i])) {
+                i++
+                continue
+            }
+            var j = i
+            while (j < text.length && isAsciiLetter(text[j])) j++
+            val e = lexicon[text.substring(i, j).lowercase()] ?: return null
+            val v = if (upper) e.upper else e.lower
+            if (v.isNaN()) return null
+            total += v
+            any = true
+            i = j
+        }
+        return if (any) total else null
+    }
+
+    private fun isAsciiLetter(c: Char) = c in 'a'..'z' || c in 'A'..'Z'
+
+    /**
+     * 약어 글자 bigram 로그확률(소문자 [latin]). AG News + 한국어 글의 전부 대문자 라틴 구간
+     * 2.5만 종류에서 종류당 1회로 셌다(한 약어가 수천 번 나와도 통계를 왜곡하지 않게). 실측으로
+     * trigram·unigram 과 성능이 같아 가장 작은 bigram(729칸)을 쓴다.
+     */
+    fun acronymLogProb(latin: String): Double {
+        var total = 0.0
+        var prev = 26
+        for (i in 0..latin.length) {
+            val cur = if (i < latin.length) symbolIndex(latin[i]) else 26
+            total += decode(TypoTables.ACR_BIGRAM[prev * 27 + cur], TypoTables.ACR_LO, TypoTables.ACR_HI)
+            prev = cur
+        }
+        return total
+    }
+
+    /**
+     * 음절 unigram([KO_SYLLABLE_TABLE]) 기반 구어체 모델 — 낱자모를 [KO_FLOOR] 대신 실제 구어체
+     * 빈도로 본다. **교체 문자열을 정할 때만** 쓴다([HangulConverter] 의 문맥 변환). 감지는
+     * [koreanWordLogProb](어절 위치별 모델)가 맡는다 — 둘은 목적이 다르다(감지는 "한국어 어절로
+     * 흔한가", 교체는 "ㅋㅋ/ㅠㅠ 같은 구어체 낱자모까지 한글로 볼 것인가").
      *
      * 왜 필요한가: 정제된 글에는 `ㅋㅋ`/`ㅠㅠ`/`ㅡㅡ` 가 없어 모든 낱자모가 최저 확률이 되는데,
      * 실제 한영타 문장에는 이게 흔하다(`zzz`→ㅋㅋㅋ). 이걸 최저값으로 두면 이미 한영타로 판정된
@@ -610,15 +969,10 @@ internal object TypoLanguageModel {
     }
 
     /**
-     * 점수를 0~1 신뢰도로 변환(로지스틱) — 설정의 "신뢰도 임계값(%)"과 이어 붙이기 위한 것.
-     * [TYPO_THRESHOLD](3.0)가 정확히 기본 임계값 70%에 대응하도록 [CENTER]/[SCALE] 을 맞췄다.
-     * 사용자가 임계값을 올리면 더 보수적(오탐↓·미탐↑), 내리면 더 적극적으로 동작한다.
+     * 글자당 점수 → 로짓의 척도([wordLogit]). 예전엔 점수 [TYPO_THRESHOLD](3.0)가 정확히 기본
+     * 임계값 70% 였고, 지금은 여기에 [CALIBRATION_SHIFT] 를 더 민 값이 최종 신뢰도다 — 사용자가
+     * 임계값을 올리면 더 보수적(오탐↓·미탐↑), 내리면 더 적극적으로 동작하는 관계는 그대로다.
      */
-    fun confidence(score: Double): Float {
-        val z = (score - CENTER) / SCALE
-        return (1.0 / (1.0 + Math.exp(-z))).toFloat()
-    }
-
     private const val SCALE = 2.0
     private const val CENTER = TYPO_THRESHOLD - 0.8472978603872034 * SCALE // logit(0.70)
 }

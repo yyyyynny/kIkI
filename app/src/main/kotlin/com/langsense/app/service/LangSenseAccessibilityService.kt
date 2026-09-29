@@ -182,7 +182,8 @@ class LangSenseAccessibilityService : AccessibilityService(),
                 onWarn = { overlay.showNoFocusWarning(getString(R.string.overlay_no_focus)) }
             )
             selectionMonitor = TextSelectionMonitor(
-                confidencePercentProvider = { prefs.replaceConfidence }
+                confidencePercentProvider = { prefs.replaceConfidence },
+                exceptionWordsProvider = { prefs.typoExceptionWords },
             ) { node, fullText, selStart, selEnd, converted ->
                 overlay.showReplaceChip(node, fullText, selStart, selEnd, converted)
             }

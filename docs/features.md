@@ -187,14 +187,15 @@ object HangulConverter {
      *
      * 아래 스니펫은 초기 구현(조합 성공률 기반)이며, 현재 코드는 이것과 다르다.
      *
-     * ⚠️ **현재 `HangulConverter.analyze()` 는 통계 언어 모델의 우도비로 판정한다**
-     * (2026-09 재설계, 상세는 CLAUDE.md Feature 4 + `TypoLanguageModel` 문서 주석 참조):
-     * 선택을 공백/한글 경계로 토큰화하고, 토큰마다
-     *   `[log P(변환결과 | 한국어 음절 모델) − log P(원문 | 영어 문자 trigram 모델)] / 라틴 글자 수`
-     * 를 계산해 최댓값을 취한 뒤 로지스틱으로 0~1 신뢰도로 바꾼다. 두 모델 모두 실제 글
-     * (영어: Gutenberg 소설·에세이 + 뉴스 / 한국어: 위키 + 뉴스)에서 빈도 가중으로 학습한
-     * 확률표를 양자화해 코드에 내장한다. 아래의 조합 성공률(composeRatio)은 "조합 실패한
-     * 낱자모에 최저 확률을 준다"는 형태로 한국어 모델 안에 흡수됐다.
+     * ⚠️ **현재 `HangulConverter.analyze()` 는 `TypoLanguageModel.judge()` 의 가설별 맞대결로
+     * 판정한다**(2026-09 재설계, 상세는 CLAUDE.md Feature 4 + docs/한영타_검증.md):
+     * 선택을 공백/한글 경계로 토큰화하고, 토큰마다 두 한영타 가설(CapsLock 꺼짐 = 원문 그대로 /
+     * 켜짐 = 대소문자 반전)을 세 대안 설명(영어 단어 trigram / 한국어 글에서 대문자로 쓰인 적 있는
+     * 라틴 문자열 "Shift 증인 사전" / 약어 bigram)과 맞붙여, 가설마다 가장 강한 반론을 상한으로 한
+     * 신뢰도의 최댓값을 쓴다. 한국어 쪽은 어절 위치별 음절 모델 + 자주 쓰는 어절 기억, Shift 가
+     * 무의미한 키의 대문자는 반대 증거(Shift 물리), 주변에 한글이 있으면 영어 단어 가설이 불리해진다.
+     * 표는 `TypoTables`(tools/typo-model/build_tables.py 로 생성). 아래의 조합 성공률(composeRatio)은
+     * "조합 실패한 낱자모에 최저 확률을 준다"는 형태로 한국어 모델 안에 흡수됐다.
      */
     fun detectEnglishToKorean(input: String): Float {
         val letters = input.filter { it.isLetter() }

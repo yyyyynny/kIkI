@@ -1,6 +1,7 @@
 package com.langsense.app.eval
 
 import com.langsense.app.util.HangulConverter
+import com.langsense.app.util.TypoLanguageModel
 import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -118,6 +119,97 @@ class TypoCorpusEvalTest {
         }
         println("EVAL NSMC test 감지 문장: ${hits.size}/$sentences")
         hits.take(10).forEach { println("EVAL   $it") }
+    }
+
+    /** NSMC test 의 한글 어절(라틴 없는 것)을 영타로 되돌린 것 — 출현 횟수 포함. */
+    private fun nsmcTypos(): Map<String, Int> {
+        val out = HashMap<String, Int>()
+        data("ratings_test.txt").forEachLine { line ->
+            val parts = line.split('\t')
+            if (parts.size < 2 || parts[0] == "id") return@forEachLine
+            for (w in parts[1].split(' ')) {
+                if (w.none { it in '가'..'힣' } || w.any { it in 'a'..'z' || it in 'A'..'Z' }) continue
+                out.merge(HangulConverter.convertKorToEng(w), 1, Int::plus)
+            }
+        }
+        return out
+    }
+
+    private fun latinLetters(s: String) = s.count { it in 'a'..'z' || it in 'A'..'Z' }
+
+    /**
+     * 한영타 감지율(어절 단위, 라틴 3글자 이상) — 주변 문맥 없음(통째로 잘못 친 경우)과 한국어 문맥
+     * (한국어 문서 속 일부만 잘못 친 경우). 기록: 96.4% / 97.6%(2026-09 재설계, 이전 94.0%).
+     */
+    @Test
+    fun typoDetectionRate() {
+        val typos = nsmcTypos()
+        var total = 0
+        var plain = 0
+        var context = 0
+        for ((w, n) in typos) {
+            if (latinLetters(w) < 3) continue
+            total += n
+            if (HangulConverter.analyze(w).confidence >= THRESHOLD) plain += n
+            if (HangulConverter.analyze(w, koreanContext = true).confidence >= THRESHOLD) context += n
+        }
+        val r0 = plain.toDouble() / total
+        val r1 = context.toDouble() / total
+        println("EVAL 한영타 감지(NSMC 어절): 문맥없음 ${"%.2f".format(r0 * 100)}%  한국어문맥 ${"%.2f".format(r1 * 100)}%  ($total 회)")
+        assertTrue("한영타 감지율 하락: $r0", r0 >= 0.955)
+        assertTrue("한국어 문맥 감지율 하락: $r1", r1 >= 0.97)
+    }
+
+    /**
+     * CapsLock 을 켠 채 친 한영타(위 어절의 대소문자를 뒤집은 것). 3글자 전부 대문자는 약어가
+     * 압도적이라 일부러 CapsLock 으로 보지 않으므로 4글자 이상만 잰다. 기록: 94.5%(이전 약 14%).
+     */
+    @Test
+    fun capsLockDetectionRate() {
+        var total = 0
+        var hit = 0
+        for ((w, n) in nsmcTypos()) {
+            if (latinLetters(w) < 4) continue
+            total += n
+            if (HangulConverter.analyze(TypoLanguageModel.swapCase(w)).confidence >= THRESHOLD) hit += n
+        }
+        val rate = hit.toDouble() / total
+        println("EVAL CapsLock 한영타 감지(4글자 이상): ${"%.2f".format(rate * 100)}%  ($total 회)")
+        assertTrue("CapsLock 감지율 하락: $rate", rate >= 0.92)
+    }
+
+    /**
+     * "Shift 증인" 원리로 라벨 없이 만든 오탐 집합: NSMC **train** 에서 Shift 가 무의미한 키에 대문자로
+     * 쓰인 적이 있는 라틴 문자열(= 한글 영타일 수 없는 진짜 라틴 문자열, `SNS`/`CG`/`OST`)이 NSMC
+     * **test** 에 어떤 모양(소문자 `sns` 포함)으로 나오든 한영타로 잡으면 오탐이다. 예전 모델은 `sns`
+     * →눈, `snl`→뉘 를 잡았다. 한국어 문맥(리뷰 문장 속)을 켜고 잰다.
+     */
+    @Test
+    fun witnessedLatinInKoreanText_notDetected() {
+        val witnessed = HashSet<String>()
+        val runRe = Regex("[A-Za-z]+")
+        data("ratings_train.txt").forEachLine { line ->
+            runRe.findAll(line).forEach { m ->
+                val r = m.value
+                val shiftless = r.withIndex().any { (i, c) -> c in 'A'..'Z' && c.lowercaseChar() !in "qwertop" && (i > 0 || r.length > 1 && r.all { it in 'A'..'Z' }) }
+                if (shiftless) witnessed += r.lowercase()
+            }
+        }
+        var total = 0
+        val hits = HashMap<String, Int>()
+        val tokenRe = Regex("[^\\s가-힣ㄱ-ㅣ]+")
+        data("ratings_test.txt").forEachLine { line ->
+            tokenRe.findAll(line).forEach { m ->
+                val t = m.value
+                val runs = runRe.findAll(t).map { it.value.lowercase() }.toList()
+                if (runs.isEmpty() || runs.any { it !in witnessed } || latinLetters(t) < 3) return@forEach
+                total++
+                if (HangulConverter.analyze(t, koreanContext = true).confidence >= THRESHOLD) hits.merge(t, 1, Int::plus)
+            }
+        }
+        val n = hits.values.sum()
+        println("EVAL 증인 라틴 문자열 오탐(NSMC test, 한국어 문맥): $n/$total ${hits.entries.sortedByDescending { it.value }.take(10).map { "${it.key}×${it.value}" }}")
+        assertTrue("증인 라틴 문자열 오탐 증가: $hits", n.toDouble() / total <= 0.005)
     }
 
     private companion object {

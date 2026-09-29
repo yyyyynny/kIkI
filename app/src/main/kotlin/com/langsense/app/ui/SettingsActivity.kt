@@ -813,7 +813,10 @@ class SettingsActivity : AppCompatActivity() {
         GroupDef(
             GROUP_REPLACE, R.string.settings_group_replace, R.string.settings_group_replace_desc,
             R.drawable.ic_grp_replace, null,
-            summary = { "${onOff(prefs.replaceEnabled)} · ${prefs.replaceConfidence}%" }
+            summary = {
+                val n = prefs.typoExceptionWords.size
+                "${onOff(prefs.replaceEnabled)} · ${prefs.replaceConfidence}%" + (if (n > 0) " · 예외 $n" else "")
+            }
         ) { c ->
             c.addView(sectionCard(getString(R.string.settings_replace)).apply {
                 addView(boundSwitchRow(getString(R.string.settings_replace_enabled), { prefs.replaceEnabled }) {
@@ -826,6 +829,10 @@ class SettingsActivity : AppCompatActivity() {
                     ) { prefs.replaceConfidence = it; markSaved(); refreshRailSummaries() }
                 )
                 addView(descRow(getString(R.string.settings_replace_confidence_desc)))
+            })
+            c.addView(sectionCard(getString(R.string.settings_replace_exceptions)).apply {
+                addView(descRow(getString(R.string.settings_replace_exceptions_desc)))
+                addView(typoExceptionEditor())
             })
         },
 
@@ -1215,7 +1222,10 @@ class SettingsActivity : AppCompatActivity() {
             item(s(R.string.settings_replace_enabled), path(R.string.settings_group_replace), GROUP_REPLACE,
                 "한영타, 영타, 오타, 교체, 변환, 교체 버튼, 자동 수정, dkssud, 안녕, 잘못 친, 영어로 쳐짐"),
             item(s(R.string.settings_replace_confidence), path(R.string.settings_group_replace), GROUP_REPLACE,
-                "신뢰도, 정확도, 민감도, 임계값, 기준, 너무 자주 뜸, 안 뜸, 오탐, threshold"),
+                "신뢰도, 정확도, 민감도, 임계값, 기준, 너무 자주 뜸, 안 뜸, 오탐, threshold, 캡스락, CapsLock, 대문자"),
+            item(s(R.string.settings_replace_exceptions), path(R.string.settings_group_replace), GROUP_REPLACE,
+                "예외, 예외 단어, 제외, 무시, 허용 목록, 화이트리스트, 바꾸지 않을 단어, 약어, 아이디, 교체 안 함, " +
+                    "잘못 뜸, 자꾸 뜸, 오탐, 길게 누르기, exception, ignore, whitelist"),
             // ── 입력 경고 ──
             item(s(R.string.settings_nofocus_enabled), path(R.string.settings_group_nofocus), GROUP_NOFOCUS,
                 "포커스, 경고, 선택되지 않음, 입력칸, 커서 없음, 허공에 입력, 글자 안 들어감, focus"),
@@ -1832,6 +1842,94 @@ class SettingsActivity : AppCompatActivity() {
         Prefs.QUICK_MENU_ACTION_IDS.filter { it !in selected }.forEach { id ->
             addableContainer.addView(addableItemRow(id))
         }
+    }
+
+    /**
+     * 한영타 예외 단어 편집기: 입력칸 + 추가 버튼, 아래에 단어마다 빼기 버튼. 저장은
+     * [Prefs.addTypoException]/[Prefs.removeTypoException] — 서비스는 선택 때마다 prefs 를 읽으므로
+     * 바로 반영된다. 퀵메뉴 편집과 같은 이유로 스위치가 아니라 클릭 리스너만 쓴다(프로그래매틱 되돌림 없음).
+     */
+    private fun typoExceptionEditor(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        val list = LinearLayout(this@SettingsActivity).apply { orientation = LinearLayout.VERTICAL }
+        fun rebuild() {
+            list.removeAllViews()
+            val words = prefs.typoExceptionWords.sorted()
+            if (words.isEmpty()) {
+                list.addView(TextView(this@SettingsActivity).apply {
+                    text = getString(R.string.settings_replace_exceptions_empty)
+                    textSize = 13f
+                    setTextColor(themeColor(R.attr.uiOnSurfaceMuted))
+                    setPadding(0, dp(6), 0, dp(6))
+                })
+            }
+            for (w in words) {
+                list.addView(LinearLayout(this@SettingsActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    minimumHeight = dp(44)
+                    addView(TextView(this@SettingsActivity).apply {
+                        text = w
+                        textSize = 14f
+                        setTextColor(themeColor(R.attr.uiOnSurface))
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
+                            .also { it.weight = 1f }
+                    })
+                    addView(ImageButton(this@SettingsActivity).apply {
+                        setImageResource(R.drawable.ic_remove)
+                        contentDescription = getString(R.string.settings_replace_exceptions_remove, w)
+                        background = rippleCircleBackground()
+                        layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+                        setOnClickListener {
+                            prefs.removeTypoException(w)
+                            markSaved(); refreshRailSummaries(); rebuild()
+                        }
+                    })
+                })
+            }
+        }
+        val input = EditText(this@SettingsActivity).apply {
+            hint = getString(R.string.settings_replace_exceptions_hint)
+            filters = arrayOf(InputFilter.LengthFilter(40))
+            setSingleLine()
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            textSize = 14f
+            setTextColor(themeColor(R.attr.uiOnSurface))
+            setHintTextColor(themeColor(R.attr.uiOnSurfaceMuted))
+            tintForCustomPalette(this)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT).also { it.weight = 1f }
+        }
+        fun commit() {
+            val raw = input.text.toString()
+            if (raw.isBlank()) return
+            when {
+                Prefs.normalizeTypoException(raw) == null -> toastMsg(getString(R.string.settings_replace_exceptions_invalid))
+                prefs.addTypoException(raw) == null ->
+                    toastMsg(getString(R.string.settings_replace_exceptions_full, Prefs.MAX_TYPO_EXCEPTIONS))
+                else -> {
+                    input.setText("")
+                    markSaved(); refreshRailSummaries(); rebuild()
+                }
+            }
+        }
+        input.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) { commit(); true } else false
+        }
+        addView(LinearLayout(this@SettingsActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(input)
+            addView(ImageButton(this@SettingsActivity).apply {
+                setImageResource(R.drawable.ic_add)
+                contentDescription = getString(R.string.settings_replace_exceptions_add)
+                background = rippleCircleBackground()
+                layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).also { it.marginStart = dp(6) }
+                setOnClickListener { commit() }
+            })
+        })
+        addView(list)
+        rebuild()
     }
 
     /** "선택됨" 행: 순번 + 라벨 + 빼기 버튼(마지막 1개면 비활성) + 드래그 손잡이. `tag` 에 id 보관. */

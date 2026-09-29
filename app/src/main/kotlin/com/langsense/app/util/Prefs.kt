@@ -124,6 +124,35 @@ class Prefs(context: Context) {
         get() = sp.getInt(KEY_REPLACE_CONFIDENCE, 70).coerceIn(50, 90)
         set(v) = sp.edit().putInt(KEY_REPLACE_CONFIDENCE, v.coerceIn(50, 90)).apply()
 
+    /**
+     * 한영타 예외 단어(글자만 남긴 소문자, [normalizeTypoException]). 여기 있는 라틴 단어는 "교체?"
+     * 칩을 띄우지 않고 교체에서도 그대로 둔다 — 통계로는 가리기 어려운 것(한국어 글에 소문자로 흔히
+     * 쓰는 약어 `aos`, 아이디, 사내 용어)을 사용자가 직접 막는 최후 수단.
+     *
+     * ⚠️ `getStringSet` 이 돌려주는 Set 은 그대로 수정하면 안 된다 — 항상 복사본으로 다시 넣는다.
+     */
+    var typoExceptionWords: Set<String>
+        get() = sp.getStringSet(KEY_TYPO_EXCEPTIONS, emptySet())?.toSet() ?: emptySet()
+        private set(v) = sp.edit().putStringSet(KEY_TYPO_EXCEPTIONS, v).apply()
+
+    /**
+     * 예외 단어 추가. 정규화한 단어를 돌려준다 — 형식이 맞지 않으면 null, 이미 [MAX_TYPO_EXCEPTIONS]
+     * 개가 차 있으면(새 단어일 때) 추가하지 않고 null.
+     */
+    fun addTypoException(raw: String): String? {
+        val w = normalizeTypoException(raw) ?: return null
+        val cur = typoExceptionWords
+        if (w in cur) return w
+        if (cur.size >= MAX_TYPO_EXCEPTIONS) return null
+        typoExceptionWords = cur + w
+        return w
+    }
+
+    fun removeTypoException(word: String) {
+        val cur = typoExceptionWords
+        if (word in cur) typoExceptionWords = cur - word
+    }
+
     // ---- 추가 기능 2: 터치 키보드 제외 ----
     /**
      * ON 이면 외장(하드웨어) 키보드가 연결돼 있을 때만 기능이 동작하고, 소프트(터치) 키보드만
@@ -434,6 +463,7 @@ class Prefs(context: Context) {
         const val KEY_NOFOCUS_THRESHOLD = "nofocus_threshold"
         const val KEY_REPLACE_ENABLED = "replace_enabled"
         const val KEY_REPLACE_CONFIDENCE = "replace_confidence"
+        const val KEY_TYPO_EXCEPTIONS = "typo_exception_words"
         const val KEY_EXCLUDE_TOUCH_KEYBOARD = "exclude_touch_keyboard"
         const val KEY_KEYBOARD_CONNECT_NOTIFY = "keyboard_connect_notify"
         const val KEY_DIAGNOSTIC_PAUSED_BY_TOUCH_EXCLUDE = "diagnostic_paused_by_touch_exclude"
@@ -499,6 +529,31 @@ class Prefs(context: Context) {
             CUSTOM_TEXT to "#1A1C20",
             CUSTOM_ACCENT to "#2563EB",
         )
+
+        // ---- 한영타 예외 단어 ----
+
+        /** 예외 단어 개수 상한(판정은 집합 조회라 비용과 무관 — 설정 화면 목록이 끝없이 길어지는 것만 막는다). */
+        const val MAX_TYPO_EXCEPTIONS = 200
+
+        /**
+         * 예외 단어 정규화(순수 함수 — JVM 테스트 대상): 영문 글자만 남겨 소문자로. 판정 쪽 비교 키
+         * (토큰의 글자만 모은 소문자)와 같은 모양이라 `AOS`/`aos,`/`Aos` 가 모두 같은 단어로 막힌다.
+         * 2~40자가 아니면 null(한 글자는 판정 대상도 아니고, 너무 긴 건 오입력).
+         */
+        fun normalizeTypoException(raw: String): String? {
+            val w = raw.filter { it in 'a'..'z' || it in 'A'..'Z' }.lowercase()
+            return if (w.length in 2..40) w else null
+        }
+
+        /**
+         * "교체?" 칩을 길게 눌렀을 때 예외로 넣을 단어(순수 함수). 선택 안의 라틴 조각(공백·한글로
+         * 끊은 것)이 **정확히 하나**일 때만 그 단어를 준다 — 문장을 통째로 넣으면 그 안의 진짜
+         * 한영타까지 예외가 돼 다시는 안 잡힌다.
+         */
+        fun typoExceptionCandidate(selected: String): String? {
+            val pieces = selected.split(Regex("[\\s가-힣ㄱ-ㅣ]+")).filter { p -> p.any { it in 'a'..'z' || it in 'A'..'Z' } }
+            return if (pieces.size == 1) normalizeTypoException(pieces[0]) else null
+        }
 
         // ---- NEW / 이사 안내 마커 ----
 

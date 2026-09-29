@@ -18,6 +18,8 @@ import com.langsense.app.util.HangulConverter
  */
 class TextSelectionMonitor(
     private val confidencePercentProvider: () -> Int,
+    /** 설정의 한영타 예외 단어(소문자) — 판정·교체에서 제외. */
+    private val exceptionWordsProvider: () -> Set<String> = { emptySet() },
     private val onDetected: (
         node: AccessibilityNodeInfo,
         fullText: String,
@@ -47,7 +49,7 @@ class TextSelectionMonitor(
         if (selected.isBlank()) return false
 
         val threshold = confidencePercentProvider() / 100f
-        val analysis = pickAnalysis(selected, threshold)
+        val analysis = pickAnalysis(selected, threshold, hasHangulNear(text, selStart, selEnd), exceptionWordsProvider())
         if (analysis.confidence < threshold) return false
         if (analysis.converted == selected) return false // 변환 결과가 동일하면 의미 없음
 
@@ -61,8 +63,30 @@ class TextSelectionMonitor(
         /** 한영타 교정이 의미 있는 선택 길이 상한(문자). 단어~짧은 문장 범위를 넉넉히 덮는다. */
         const val MAX_SELECTION = 200
 
+        /** 주변 문맥을 볼 범위(선택 앞뒤 글자 수) — 한 문장 남짓. */
+        const val CONTEXT_WINDOW = 40
+
+        /**
+         * 선택 앞뒤 [CONTEXT_WINDOW] 글자(선택 포함) 안에 한글이 있는가 = 한국어 문서 속 선택인가.
+         * 그러면 같은 `wha` 라도 영어보다 한영타(좀)일 가능성이 높다([HangulConverter.analyze] 의
+         * koreanContext). 전체 텍스트를 복사하지 않고 [text] 에서 좁은 범위만 한 글자씩 본다.
+         * 순수 함수(JVM 테스트 대상).
+         */
+        fun hasHangulNear(text: CharSequence, selStart: Int, selEnd: Int): Boolean {
+            val from = (selStart - CONTEXT_WINDOW).coerceAtLeast(0)
+            val to = (selEnd + CONTEXT_WINDOW).coerceAtMost(text.length)
+            for (i in from until to) {
+                val c = text[i].code
+                if (c in 0xAC00..0xD7A3 || c in 0x3131..0x318E) return true
+            }
+            return false
+        }
+
         /**
          * 정방향/역방향 중 최종 판정을 고르는 순수 함수(안드로이드 의존성 없음 — 단위 테스트 대상).
+         *
+         * [koreanContext] 는 선택 주변에 한글이 있는지([hasHangulNear]) — 선택 안에 한글이 있어도 같은
+         * 뜻이라 여기서 함께 켠다. [exceptions] 는 사용자 예외 단어.
          *
          * 정방향(영→한, [HangulConverter.analyze])을 먼저 본다 — 이 함수는 이미 섞인 텍스트를 잘
          * 처리한다(`"저 dkssud"` 를 선택하면 이미 있는 한글 "저"는 그대로 두고 "dkssud" 만 조합
@@ -75,8 +99,13 @@ class TextSelectionMonitor(
          * 이러면 `"저 dkssud"` 처럼 이미 정상 한글과 진짜 한영타가 섞인 선택에서 역방향(사전
          * 완전일치라는 엄격한 조건)만 타 감지가 아예 안 되는 회귀였다(2026-09 발견·수정).
          */
-        fun pickAnalysis(selected: String, threshold: Float): HangulConverter.Analysis {
-            val forward = HangulConverter.analyze(selected)
+        fun pickAnalysis(
+            selected: String,
+            threshold: Float,
+            koreanContext: Boolean = false,
+            exceptions: Set<String> = emptySet(),
+        ): HangulConverter.Analysis {
+            val forward = HangulConverter.analyze(selected, koreanContext || HangulConverter.containsHangul(selected), exceptions)
             if (forward.confidence >= threshold || !HangulConverter.containsHangul(selected)) return forward
             val reverse = HangulConverter.analyzeReverse(selected)
             return if (reverse.confidence > forward.confidence) reverse else forward

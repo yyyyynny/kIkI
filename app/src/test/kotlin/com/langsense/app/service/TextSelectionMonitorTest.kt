@@ -62,4 +62,28 @@ class TextSelectionMonitorTest {
         val result = TextSelectionMonitor.pickAnalysis("hello 안녕", threshold)
         assertTrue(result.confidence < threshold)
     }
+
+    /** 주변 문맥: 선택 앞뒤 창(선택 포함) 안의 한글 음절·낱자모를 본다. */
+    @Test
+    fun hasHangulNear_looksAroundSelectionOnly() {
+        val text = "오늘 wha 먹을까"
+        val s = text.indexOf("wha")
+        assertTrue(TextSelectionMonitor.hasHangulNear(text, s, s + 3))
+        assertEquals(false, TextSelectionMonitor.hasHangulNear("see you wha later", 8, 11))
+        // 창(40자) 밖의 한글은 문맥이 아니다
+        val far = "한글" + " ".repeat(60) + "wha"
+        val f = far.indexOf("wha")
+        assertEquals(false, TextSelectionMonitor.hasHangulNear(far, f, f + 3))
+        // 선택 안의 한글도 문맥이다(ㅋㅋ 같은 낱자모 포함)
+        assertTrue(TextSelectionMonitor.hasHangulNear("ㅋㅋ wha", 0, 6))
+    }
+
+    /** 한국어 문맥이면 짧은 한영타도 잡는다(영어 문서에선 보수적으로 둔다). */
+    @Test
+    fun koreanContext_detectsShortTypo() {
+        assertTrue(TextSelectionMonitor.pickAnalysis("wha", threshold).confidence < threshold)
+        val r = TextSelectionMonitor.pickAnalysis("wha", threshold, koreanContext = true)
+        assertTrue(r.confidence >= threshold)
+        assertEquals("좀", r.converted)
+    }
 }

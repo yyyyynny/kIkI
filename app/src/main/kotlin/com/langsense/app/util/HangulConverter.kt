@@ -192,20 +192,22 @@ object HangulConverter {
      * 시절엔 그 조각들 때문에 신호가 희석돼 감지를 놓쳤다(실제 문장 뒤에 `dkssud` 를 붙인 500건
      * 중 31건 미탐 → 토큰별 판정으로 100% 감지, 2026-09).
      *
-     * 토큰 하나의 판정은 [TypoLanguageModel.score] 의 우도비가 담당하고, 여기서는 그 모델이
-     * 구조적으로 약한 지점만 좁게 보완한다:
+     * 토큰 하나의 판정은 [TypoLanguageModel.judge] 가 담당한다 — CapsLock 꺼짐/켜짐 두 한영타
+     * 가설을 영어 단어·한국어 글 속 라틴 문자열(Shift 증인 사전)·약어와 맞붙인다(2026-09 재설계).
+     * 여기서는 판정 대상만 거른다:
      * - 라틴 3글자 미만([TypoLanguageModel.MIN_LATIN_LENGTH]) 토큰은 판정하지 않는다.
-     * - 전부 대문자인 토큰은 영어 약어(SNS/DLC/EJSM)로 본다.
-     * - 첫 글자 외 대문자는 두벌식 Shift(쌍자음·복합모음) 흔적이라 모델에 신호로 넘긴다.
-     * - 자판에 없는 글자가 섞인 만큼(mapRatio) 신뢰도를 낮춘다.
      * - [ENGLISH_STOPWORDS] 정확 일치는 마지막 안전망(모델이 놓치는 소수 예외 전용).
+     * - [exceptions](사용자가 설정에서 등록한 예외 단어, 소문자)는 판정도 교체도 하지 않는다.
+     *
+     * [koreanContext] = 선택 주변(또는 선택 안)에 한글이 있다 — 한국어 문서 속 선택이면 같은 라틴
+     * 조각도 영어 단어보다 한영타일 가능성이 높다([TypoLanguageModel.judge] 참조).
      *
      * ⚠️ 이미 완성형 한글/호환 자모인 문자는 토큰화에서 경계로 취급해 판정에서 제외한다 —
      * 포함시키면 긴 정상 한글 문장에 짧은 한영타 조각이 섞였을 때 신호가 묻힌다.
      * [Analysis.converted] 는 토큰마다 따로 정한다 — 영어 단어(`cpu`)는 그대로 두고 한영타만
      * 바꾼다([convertInTypoContext]). 한글·공백은 원문 그대로 보존된다.
      */
-    fun analyze(input: String): Analysis {
+    fun analyze(input: String, koreanContext: Boolean = false, exceptions: Set<String> = emptySet()): Analysis {
         // 라틴 토큰(공백/한글로 구분되는 조각) 하나 = 원문 텍스트([text], 구두점/숫자 포함 —
         // convertEngToKor 입력용) + 글자만 모아 소문자화한 것([letters], 스톱워드 비교·매핑
         // 비율 계산용) + 매핑 가능 글자 수. [text] 와 [letters] 를 분리해 두는 이유: "1cm" 처럼
@@ -217,18 +219,20 @@ object HangulConverter {
         var tokStart = 0
         var tokMappable = 0
         var tokUpper = 0
-        var tokInnerUpper = false
+        var tokLatin = 0
+        var tokLatinUpper = 0
         var anyLetter = false
         fun flushToken() {
             if (tok.isEmpty()) return
             val letters = tokLetters.toString()
             val allUpper = letters.isNotEmpty() && tokUpper == letters.length
-            tokens.add(LatinToken(tokStart, tok.toString(), letters, tokMappable, allUpper, tokInnerUpper && !allUpper))
+            tokens.add(LatinToken(tokStart, tok.toString(), letters, tokMappable, allUpper, tokLatinUpper * 2 > tokLatin))
             tok.setLength(0)
             tokLetters.setLength(0)
             tokMappable = 0
             tokUpper = 0
-            tokInnerUpper = false
+            tokLatin = 0
+            tokLatinUpper = 0
         }
         for ((i, c) in input.withIndex()) {
             val code = c.code
@@ -240,9 +244,10 @@ object HangulConverter {
             if (tok.isEmpty()) tokStart = i
             if (c.isLetter()) {
                 anyLetter = true
-                if (c.isUpperCase()) {
-                    tokUpper++
-                    if (tokLetters.isNotEmpty()) tokInnerUpper = true // 첫 글자 대문자는 영어에서도 흔함
+                if (c.isUpperCase()) tokUpper++
+                if (isLatin(c)) {
+                    tokLatin++
+                    if (c in 'A'..'Z') tokLatinUpper++
                 }
                 tokLetters.append(c.lowercaseChar())
                 if (engToJamo(c) != null) tokMappable++
@@ -252,76 +257,39 @@ object HangulConverter {
         flushToken()
         if (!anyLetter) return Analysis(0f, input)
 
-        // 토큰마다 [TypoLanguageModel] 우도비로 판정하고 그 중 최댓값을 선택 전체의 신뢰도로
+        // 토큰마다 [TypoLanguageModel.judge] 로 판정하고 그 중 최댓값을 선택 전체의 신뢰도로
         // 쓴다 — 혼합 선택("dkssud the")에서 "the" 는 낮은 점수로 자연히 탈락하고 "dkssud" 만
         // 후보로 남는다. 스톱워드 정확 일치는 이제 안전망일 뿐이다(아래 [ENGLISH_STOPWORDS] 주석).
         var best = 0f
+        var bestCaps = false
         for (t in tokens) {
             val letters = t.letters.length
             if (letters < TypoLanguageModel.MIN_LATIN_LENGTH || t.mappable == 0) continue
-            if (t.letters in ENGLISH_STOPWORDS) continue
-            // 전부 대문자인 토큰은 영어 약어(SNS/DLC/EJSM …)로 본다 — 한국어 문장 5천 개 검증에서
-            // 남은 오탐이 전부 이 형태였다. 두벌식에서 Shift 는 쌍자음/복합모음 7개에만 쓰여
-            // 진짜 한영타가 통째로 대문자가 되는 일은 사실상 없다(CapsLock 입력은 나머지 글자가
-            // 아예 매핑되지 않아 어차피 조합에 실패한다).
-            if (t.allUpper) continue
-            // 매핑 불가 글자가 섞였으면(자판에 없는 문자) 그만큼 확신을 낮춘다.
-            val mapRatio = t.mappable.toFloat() / letters
-            val convertedTok = convertEngToKor(t.text)
-            TypoLanguageModel.score(t.letters, convertedTok, t.innerUpper)?.let { score ->
-                val conf = TypoLanguageModel.confidence(score) * mapRatio
-                if (conf > best) best = conf
+            if (t.letters in ENGLISH_STOPWORDS || t.letters in exceptions) continue
+            val j = TypoLanguageModel.judge(t.text, t.letters, t.mappable, t.allUpper, koreanContext)
+            if (j.confidence > best) {
+                best = j.confidence
+                bestCaps = j.capsLock
             }
-            acronymTailConfidence(t.text)?.let { conf -> if (conf * mapRatio > best) best = conf * mapRatio }
         }
         if (best == 0f) return Analysis(0f, input)
 
         // 교체 문자열: 토큰마다 따로 정한다. 선택 전체를 통째로 변환하면 진짜 한영타 옆의 영어
         // 단어까지 바뀐다(`cpu wjdakf` → `체ㅕ 정말`). 공백·한글은 원문 그대로 둔다.
+        // CapsLock 으로 판정됐으면 대문자가 과반인 토큰은 대소문자를 뒤집어 변환한다(`GKArP`→함께 —
+        // 예전엔 CapsLock 을 몰라 "GKA계"로 망가뜨렸다). 소문자가 과반인 토큰은 도중에 CapsLock 을
+        // 끈 것이라 그대로 둔다.
         val out = StringBuilder(input.length)
         var last = 0
         for (t in tokens) {
             out.append(input, last, t.start)
-            out.append(convertInTypoContext(t))
+            if (t.letters in exceptions) out.append(t.text)
+            else out.append(convertInTypoContext(t, capsLock = bestCaps && t.upperMajority))
             last = t.start + t.text.length
         }
         out.append(input, last, input.length)
         return Analysis(best, out.toString())
     }
-
-    /**
-     * "대문자 약어 + 영타 꼬리"(`GUIdml`=GUI의, `CGrk`=CG가) 전용 판정. 토큰 통째로 보면 약어까지
-     * 한글로 변환돼(`혀ㅑ의`) 점수가 깎여 놓쳤다 — 교체([convertInTypoContext])는 이미 "영어+한글"
-     * 가설로 `GUI의` 를 만드는데 감지가 못 따라왔던 것. 약어 뒤 꼬리만 기존 모델([TypoLanguageModel.score])
-     * 로 재고, 약어 바로 뒤에 소문자가 붙은 구조 자체를 [ACRONYM_TAIL_BONUS] 로 더한다.
-     *
-     * 실측(2026-09): 영어 AG News 12.7만 기사 + 단어 47만 개의 같은 형태 1,452회 중 오탐 0,
-     * NSMC 20만 문장의 "대문자 약어+한글"을 영타로 바꾼 2,149회 중 94.9% 감지. 꼬리가 2글자면
-     * 정보가 한 음절뿐이라 흔한 조사·어미([AFTER_ACRONYM_PARTICLES])로 변환될 때만 인정한다 —
-     * 영어 쪽 오탐 후보(`CNNfn`→루, `WEek`→다, `NDak`→마)가 전부 2글자 꼬리였다.
-     * @return 해당 형태가 아니거나 판단 근거가 없으면 null.
-     */
-    private fun acronymTailConfidence(token: String): Float? {
-        val text = token.trim { !isLatin(it) } // 문장 끝 마침표·괄호(`GUIdml.`)
-        var i = 0
-        while (i < text.length && text[i] in 'A'..'Z') i++
-        if (i < 2 || i == text.length) return null
-        val tail = text.substring(i)
-        if (tail.length < 2 || !tail.all { it in 'a'..'z' }) return null
-        val tailKo = convertEngToKor(tail)
-        if (tail.length == 2 && tailKo !in AFTER_ACRONYM_PARTICLES) return null
-        val score = TypoLanguageModel.score(tail, tailKo) ?: return null
-        return TypoLanguageModel.confidence(score + ACRONYM_TAIL_BONUS)
-    }
-
-    /** 대문자 약어 바로 뒤에 소문자가 붙는 구조 자체의 가산점(실측으로 오탐 0 을 유지하는 보수적 값). */
-    private const val ACRONYM_TAIL_BONUS = 1.0
-
-    /** 약어 뒤 2글자 꼬리를 한영타로 인정하는 한 음절(조사·어미). NSMC 실측 빈도 상위 기준. */
-    private val AFTER_ACRONYM_PARTICLES = setOf(
-        "이", "가", "도", "에", "로", "나", "만", "랑", "야", "요", "고", "지", "게", "서",
-        "는", "은", "를", "을", "의", "와", "과",
-    )
 
     /** [analyze] 의 라틴 토큰(공백/한글로 구분되는 조각). */
     private class LatinToken(
@@ -333,8 +301,8 @@ object HangulConverter {
         val letters: String,
         val mappable: Int,
         val allUpper: Boolean,
-        /** 첫 글자 외의 대문자 유무 — 두벌식 쌍자음/복합모음(Shift) 흔적. */
-        val innerUpper: Boolean,
+        /** 라틴 글자 중 대문자가 과반 — CapsLock 으로 판정된 선택에서 대소문자를 뒤집어 변환할 대상. */
+        val upperMajority: Boolean,
     )
 
     /**
@@ -364,7 +332,7 @@ object HangulConverter {
      * C 에 남은 실패(`xml`→`틔`, `gif`→`햘`, `fps`→`렌`)는 변환 결과가 멀쩡한 음절이라 본질적으로
      * 모호하다.
      */
-    private fun convertInTypoContext(t: LatinToken): String {
+    private fun convertInTypoContext(t: LatinToken, capsLock: Boolean): String {
         if (t.mappable == 0) return t.text // 숫자·기호뿐
         // 라틴 글자 연속 구간마다 따로 판단한다 — 구두점·숫자로 붙은 조각(`whgdkdy...OSTeh`,
         // `10wjawnazz`)은 서로 다른 단어다. convertEngToKor 도 그 경계에서 조합을 끊으므로 동치다.
@@ -379,7 +347,7 @@ object HangulConverter {
             }
             var j = i
             while (j < text.length && isLatin(text[j])) j++
-            out.append(convertRunInTypoContext(text.substring(i, j)))
+            out.append(convertRunInTypoContext(text.substring(i, j), capsLock))
             i = j
         }
         return out.toString()
@@ -387,25 +355,30 @@ object HangulConverter {
 
     private fun isLatin(c: Char) = c in 'a'..'z' || c in 'A'..'Z'
 
-    /** [convertInTypoContext] 의 라틴 글자 구간 하나(전부 a-z/A-Z). */
-    private fun convertRunInTypoContext(run: String): String {
+    /**
+     * [convertInTypoContext] 의 라틴 글자 구간 하나(전부 a-z/A-Z). [capsLock] 이면 CapsLock 을 켠 채
+     * 친 것으로 보고 대소문자를 뒤집은 글자열([typed])로 한글 가설을 세운다 — 영어 가설은 원문 그대로.
+     */
+    private fun convertRunInTypoContext(run: String, capsLock: Boolean): String {
         // 전부 대문자는 약어(OST/EBS) — 단, Shift 가 한글에서 의미 있는 키로만 이뤄졌으면(`WW`→ㅉㅉ)
-        // 대문자가 영어의 증거가 못 되므로 모델에 맡긴다.
-        if (run.length >= 2 && run.all { it.isUpperCase() } && !run.all { it in ENG_UPPER_TO_JAMO }) return run
+        // 대문자가 영어의 증거가 못 되므로 모델에 맡긴다. CapsLock 중엔 대문자가 기본 상태라 이 규칙을
+        // 쓰지 않고 우도 비교에 맡긴다(`GUI` 처럼 한글로 깨지는 약어는 영어 쪽이 자연히 이긴다).
+        if (!capsLock && run.length >= 2 && run.all { it.isUpperCase() } && !run.all { it in ENG_UPPER_TO_JAMO }) return run
+        val typed = if (capsLock) TypoLanguageModel.swapCase(run) else run
 
         var bestText = run
         var bestLl = englishLl(run) + logLatinNotGlued(run.length)
-        val whole = convertEngToKor(run)
+        val whole = convertEngToKor(typed)
         TypoLanguageModel.koreanInformal(whole)?.let { ko ->
             // 실제 구어체에서 거의 안 나오는 전이가 필요한 변환(`체ㅕ`)은 문맥 가산점을 못 받는다.
             val prior = if (ko.rarestTransition >= MALFORMED_TRANSITION_LOG) CONTEXT_TOKEN_PRIOR else 0.0
-            val ll = koreanLl(run, ko.logProb) + prior
+            val ll = koreanLl(typed, ko.logProb) + prior
             if (ll >= bestLl) { bestLl = ll; bestText = whole }
         }
 
         // 영어 접두 + 한글 접미(`cpusms`→`cpu는`, `Brmq`→`B급`). 접미엔 음절이 하나는 있어야 한다.
         for (k in 1 until run.length) {
-            val suffix = run.substring(k)
+            val suffix = typed.substring(k)
             val suffixKo = convertEngToKor(suffix)
             if (suffixKo.none { it.code in HANGUL_BASE..HANGUL_LAST }) continue
             val ko = TypoLanguageModel.koreanInformalLogProb(suffixKo, afterLatin = true) ?: continue

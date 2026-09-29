@@ -191,4 +191,28 @@ class PrefsTest {
     fun encodeSwitchTriggers_empty_returnsEmptyString() {
         assertEquals("", Prefs.encodeSwitchTriggers(emptyList()))
     }
+
+    @Test
+    fun normalizeTypoException_keepsLatinLettersLowercased() {
+        assertEquals("aos", Prefs.normalizeTypoException("AOS"))
+        assertEquals("aos", Prefs.normalizeTypoException(" Aos, "))
+        assertEquals("fps", Prefs.normalizeTypoException("60fps"))
+    }
+
+    @Test
+    fun normalizeTypoException_rejectsTooShortOrLong() {
+        assertEquals(null, Prefs.normalizeTypoException("a"))
+        assertEquals(null, Prefs.normalizeTypoException("맨"))
+        assertEquals(null, Prefs.normalizeTypoException("12!"))
+        assertEquals(null, Prefs.normalizeTypoException("a".repeat(41)))
+    }
+
+    /** 칩 길게 누르기: 라틴 조각이 정확히 하나일 때만 예외 후보(문장째 넣으면 진짜 한영타까지 막힌다). */
+    @Test
+    fun typoExceptionCandidate_onlySingleLatinWord() {
+        assertEquals("aos", Prefs.typoExceptionCandidate("aos"))
+        assertEquals("aos", Prefs.typoExceptionCandidate("요즘 aos에"))
+        assertEquals(null, Prefs.typoExceptionCandidate("aos wjdakf"))
+        assertEquals(null, Prefs.typoExceptionCandidate("한글만"))
+    }
 }
