@@ -395,4 +395,24 @@ class HangulConverterTest {
         assertTrue(a.confidence >= 0.70f)
         assertEquals("dkssud 정말 좋다", a.converted)
     }
+
+    /**
+     * 음절 뒤 구어체 낱자모(ㅋㅋ/ㅎㅎ/ㅠㅠ)가 붙은 한영타 — 예전엔 낱자모를 전부 최저 확률로 봐 12%만
+     * 잡았다(`고맙습니다ㅠㅠ`). 반대로 낱자모만인 토큰(`zzz`=조는 소리, `bbbb`=엄지척)과 늘여 쓴 영어
+     * (`soooo`→내ㅐㅐ)는 영문 그대로 쓰는 경우라 잡지 않는다(NSMC 실측 오탐).
+     */
+    @Test
+    fun analyze_trailingColloquialJamo() {
+        // ⚠️ 받침이 될 수 있는 자음은 앞 음절에 붙는다(`whgspdygg`→좋네욯ㅎ — 실제 IME 도 같다). 그래서 붙지 않는
+        // 모음 ㅠ, 또는 이미 받침이 있는 음절 뒤의 자음으로 고정한다.
+        for ((typo, want) in listOf("rhakqtmqslekbb" to "고맙습니다ㅠㅠ", "dlTdjdybb" to "있어요ㅠㅠ", "woalTdmazz" to "재밌음ㅋㅋ")) {
+            val a = HangulConverter.analyze(typo)
+            assertTrue("$typo conf=${a.confidence}", a.confidence >= 0.70f)
+            assertEquals(want, a.converted)
+        }
+        for (w in listOf("zzz", "bbbb", "sooooooooo", "cooooooool")) {
+            assertTrue(w, HangulConverter.analyze(w).confidence < 0.70f)
+            assertTrue("$w (한국어 문맥)", HangulConverter.analyze(w, koreanContext = true).confidence < 0.70f)
+        }
+    }
 }

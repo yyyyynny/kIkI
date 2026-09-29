@@ -461,7 +461,8 @@ internal object TypoLanguageModel {
             }
         }
         if (upper * 2 > latin) {
-            koreanWordLogProb(HangulConverter.convertEngToKor(swapCase(text)))?.let { ko ->
+            // CapsLock 가설엔 구어체 낱자모를 인정하지 않는다 — 대문자 외침(`AHHHHHH`, `LAGGGGG`)이 ㅎㅎㅎ로 설명돼 오탐이었다.
+            koreanWordLogProb(HangulConverter.convertEngToKor(swapCase(text)), colloquialJamo = false)?.let { ko ->
                 val shift = when {
                     needlessOn > 0 -> -NEEDLESS_SHIFT_PENALTY * needlessOn
                     shiftedLower -> SHIFT_BONUS
@@ -574,7 +575,7 @@ internal object TypoLanguageModel {
      * 최종 보정: 기존 영어 오탐 수준(영어 사전 47만 단어 중 102개)에서의 판정 경계가 설정 기본값
      * 70% 에 오도록 로짓을 민다 — 사용자가 보는 "70%"의 의미(오탐 수준)를 예전과 같게 유지.
      */
-    private const val CALIBRATION_SHIFT = 0.225
+    private const val CALIBRATION_SHIFT = 0.2515
 
     /** 글자당 점수 → 로짓(= [confidence] 의 로지스틱 안쪽). */
     private fun wordLogit(score: Double): Double = (score - CENTER) / SCALE
@@ -602,13 +603,14 @@ internal object TypoLanguageModel {
      * 이제 한글 구간마다 길이 확률 × 음절별 위치(홀로/첫/가운데/끝) 확률을 곱하고, 변환 결과가
      * 자주 쓰는 어절이면 그 실제 빈도와 반반 섞는다. 조합 실패한 낱자모는 [KO_FLOOR].
      */
-    fun koreanWordLogProb(converted: String): Double? {
+    fun koreanWordLogProb(converted: String, colloquialJamo: Boolean = true): Double? {
         var total = 0.0
         var units = 0
         var runs = 0
         var runStart = -1
         var runEnd = -1
         var allSyllables = true
+        var seenSyllable = false // 토큰 안에서 앞서 음절이 나왔는가(`영화..ㅠㅠ` 의 ㅠㅠ 덩어리도 인정)
         var i = 0
         val len = converted.length
         while (i < len) {
@@ -620,9 +622,15 @@ internal object TypoLanguageModel {
             while (j < len && isHangulUnit(converted[j])) j++
             val k = j - i
             total += TypoTables.POS_LEN[minOf(k, POS_LEN_MAX) - 1]
+            // 낱자모: 앞서 음절이 나왔으면(`재밌다ㅋㅋ`, `영화..ㅠㅠ`) 구어체 전이 확률([UNIT_TRANSITION_TABLE]). 예전엔 전부 최저라
+            // `rhakqtmqslekbb`(고맙습니다ㅠㅠ)·`dlTdjdybb`(있어요ㅠㅠ) 같은 한영타를 12%만 잡았다. 음절 앞머리
+            // (`ㅡ도야`=Mehdi)와 낱자모만인 토큰(`zzz`=조는 소리, `bbbb`=엄지척)은 영문 그대로 쓰는 경우와
+            // 겹쳐 여전히 최저 확률로 둔다(한국어 리뷰 실측에서 둘 다 오탐으로 나왔다).
+            var prev = ROW_BOS
             for (p in i until j) {
                 val c = converted[p]
-                if (c.code in HANGUL_FIRST..HANGUL_LAST) {
+                val code = c.code
+                if (code in HANGUL_FIRST..HANGUL_LAST) {
                     val pos = when {
                         k == 1 -> POS_SINGLE
                         p == i -> POS_FIRST
@@ -630,11 +638,21 @@ internal object TypoLanguageModel {
                         else -> POS_MID
                     }
                     total += positionalLogProb(c, pos)
+                    prev = ROW_SYLLABLE
+                    seenSyllable = true
                 } else {
-                    total += KO_FLOOR
                     allSyllables = false
+                    if (code in UNIT_JAMO_FIRST..UNIT_JAMO_LAST) {
+                        val idx = code - UNIT_JAMO_FIRST
+                        total += if (colloquialJamo && seenSyllable && c in COLLOQUIAL_JAMO) transition(prev, COL_JAMO + idx) else KO_FLOOR
+                        prev = ROW_JAMO + idx
+                    } else {
+                        total += KO_FLOOR
+                        prev = ROW_SYLLABLE
+                    }
                 }
             }
+            if (colloquialJamo && prev >= ROW_JAMO) total += transition(prev, COL_EOS)
             units += k
             runs++
             runStart = i
@@ -672,6 +690,12 @@ internal object TypoLanguageModel {
         }
         return total
     }
+
+    /**
+     * 음절 뒤에서 구어체로 인정하는 낱자모 — 자음(`ㅋㅋ`/`ㅎㅎ`/`ㄷㄷ`/`ㅇㅇ`) + `ㅠ`/`ㅜ`/`ㅡ`. `ㅐ`·`ㅔ` 같은
+     * 모음 반복은 늘여 쓴 영어(`sooooo`→내ㅐㅐㅐ, NSMC 실측 오탐)라 뺐다.
+     */
+    private const val COLLOQUIAL_JAMO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎㅠㅜㅡ"
 
     private fun isHangulUnit(c: Char): Boolean =
         c.code in HANGUL_FIRST..HANGUL_LAST || c.code in JAMO_FIRST..JAMO_LAST

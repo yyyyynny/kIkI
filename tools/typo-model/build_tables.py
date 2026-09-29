@@ -31,7 +31,7 @@ P = dict(
     A=3.0, B=1.0,                      # 의미 없는 Shift 벌점 / 의미 있는 Shift 가산(글자당)
     CAPS_BONUS=3.0, CAPS_PRIOR=-3.0, CAPS_SHORT=-2.0,
     ACR={"lower": -4.0, "upper": -0.5, "mixed": -3.0, "title": -4.0}, P_ACR=0.7,
-    CTX=3.0, SHIFT=0.225,
+    CTX=3.0, SHIFT=0.2515,
     LEX_NEED=0.3,                      # 사전 없이 이 신뢰도 이상 나오는 모양이 있는 항목만 담는다
 )
 SHIFT_KEYS = set("qwertop")
@@ -262,6 +262,12 @@ def _kt_const(name):
     return float(re.search(r"const val %s = (-?[0-9.]+)" % name, _TLM).group(1))
 EN_TABLE = _kt_table("EN_TRIGRAM_TABLE"); EN_LO, EN_HI = _kt_const("EN_LO"), _kt_const("EN_HI")
 KO_FLOOR = _kt_const("KO_FLOOR")
+UNIT_TABLE = _kt_table("UNIT_TRANSITION_TABLE")
+# 구어체에서 반복해 쓰는 낱자모(자음 + ㅠㅜㅡ). ㅐ·ㅔ 같은 모음은 늘여 쓴 영어(soooo→내ㅐㅐ)라 제외
+COLLOQUIAL_JAMO = set("ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎㅠㅜㅡ")
+def unit_tr(row, col):
+    """구어체 단위 전이(행: 0 시작·1 음절·2+ 낱자모 / 열: 0 음절·1 끝·2+ 낱자모), -18..0 양자화."""
+    return dq(UNIT_TABLE[row * 53 + col], -18.0, 0.0)
 STOP = set()
 for name in ["ENGLISH_STOPWORDS_BASE", "ENGLISH_TECH_ABBREVIATIONS"]:
     STOP |= set(re.findall(r'"([a-z]+)"', re.search(name + r": Set<String> = setOf\((.*?)\)", _HC, re.S).group(1)))
@@ -330,17 +336,28 @@ class Model:
     def pos_lp(self, kind, s):
         i = self.Q["syl_index"].get(s)
         return self.Q[kind][i] if i is not None else self.Q[kind + "_floor"]
-    def ko(self, conv):
+    def ko(self, conv, colloquial=True):
         total = 0.0; units = 0; runs = []; cur = []
         for c in conv + " ":
             if is_hangul(c): cur.append(c)
             elif cur: runs.append(cur); cur = []
+        seen_syl = False  # 토큰 안에서 앞서 음절이 나왔는가(영화..ㅠㅠ 의 ㅠㅠ 덩어리도 인정)
         for run in runs:
             k = len(run)
             total += self.Q["lens"][min(k, 12) - 1]
+            # 낱자모: 앞서 음절이 나왔으면(재밌다ㅋㅋ) 구어체 전이 확률. 앞머리·낱자모만(zzz=조는 소리, bbbb=엄지척)은 최저
+            prev = 0
             for i, c in enumerate(run):
-                if not (0xAC00 <= ord(c) <= 0xD7A3): total += KO_FLOOR; continue
-                total += self.pos_lp("single" if k == 1 else "first" if i == 0 else "last" if i == k - 1 else "mid", c)
+                o = ord(c)
+                if 0xAC00 <= o <= 0xD7A3:
+                    total += self.pos_lp("single" if k == 1 else "first" if i == 0 else "last" if i == k - 1 else "mid", c)
+                    prev = 1; seen_syl = True
+                elif 0x3131 <= o <= 0x3163:
+                    total += unit_tr(prev, 2 + o - 0x3131) if colloquial and seen_syl and c in COLLOQUIAL_JAMO else KO_FLOOR
+                    prev = 2 + o - 0x3131
+                else:
+                    total += KO_FLOOR; prev = 1
+            if colloquial and prev >= 2: total += unit_tr(prev, 1)
             units += k
         if not units: return None
         if len(runs) == 1 and all(0xAC00 <= ord(c) <= 0xD7A3 for c in runs[0]):
@@ -402,7 +419,7 @@ class Model:
                 if lx is not None: z = min(z, ko - lx)
                 best = max(best, min(z, ko - acr - P["A"] * n_off))
         if sum(ups) * 2 > len(L):
-            ko2 = self.ko(eng_to_kor(tok.swapcase()))
+            ko2 = self.ko(eng_to_kor(tok.swapcase()), colloquial=False)  # CapsLock 외침(AHHHH)을 ㅎㅎㅎ로 설명하지 않게
             if ko2 is not None:
                 inner2 = any(c.islower() and c in SHIFT_KEYS for c in L)
                 term = -P["A"] * n_on if n_on else (P["B"] if inner2 else 0.0)

@@ -226,58 +226,65 @@ internal object TypoTables {
     const val EOJ_LO = -9.359927672860726
     const val EOJ_HI = -4.119828542241656
 
-    /** Shift 증인 사전 643개(쉼표 구분, 사전순): 한국어 글에서 Shift 가 무의미한 키에 대문자로 쓰인 적이 있는 라틴 문자열 중 판정에 영향을 주는 것. */
+    /** Shift 증인 사전 749개(쉼표 구분, 사전순): 한국어 글에서 Shift 가 무의미한 키에 대문자로 쓰인 적이 있는 라틴 문자열 중 판정에 영향을 주는 것. */
     const val LEX_WORDS =
-        "abcl,abcp,abdl,abeek,abtb,abth,abtn,abvh,abvk,aha,ahah,ahci,ahd,ahdb,ahdl,ahf,aifb,aka,akel,aks,akt," +
-        "ala,alc,alcm,alf,alfu,algo,alr,als,alsb,alt,altl,alty,amcl,amcp,amgn,amtek,amzn,andy,anfo,anr,ans,an" +
-        "sel,ansi,anti,aoa,aocnqo,aod,aorus,aos,aosp,aotj,apap,apcp,apq,aprn,apru,aps,apsk,apt,aptld,auc,aucl" +
-        ",aud,aus,auth,cbgk,cbrn,chaka,chan,chanels,chaos,chapel,chch,chcl,chco,chkdsk,chr,chro,chs,cjd,cjeu," +
-        "cjr,cjvk,ckd,ckdb,cla,cld,clf,clr,cls,clsid,clstp,cmd,cmdi,cmgl,cmr,cna,cnd,cndp,cnr,cnrp,cns,cnsmdl" +
-        ",cnsmdp,cnto,cnzm,coap,cocl,cogo,cor,coreos,corfo,corn,cos,cpan,cpap,cpcl,cpdna,cpfsk,cpgb,cprm,cps," +
-        "cpsp,cpsu,cpt,cptm,cpttp,cucl,cucn,curb,cuso,dbc,dbd,dbf,dbr,dbs,dbsi,dbsm,dha,dhc,dhcp,dhd,dheh,dhl" +
-        ",dho,dhr,dhs,dhtml,dia,dick,dicm,diem,dircm,dirco,dis,disk,dism,divo,djs,djsi,djvu,dka,dkg,dksh,dkw," +
-        "dkz,dla,dlf,dlr,dls,dlsu,dlt,dlvo,dma,dmd,dmf,dml,dmr,dms,dmtn,dmz,dnd,dnf,dnp,dnso,dntp,dnvp,dnxhd," +
-        "docu,dod,dodo,dof,dogma,dos,dosb,doslfn,dot,dotch,dpa,dpcm,dpd,dpf,dpr,dprk,dps,dpsk,dpt,dual,dur,du" +
-        "t,duty,duv,ebs,ebsi,ehc,ehf,ehr,ehs,eht,eigo,eismd,ejsm,ekd,ekg,elf,elr,els,elsi,elspa,ema,emd,emf,e" +
-        "mls,emr,emro,ems,emsb,emt,emtek,ena,end,endif,eneman,enf,enfj,enfp,enj,enr,ens,ensem,enso,entj,entp," +
-        "eod,eof,epa,epems,epfl,eps,fbf,fbr,fbs,fha,fhd,fifm,fispt,fitl,fjd,fks,fktu,flak,flash,flq,fmso,fmt," +
-        "fna,fndb,fnf,fngu,fnl,fnr,fns,fod,forb,fos,foxp,fpa,fpcb,fpry,fps,fpsb,fpso,fpt,fudan,fur,gba,gbd,gb" +
-        "fms,ghci,ghd,ghdl,ghq,ghrh,ghs,girl,gks,gla,gladiator,glaha,gld,gls,glsdb,glsi,glsl,glxp,gma,gmd,gmf" +
-        ",gml,gmr,gmsk,gmt,gmti,gnp,gnrh,gnso,gnz,goa,gof,gogo,gogoeigo,gogogo,goq,gor,got,goto,goty,gpd,gpep" +
-        ",gpg,gpr,gps,gpstp,gpt,gud,gus,qhd,qkd,qlc,qms,qnan,qnd,qnt,qos,qps,qpsk,quan,rbau,rbs,rbt,rha,rhaps" +
-        "ody,rhcl,rhd,rhdl,rhealth,rhel,rho,rhs,rhsm,rht,riau,ridl,rir,rjfo,rjr,rkf,rks,rla,rld,rlq,rmr,rms,r" +
-        "na,rndus,rne,rnf,rnp,roa,roadmap,roan,roci,rock,rocks,rod,ros,rovl,rpa,rpf,rps,rpvm,rucl,rudp,ruf,ru" +
-        "q,ruqoa,rur,rus,rush,sbcl,sbd,sbsi,sbsm,sbsu,sbti,sbtm,sha,shanels,sharp,shazna,shd,shf,shk,shrm,shs" +
-        ",sid,siek,ska,skc,skdb,skf,skr,sks,skt,sktcj,skti,sktkdb,sktkt,sktms,sktsk,sktsm,skvm,sla,slf,slfp,s" +
-        "lgb,slr,sls,slv,smawk,smcu,smd,smej,smf,smtown,sna,snan,snap,snel,snl,snp,snr,snrna,snry,sns,soa,soa" +
-        "p,socks,socl,sod,sof,sofm,sogo,sorl,sorn,sory,sotp,soxl,spak,span,spdif,spdy,spf,spr,spt,suek,surl,s" +
-        "us,syfy,sysk,tbcl,tbd,tbf,tbq,tbs,tbt,thek,theo,theory,thf,thk,thl,tho,thq,thru,thsi,thx,tia,tick,ti" +
-        "cl,tif,tisi,tkf,tkr,tks,tlcl,tld,tlen,tlf,tlr,tlru,tls,tlt,tltco,tltro,tlv,tma,tmao,tmap,tmd,tmf,tmr" +
-        ",tmrna,tms,tna,tnc,tnd,tnf,tnr,tns,tnt,tod,today,tof,togo,torgos,tos,tosel,town,towns,tpa,tpf,tps,tu" +
-        "dn,tuf,tus,tytn,vhdl,vhdsl,vhf,vhs,vidp,vla,vlan,vldb,vldl,vlf,vlr,vls,vlsi,vlsm,vlt,vmf,vmro,vna,vn" +
-        "d,vnl,voa,vod,vofan,vogl,vor,vos,vprj,vps,vpvb,wbs,wha,whc,whd,whdh,whflq,whk,whl,whrb,widy,wkw,wlan" +
-        ",wltp,wlvi,wma,wmd,wmf,wmfo,wmt,wna,wocn,wordml,works,wos,wpa,wpch,wpf,wps,xhtml,xjr,xjs,xkr,xls,xma" +
-        ",xms,xmt,xna,xns,xor,xoxo,xpcl,xps,zbrush,zbtj,zhao,zhdk,zhg,zhr,zht,zirp,zmd,zncl,zncu,zozo,zpr,zpt"
+        "abcl,abcp,abdl,abeek,abtb,abth,abtn,abvh,abvk,aha,ahah,ahb,ahci,ahd,ahdb,ahdl,ahf,aifb,ajfe,aka,akb," +
+        "akel,akm,aks,akt,ala,alb,alc,alcm,alf,alfu,algo,alm,aln,alr,als,alsb,alt,altl,alty,amcl,amcp,amgn,am" +
+        "tek,amzn,anb,andy,anfo,anr,ans,ansel,ansi,anti,aoa,aocnqo,aod,aom,aorus,aos,aosp,aotj,apap,apb,apbqh" +
+        "r,apcp,apq,aprn,apru,aps,apsk,apt,aptld,auc,aucl,aud,aus,auth,cbgk,cbrn,chaka,chan,chanels,chaos,cha" +
+        "pel,chch,chcl,chco,chkdsk,chr,chro,chs,cjb,cjd,cjenm,cjeu,cjr,cjvk,ckd,ckdb,cla,cld,clf,clr,cls,clsi" +
+        "d,clstp,cmd,cmdi,cmgl,cmr,cna,cnb,cnd,cndd,cndp,cnm,cnngo,cnr,cnrp,cns,cnsmdl,cnsmdp,cnto,cnzm,coap," +
+        "cocl,cogo,cor,coreos,corfo,corn,cpan,cpap,cpb,cpcl,cpdna,cpfsk,cpgb,cprm,cps,cpsp,cpsu,cpt,cptm,cptt" +
+        "p,cucl,cucn,curb,cuso,dbb,dbc,dbd,dbf,dbm,dbr,dbs,dbsi,dbsm,dha,dhb,dhc,dhcp,dhd,dheh,dhl,dhm,dho,dh" +
+        "r,dhs,dhtml,dia,dick,dicm,diem,dimm,dircm,dirco,dis,disk,dism,divo,djb,djs,djsi,djvu,dka,dkfz,dkg,dk" +
+        "sh,dkw,dkz,dla,dlb,dlf,dlm,dlr,dls,dlss,dlsu,dlt,dlvo,dma,dmd,dmf,dml,dmr,dms,dmtn,dmvpn,dmz,dnb,dnd" +
+        ",dnf,dnm,dnn,dnp,dnso,dntp,dnvp,dnxhd,docu,dod,dodo,dof,dogma,dos,dosb,doslfn,dot,dotch,dpa,dpb,dpcm" +
+        ",dpd,dpf,dpm,dpn,dprk,dps,dpsk,dpt,dual,dumdi,dur,dut,duty,duv,dyn,ebs,ebsi,ehb,ehc,ehf,ehr,ehs,eht," +
+        "eigo,eismd,ejb,ejn,ejsm,ekb,ekd,ekg,elb,elf,elr,els,elsi,elspa,ema,emd,emf,emfs,emls,emr,emro,ems,em" +
+        "sb,emt,emtek,ena,end,endif,eneman,enf,enfj,enfp,enj,enr,ens,ensem,enso,entj,entp,eob,eod,eof,epa,epb" +
+        ",epems,epfl,epn,eps,fbf,fbr,fbs,fha,fhd,fhm,fifm,fispt,fitl,fjd,fks,fktu,flak,flash,fln,flq,fmso,fmt" +
+        ",fna,fndb,fnf,fngu,fnl,fnr,fns,fod,forb,fos,foxp,fpa,fpb,fpcb,fpry,fps,fpsb,fpso,fpt,fudan,fur,gba,g" +
+        "bd,gbfms,ghb,ghci,ghd,ghdl,ghq,ghrg,ghrh,ghs,girl,gkn,gks,gla,gladiator,glaha,gld,gls,glsdb,glsi,gls" +
+        "l,glxp,gma,gmd,gmf,gml,gmr,gmsk,gmt,gmti,gnp,gnrh,gnso,gnz,goa,godaddy,gof,gogo,gogoeigo,gogogo,goq," +
+        "gor,got,goto,goty,gpd,gpep,gpg,gpr,gps,gpstp,gpt,gud,gus,qhd,qkd,qlc,qms,qnan,qnb,qnd,qnt,qos,qps,qp" +
+        "sk,quan,rbau,rbb,rbs,rbt,rha,rhapsody,rhcl,rhd,rhdl,rhealth,rhel,rho,rhs,rhsm,rht,riau,ridl,rir,rjfo" +
+        ",rjr,rjsf,rkb,rkdd,rkf,rkm,rkrr,rks,rla,rld,rlm,rlq,rmb,rmr,rms,rna,rndus,rne,rnf,rnm,rnn,rnp,roa,ro" +
+        "admap,roan,rob,roci,rock,rocks,rod,romeo,ros,rovl,rpa,rpf,rpm,rpn,rps,rpvm,rucl,rudp,ruf,ruq,ruqoa,r" +
+        "ur,rus,rush,ryb,sbcl,sbd,sbsi,sbsm,sbsu,sbti,sbtm,sha,shanels,sharp,shazna,shb,shd,shf,shk,shrm,shs," +
+        "sid,siek,sjb,sjm,ska,skb,skc,skdb,skf,skm,skn,skr,sks,skt,sktcj,skti,sktkdb,sktkt,sktms,sktsk,sktsm," +
+        "skvm,sla,slf,slfp,slgb,slr,sls,slv,smawk,smcu,smd,smej,smf,smtown,sna,snan,snap,snb,snel,snl,snp,snr" +
+        ",snrna,snry,sns,soa,soap,socks,socl,sod,sof,sofm,sogo,sorl,sorn,sory,sotp,soxl,spak,span,spdif,spdy," +
+        "spf,spr,spt,suek,surl,sus,syfy,sysk,tbcl,tbd,tbf,tbq,tbs,tbt,thb,thek,theo,theory,thf,thk,thl,thm,th" +
+        "o,thq,thru,thsi,thx,tia,tick,ticl,tif,tjb,tkb,tkf,tkn,tkr,tks,tlb,tlcl,tld,tlen,tlf,tlr,tlru,tls,tlt" +
+        ",tltco,tltro,tlv,tma,tmao,tmap,tmb,tmd,tmf,tmn,tmr,tmrna,tms,tna,tnb,tnc,tnd,tnf,tnn,tnr,tns,tnt,tob" +
+        "b,tod,today,tof,togo,torgos,tos,tosel,town,towns,tpa,tpf,tpm,tpn,tps,tudn,tuf,tus,tytn,vhdl,vhdsl,vh" +
+        "f,vhs,vidp,vla,vlan,vlb,vldb,vldl,vlf,vlm,vlr,vls,vlsi,vlsm,vlt,vmf,vmfs,vmm,vmro,vna,vnd,vnl,voa,vo" +
+        "b,vod,vofan,vogl,vor,vos,vpn,vprj,vps,vpvb,wbs,wha,whc,whd,whdh,whflq,whk,whl,whrb,widy,wkb,wkw,wlan" +
+        ",wlb,wlss,wltp,wlvi,wma,wmd,wmf,wmfo,wmt,wna,wocn,wordml,works,wos,wpa,wpch,wpf,wpm,wps,xhb,xhtml,xj" +
+        "r,xjs,xkr,xlm,xls,xma,xmb,xmm,xmn,xms,xmt,xna,xns,xom,xor,xoxo,xpb,xpcl,xpfe,xpm,xps,zbrush,zbtj,zha" +
+        "o,zhdk,zhg,zhr,zht,zirp,zkm,zmd,zncl,zncu,zozo,zpr,zpt"
 
     /** 소문자로 쓰일 로그확률(소문자 출현 + 0.2×대문자 증인). */
     const val LEX_LOWER =
-        "!92).!)!!90!)!)!)@!7:57.))!0D!H.!.!),),)!D!HKA!,.@!!!.,!!B!?.),7F).!)A!7!!)!,,!),!!!?!,!4324)=.!,!!," +
-        ",,L!!!!!)!<2!)<.!!!)))H))3!))!3))6.,A!)84;!!?!!!7H2).)!>>!!!:)>!!)07E6K!3!C2,!<0,L3E.)0!!!4287V!)G!9" +
-        "5):).?!!B727A`A!)3,.!!.!)B.R!!>.7!E!A!!!M_!,!),!!@!2)..)H!!K!!3!7!!!!!!.?)!)44))3!9!!!!,5!Q!7)!8<5!!" +
-        "!!C!!H,..!!C!,)!>2!!2)@)A!!!!.=!!!!JO,9!))W!>!27F,3.!)<!.!!4!)!!!!!;7!!)!!<!!,!!!,GHY!!,)6!!)K77A!G<" +
-        "7!!!))).77).)!!3)G!?)4)!8!77=H!,,5]46!)!0!!4)),B8!!.!..D6,6!G37,!_248.!,)!))!!<!?!,640!,2!.,2.)T0!2T" +
-        "2<!!.7!702,:!!!)!;!!6.B.!:).!;,),!B00!6!,F342)!7!G!7,:.8))=!DD!7,)!,!<>.!!!23AGO!!C9!4!709!!!!!!)!>4" +
-        "!<7:!!!.!B!:!),J,!!>!!!8!A,!2!!!)!))!!!!!=!"
+        "!92).!)!!90)!)!)!)!@A!;7:5;7.))!0)0D!H.!.!),)),)!D!HKA!,,.@!!!!!.,!!B!?.),7F).!)A!7!!)!,,!)6,3!!!?!," +
+        "!4324)=.!,!,!),)!,,L!!!!!)!<2!).!!!!)))H))3!))!3)))6.;,A!)824;!!?!!!!7H2).?)!>>!!)!:)>!!!)079E!6K)!3" +
+        "!C2,!<0,,L)3E!3.)0!!!4287V!)G!905):2,.?!!B)727A2`A!!)3,.!!,!.!!):B.R!!>.7!!E!A!!!M_!,!),!!@!2).).)H)" +
+        "!!!K!!3!7!!!!!!!.?:)!)44))3!9!!!!,!5!Q!7)!8<5!!!!!C!!!H),..!!C!,)!>2!!2)@)A!!!!).=!!!!JO,9!))W!>!27F" +
+        ",3.,!)<!.!!,4!)!!!!!;7!!)!!<!!!)!,.!!!!!,)GHY!!,20)6!!))K77!A!G<U37!!!))).772).)!!3)G!?)!4)!8!77,!=J" +
+        "H!,42,5]46!)!0!!4)),B8!!.!..D6,65!G37,!_248.!,)!))!!<!?!,640!,2!.,2.)T0I!2T2<!)!.7!702,:<)!!!)B!;!!6" +
+        ".B.!:).!;!,)!,!B0,0!6!!,F)342)!7!G!7,0!:.8))=!DD!7,6)!,!!<>.!!!)!23AG3O!!C9L!4!709!!!!!!)!!>!!4!<7:!" +
+        "!!.!B!:!)),)J,!!.>!67)!!8!)A,!!!)2!!!)!))!!!!!!=!"
 
     /** 전부 대문자로 쓰일 로그확률(공백 = 대문자 출현 없음). */
     const val LEX_UPPER =
-        "0F?6<0600F=06060600?0<B< 60=E N<0  6 696090U6G 9<K0 0<900O0H<6 @06<0600000 099069000L090?@?A6H<09009" +
-        "99Y0000  0= 06?<00 666M66@06  6 6C<6N0 EAH0 L000EG06<60D900 G 6006=ERCW0@0P?90G=9Y0S<6 0 060<6c06C0B" +
-        "B6G6<J0006?6Nl@06@9<00<06H<`00K<0 S0N00 ZE0900600L0?06<6U 0X0060D000000 E606A 66@0F0 009B0U0D609IA0 " +
-        "00P00D9<<00P0 60G?00?6M6N 000 6 000KM9B066e0J00ES9@ 06 0<0 A060 00 H000600J0090009TUg00 6C 06G06D0TJ" +
-        "E0 0066<060< 0  6T006A60E06D<U09 BjAC060=00A669OE00<0<<PC =0N@E 0j?AA 096 6600I0F09C9=090 < ?0 a=00A" +
-        "9F00<0 D<0 D 006 H0 C<O<0G6<0H969 O==0C09R?9 6000A0A9G<0  K0QO0E96090IK<000?@OTY00KB0A @=F000 0060KA" +
-        "0C@?000< G0G069W9000000A0K90? 00 06600  0J0"
+        "0F?6<0600F=606060600M0H?0<EB< 60=0=E N<0  6 6696090U6G 99<K0 00 <900O0H<6 @06<0600000 09906C9@000L09" +
+        "0?@?A6H<09090696 99Y0000  0= 06<000 666M66@06  6 66C< 6N0 E?AH0 L0000EG06<L60D9006 G 60006=EFR0CW60@" +
+        "0P?90G=99Y00S0@<6 0 060<6c06C0B=B6G09<J000 6?6N l@006@9<0090<006GH<`00K<00 S0N00 ZE0900600L0?066<6U6" +
+        " 00X0060D0000000 EG606A 66@0F0 0090B0U0D609IA00 00P000D69<<00P0 60G?00?6M6N 000  6 000KM9B066e0J00ES" +
+        "9@ 906 0<0 9A060 00 H000600J000609<0000096TUg00 ?=6C 066G060D0TJO6E0 0066<0600< 0  6T0060A60E06D90<W" +
+        "U09A? BjAC060=00A669OE00<0<<PC =B0N@E 0j?AA 096 6600I0F09C9=090 < ?0 a=W00A9F000<0 D<0 DJ60006P H0 C" +
+        "<O<0G6<0H 9609 O=9=0C009R6?9 6000A0A9=0G<0  K0QO0E9C60900IK<00060?@OT6Y00KBY0A @=F000 00600K00A0C@?0" +
+        "00< G0G06696W900<00CE600A06K90006? 00 066000  0J0"
 
     const val LEX_LO = -15.236649484316096
     const val LEX_HI = -4.250763716974887
