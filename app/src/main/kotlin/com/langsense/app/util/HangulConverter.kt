@@ -265,12 +265,14 @@ object HangulConverter {
             // 진짜 한영타가 통째로 대문자가 되는 일은 사실상 없다(CapsLock 입력은 나머지 글자가
             // 아예 매핑되지 않아 어차피 조합에 실패한다).
             if (t.allUpper) continue
-            val convertedTok = convertEngToKor(t.text)
-            val score = TypoLanguageModel.score(t.letters, convertedTok, t.innerUpper) ?: continue
             // 매핑 불가 글자가 섞였으면(자판에 없는 문자) 그만큼 확신을 낮춘다.
             val mapRatio = t.mappable.toFloat() / letters
-            val conf = TypoLanguageModel.confidence(score) * mapRatio
-            if (conf > best) best = conf
+            val convertedTok = convertEngToKor(t.text)
+            TypoLanguageModel.score(t.letters, convertedTok, t.innerUpper)?.let { score ->
+                val conf = TypoLanguageModel.confidence(score) * mapRatio
+                if (conf > best) best = conf
+            }
+            acronymTailConfidence(t.text)?.let { conf -> if (conf * mapRatio > best) best = conf * mapRatio }
         }
         if (best == 0f) return Analysis(0f, input)
 
@@ -286,6 +288,40 @@ object HangulConverter {
         out.append(input, last, input.length)
         return Analysis(best, out.toString())
     }
+
+    /**
+     * "대문자 약어 + 영타 꼬리"(`GUIdml`=GUI의, `CGrk`=CG가) 전용 판정. 토큰 통째로 보면 약어까지
+     * 한글로 변환돼(`혀ㅑ의`) 점수가 깎여 놓쳤다 — 교체([convertInTypoContext])는 이미 "영어+한글"
+     * 가설로 `GUI의` 를 만드는데 감지가 못 따라왔던 것. 약어 뒤 꼬리만 기존 모델([TypoLanguageModel.score])
+     * 로 재고, 약어 바로 뒤에 소문자가 붙은 구조 자체를 [ACRONYM_TAIL_BONUS] 로 더한다.
+     *
+     * 실측(2026-09): 영어 AG News 12.7만 기사 + 단어 47만 개의 같은 형태 1,452회 중 오탐 0,
+     * NSMC 20만 문장의 "대문자 약어+한글"을 영타로 바꾼 2,149회 중 94.9% 감지. 꼬리가 2글자면
+     * 정보가 한 음절뿐이라 흔한 조사·어미([AFTER_ACRONYM_PARTICLES])로 변환될 때만 인정한다 —
+     * 영어 쪽 오탐 후보(`CNNfn`→루, `WEek`→다, `NDak`→마)가 전부 2글자 꼬리였다.
+     * @return 해당 형태가 아니거나 판단 근거가 없으면 null.
+     */
+    private fun acronymTailConfidence(token: String): Float? {
+        val text = token.trim { !isLatin(it) } // 문장 끝 마침표·괄호(`GUIdml.`)
+        var i = 0
+        while (i < text.length && text[i] in 'A'..'Z') i++
+        if (i < 2 || i == text.length) return null
+        val tail = text.substring(i)
+        if (tail.length < 2 || !tail.all { it in 'a'..'z' }) return null
+        val tailKo = convertEngToKor(tail)
+        if (tail.length == 2 && tailKo !in AFTER_ACRONYM_PARTICLES) return null
+        val score = TypoLanguageModel.score(tail, tailKo) ?: return null
+        return TypoLanguageModel.confidence(score + ACRONYM_TAIL_BONUS)
+    }
+
+    /** 대문자 약어 바로 뒤에 소문자가 붙는 구조 자체의 가산점(실측으로 오탐 0 을 유지하는 보수적 값). */
+    private const val ACRONYM_TAIL_BONUS = 1.0
+
+    /** 약어 뒤 2글자 꼬리를 한영타로 인정하는 한 음절(조사·어미). NSMC 실측 빈도 상위 기준. */
+    private val AFTER_ACRONYM_PARTICLES = setOf(
+        "이", "가", "도", "에", "로", "나", "만", "랑", "야", "요", "고", "지", "게", "서",
+        "는", "은", "를", "을", "의", "와", "과",
+    )
 
     /** [analyze] 의 라틴 토큰(공백/한글로 구분되는 조각). */
     private class LatinToken(

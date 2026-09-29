@@ -277,4 +277,26 @@ class HangulConverterTest {
         // "행" -> god, 두 번 선택해도 각 토큰이 전부 사전에 있으면 그대로 통과.
         assertEquals(1f, HangulConverter.analyzeReverse("행 행").confidence, 0.0001f)
     }
+
+    /** 대문자 약어 + 영타 조사(`GUIdml`=GUI의)는 단독 선택이어도 감지되고, 약어는 그대로 남는다. */
+    @Test
+    fun analyze_acronymWithTypoTail_detected() {
+        for ((typo, expected) in listOf(
+            "GUIdml" to "GUI의", "CLIdhk" to "CLI와", "GUIfmf" to "GUI를",
+            "CGrk" to "CG가", "OSTeh" to "OST도", "GUIdml." to "GUI의.",
+        )) {
+            val a = HangulConverter.analyze(typo)
+            assertTrue("$typo conf=${a.confidence}", a.confidence >= 0.7f)
+            assertEquals(expected, a.converted)
+        }
+    }
+
+    /** 영어 글에 실제로 나오는 "대문자 + 소문자" 표기는 감지하지 않는다(AG News 실측 오탐 후보 포함). */
+    @Test
+    fun analyze_acronymWithEnglishTail_notDetected() {
+        for (w in listOf("CNNfn", "WEek", "NDak", "FAdm", "ITWeb", "EBay", "SQLite", "NVidia", "ZENworks", "IPOed")) {
+            val c = HangulConverter.analyze(w).confidence
+            assertTrue("$w conf=$c", c < 0.7f)
+        }
+    }
 }
