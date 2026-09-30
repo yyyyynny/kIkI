@@ -23,7 +23,7 @@ package com.langsense.app.util
  *   Gutenberg 29권 + AG News(4,890만 자)로 학습.
  * - **Shift 증인 사전**([lexiconLogProb]): 한국어 글에서 Shift 가 무의미한 키에 대문자가 있는 모양
  *   (`SNS`, `tvN`)으로 쓰인 라틴 문자열 — 한글을 치다 생길 수 없는 모양이라 라벨 없이 원문에서
- *   자동 채굴된다. 판정에 영향을 주는 750개만 담았다.
+ *   자동 채굴된다. 판정에 영향을 주는 736개만 담았다.
  * - **약어 글자 bigram**([acronymLogProb]): 사전에 없는 약어·모델명의 일반화.
  * - **음절 unigram**([KO_SYLLABLE_TABLE]) + **구어체 단위 전이**([UNIT_TRANSITION_TABLE]):
  *   교체 문자열을 정할 때만 쓴다([koreanInformal]).
@@ -593,7 +593,7 @@ internal object TypoLanguageModel {
      * 최종 보정: 기존 영어 오탐 수준(영어 사전 47만 단어 중 102개)에서의 판정 경계가 설정 기본값
      * 70% 에 오도록 로짓을 민다 — 사용자가 보는 "70%"의 의미(오탐 수준)를 예전과 같게 유지.
      */
-    private const val CALIBRATION_SHIFT = 0.2604
+    private const val CALIBRATION_SHIFT = 0.2620
 
     /** 글자당 점수 → 로짓(= [confidence] 의 로지스틱 안쪽). */
     private fun wordLogit(score: Double): Double = (score - CENTER) / SCALE
@@ -758,7 +758,7 @@ internal object TypoLanguageModel {
      * "Shift 증인" 사전 — 한국어 글에서 **Shift 가 무의미한 키에 대문자가 있는 모양**으로 쓰인
      * 적이 있는 라틴 문자열(`SNS`, `DLC`, `tvN`)은 한글을 치다 생길 수 없으므로 진짜 라틴 문자열이다.
      * 이 원리로 라벨 없이 한국어 원문(뉴스·위키·리뷰 등 학습 분할의 라틴 토큰 77만 회)에서 자동 채굴했고, 그중
-     * 판정에 영향을 주는 750개만 담았다. 값은 한국어 글 속 라틴 토큰 가운데 그 문자열의 비율:
+     * 판정에 영향을 주는 736개만 담았다. 값은 한국어 글 속 라틴 토큰 가운데 그 문자열의 비율:
      * 소문자는 (소문자 출현 + 0.2×대문자 증인), 대문자는 전부 대문자 출현.
      */
     private class LexEntry(val lower: Double, val upper: Double)

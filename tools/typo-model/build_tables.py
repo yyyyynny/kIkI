@@ -27,16 +27,17 @@ csv.field_size_limit(10 ** 9)
 P = dict(
     ALPHA=200.0, FLOOR_UNI=0.5,        # 위치별 분포를 전체 음절 분포 쪽으로 평활
     EOJ_K=5000, EOJ_LAMBDA=0.5,        # 자주 쓰는 어절 기억
-    EOJ_COLLOQUIAL=0.3,                # 어절 기억 = 구어체 30% + 정제된 글 70% 혼합(구어체 말뭉치는 전체의 6%뿐이라 풀어 세면 묻힌다)
+    EOJ_COLLOQUIAL=float(os.environ.get("KIKI_EOJ_COL", "0.3")),                # 어절 기억 = 구어체 30% + 정제된 글 70% 혼합(구어체 말뭉치가 적어 풀어 세면 묻힌다)
     LEX_R=0.2,                         # 증인 사전 소문자 확률 = (소문자 출현 + r × 대문자 증인)
     A=3.0, B=1.0,                      # 의미 없는 Shift 벌점 / 의미 있는 Shift 가산(글자당)
     CAPS_BONUS=3.0, CAPS_PRIOR=-3.0, CAPS_SHORT=-2.0,
     ACR={"lower": -4.0, "upper": -0.5, "mixed": -3.0, "title": -4.0}, P_ACR=0.7,
-    CTX=3.0, CTX_STRONG=10.0, SHIFT=0.2604,  # 주변 한글: 첫 글자가 그 가설로 칠 수 있는 모양이면 STRONG, 아니면 CTX
+    CTX=3.0, CTX_STRONG=10.0, SHIFT=0.2620,  # 주변 한글: 첫 글자가 그 가설로 칠 수 있는 모양이면 STRONG, 아니면 CTX
     LEX_NEED=0.3,                      # 사전 없이 이 신뢰도 이상 나오는 모양이 있는 항목만 담는다
 )
 SHIFT_KEYS = set("qwertop")
-COLLOQUIAL_CORPORA = {"nsmc.train", "unsmile.train", "hate.train", "chatbot.train"}
+COLLOQUIAL_CORPORA = {"nsmc.train", "unsmile.train", "hate.train", "chatbot.train", "kmhas.train", "persona.train",
+                      "multisession.train", "safeconv.train"}
 
 # ── 말뭉치 → 줄(학습 분할만) ─────────────────────────────────────────────
 def _lines(gen):
@@ -133,10 +134,26 @@ def wiki_train():
         elif tag == "page":
             el.clear()
 
+def _utterances(cols, name):
+    """대화 세션 칸(파이썬 리스트 문자열)을 발화 한 줄씩."""
+    import ast
+    t = parquet(name)
+    for c in cols:
+        for v in t[c]:
+            try:
+                yield from ast.literal_eval(v)
+            except (ValueError, SyntaxError):
+                continue
+
 CORPORA = [
     ("nsmc.train", nsmc_train), ("news.train", news_train), ("ynat.train", ynat_train), ("mrc.train", mrc_train),
     ("wiki.train", wiki_train), ("unsmile.train", lambda: tsv_col("unsmile_train.tsv", 0)),
     ("hate.train", lambda: tsv_col("hate_train.tsv", 0)), ("chatbot.train", chatbot),
+    # 구어체 보강(2026-09-30): 뉴스 댓글 · 페르소나 채팅 · 다중 세션 일상 대화 · 일상 질문(사람 쪽 발화만)
+    ("kmhas.train", lambda: parquet("kmhas_train.parquet")["text"]),
+    ("persona.train", lambda: _utterances(["session_dialog"], "persona_train.parquet")),
+    ("multisession.train", lambda: _utterances(["session1", "session2"], "multisession_train.parquet")),
+    ("safeconv.train", lambda: parquet("safeconv_train.parquet")["instruction"]),
 ]
 
 # ── 집계 ────────────────────────────────────────────────────────────────

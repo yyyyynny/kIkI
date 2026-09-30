@@ -19,6 +19,11 @@ FILES=(
   "unsmile_train.tsv|https://raw.githubusercontent.com/smilegate-ai/korean_unsmile_dataset/main/unsmile_train_v1.0.tsv|f560a2f624d98f7cd9dc5ec6e5368efb7edd9bfc01cfa963538facfad9fc6001"
   "hate_train.tsv|https://raw.githubusercontent.com/kocohub/korean-hate-speech/master/labeled/train.tsv|ebebacdcd023af2c4acc8c0a37695fb6433ac04fc009feff8f222724e303a5a9"
   "chatbot.csv|https://raw.githubusercontent.com/songys/Chatbot_data/master/ChatbotData.csv|287eb129695b577321c80ad397bb3c2279164d4ca577874d129fd3db5b30afe2"
+  # 구어체 보강(2026-09-30): 뉴스 댓글(K-MHaS) · 페르소나 채팅 · 다중 세션 일상 대화 · 일상 질문 — HF 자동 변환 parquet
+  "kmhas_train.parquet|https://huggingface.co/api/datasets/jeanlee/kmhas_korean_hate_speech/parquet/default/train/0.parquet|b46422a5d19e3364ddb62aea68004c1c607f525a0d4ba703a95b397958abbd32"
+  "persona_train.parquet|https://huggingface.co/api/datasets/NLPBada/korean-persona-chat-dataset/parquet/default/train/0.parquet|9e74835464173de5ea934fa324ec434fb204fa20d03c66b836c162fcf2a2170e"
+  "multisession_train.parquet|https://huggingface.co/api/datasets/nayohan/141_korean_multi_session_dialogue/parquet/default/train/0.parquet|6a1c21b582076150b4bfdc06b0635bf146bc8da67474514a875ed82495ca8f5c"
+  "safeconv_train.parquet|https://huggingface.co/api/datasets/jojo0217/korean_safe_conversation/parquet/default/train/0.parquet|1fdc85292a4f765d1eedf4b2b1a592a3ffea2b80c70692d1a07653db6e473e9b"
   # 한국어 위키백과 2026-09-01 덤프 1번 조각(문서 2.6만 개, 93MB). 위키미디어는 날짜별 덤프를 몇 달만
   # 보관하므로 없어졌으면 다른 날짜의 같은 조각을 받아도 된다(수치가 조금 달라질 수 있음 — 체크섬 경고).
   "wiki1.xml.bz2|https://dumps.wikimedia.org/kowiki/20260901/kowiki-20260901-pages-articles1.xml-p1p82407.bz2|4155a5ac6dc45c7fd8b2eef471f52eedf3149d954a36535d10ae4add4a1f682c"
