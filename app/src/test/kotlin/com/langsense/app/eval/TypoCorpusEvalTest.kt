@@ -139,7 +139,8 @@ class TypoCorpusEvalTest {
 
     /**
      * 한영타 감지율(어절 단위, 라틴 3글자 이상) — 주변 문맥 없음(통째로 잘못 친 경우)과 한국어 문맥
-     * (한국어 문서 속 일부만 잘못 친 경우). 기록: 96.4% / 97.6%(2026-09 재설계, 이전 94.0%).
+     * (한국어 문서 속 일부만 잘못 친 경우). 기록: 97.46% / 99.30%(2026-09-30 강한 문맥 가산·구어체 어절 기억,
+     * 재설계 직후 96.4% / 97.6%, 재설계 전 94.0%).
      */
     @Test
     fun typoDetectionRate() {
@@ -156,13 +157,13 @@ class TypoCorpusEvalTest {
         val r0 = plain.toDouble() / total
         val r1 = context.toDouble() / total
         println("EVAL 한영타 감지(NSMC 어절): 문맥없음 ${"%.2f".format(r0 * 100)}%  한국어문맥 ${"%.2f".format(r1 * 100)}%  ($total 회)")
-        assertTrue("한영타 감지율 하락: $r0", r0 >= 0.955)
-        assertTrue("한국어 문맥 감지율 하락: $r1", r1 >= 0.97)
+        assertTrue("한영타 감지율 하락: $r0", r0 >= 0.965)
+        assertTrue("한국어 문맥 감지율 하락: $r1", r1 >= 0.99)
     }
 
     /**
      * CapsLock 을 켠 채 친 한영타(위 어절의 대소문자를 뒤집은 것). 3글자 전부 대문자는 약어가
-     * 압도적이라 일부러 CapsLock 으로 보지 않으므로 4글자 이상만 잰다. 기록: 94.5%(이전 약 14%).
+     * 압도적이라 일부러 CapsLock 으로 보지 않으므로 4글자 이상만 잰다. 기록: 97.0%(이전 약 14%).
      */
     @Test
     fun capsLockDetectionRate() {
@@ -175,7 +176,47 @@ class TypoCorpusEvalTest {
         }
         val rate = hit.toDouble() / total
         println("EVAL CapsLock 한영타 감지(4글자 이상): ${"%.2f".format(rate * 100)}%  ($total 회)")
-        assertTrue("CapsLock 감지율 하락: $rate", rate >= 0.92)
+        assertTrue("CapsLock 감지율 하락: $rate", rate >= 0.95)
+    }
+
+    /**
+     * 선택 단위(문장): 사용자는 영타로 친 **구간 전체**를 고르는 경우가 많다(모드를 모른 채 한동안 친 것).
+     * NSMC test 문장의 한글 어절을 전부 영타로 바꾼 문장을 통째로 판정한다(주변 한글 없음 — 문장 전체가 영타).
+     * 반대편은 영어 기사(AG News test) 문장을 통째로 골랐을 때 칩이 뜨는 비율. 기록: 감지 99.5% / 오탐 0.005%.
+     */
+    @Test
+    fun sentenceSelection() {
+        var total = 0
+        var hit = 0
+        data("ratings_test.txt").forEachLine { line ->
+            val parts = line.split('\t')
+            if (parts.size < 2 || parts[0] == "id") return@forEachLine
+            var eligible = false
+            val typed = parts[1].split(' ').joinToString(" ") { w ->
+                if (w.none { it in '가'..'힣' } || w.any { it in 'a'..'z' || it in 'A'..'Z' }) w
+                else HangulConverter.convertKorToEng(w).also { if (latinLetters(it) >= 3) eligible = true }
+            }
+            if (!eligible) return@forEachLine
+            total++
+            if (detected(typed)) hit++
+        }
+        var en = 0
+        var enHit = 0
+        val splitter = Regex("(?<=[.!?])\\s+")
+        data("test.csv").forEachLine { line ->
+            // "분류","제목","본문" — 제목·본문을 문장으로 나눈다(따옴표 안 쉼표는 대충 넘겨도 문장 단위엔 영향 없음)
+            val body = line.split("\",\"").drop(1).joinToString(". ").trim('"')
+            for (s in body.split(splitter)) {
+                if (s.none { it in 'a'..'z' || it in 'A'..'Z' }) continue
+                en++
+                if (detected(s)) enHit++
+            }
+        }
+        val rate = hit.toDouble() / total
+        val fp = enHit.toDouble() / en
+        println("EVAL 문장 선택: 한영타 문장 감지 ${"%.2f".format(rate * 100)}% ($total 문장) / 영어 기사 문장 오탐 ${"%.3f".format(fp * 100)}% ($enHit/$en)")
+        assertTrue("문장 단위 감지율 하락: $rate", rate >= 0.99)
+        assertTrue("영어 문장 오탐 상승: $fp", fp <= 0.0005)
     }
 
     /**

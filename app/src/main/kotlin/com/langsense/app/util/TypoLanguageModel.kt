@@ -17,13 +17,13 @@ package com.langsense.app.util
  * ## 모델과 표
  * - **한국어: 어절 위치별 음절 모델 + 자주 쓰는 어절 기억**([koreanWordLogProb], [TypoTables]).
  *   같은 음절이라도 어절의 홀로/첫/가운데/끝 어디에 오느냐에 따라 확률이 다르다(`왜`는 홀로, `다`는
- *   끝에 흔함). 상위 1천 어절은 실제 빈도와 섞는다(`너무`·`그냥`). 한국어 위키·뉴스·KLUE·NSMC
- *   train·혐오표현/챗봇 말뭉치 약 2,500만 어절로 셌다.
+ *   끝에 흔함). 자주 쓰는 어절 5천 개(구어체 30% + 정제된 글 70% 혼합 빈도)는 실제 빈도와 섞는다
+ *   (`너무`·`그냥`). 한국어 위키·뉴스·KLUE·NSMC train·혐오표현/챗봇 말뭉치 약 2,500만 어절로 셌다.
  * - **영어 문자 trigram**([EN_TRIGRAM_TABLE]): 소문자 26자 + 단어 경계 27심볼(27³칸). Project
  *   Gutenberg 29권 + AG News(4,890만 자)로 학습.
  * - **Shift 증인 사전**([lexiconLogProb]): 한국어 글에서 Shift 가 무의미한 키에 대문자가 있는 모양
  *   (`SNS`, `tvN`)으로 쓰인 라틴 문자열 — 한글을 치다 생길 수 없는 모양이라 라벨 없이 원문에서
- *   자동 채굴된다. 판정에 영향을 주는 643개만 담았다.
+ *   자동 채굴된다. 판정에 영향을 주는 750개만 담았다.
  * - **약어 글자 bigram**([acronymLogProb]): 사전에 없는 약어·모델명의 일반화.
  * - **음절 unigram**([KO_SYLLABLE_TABLE]) + **구어체 단위 전이**([UNIT_TRANSITION_TABLE]):
  *   교체 문자열을 정할 때만 쓴다([koreanInformal]).
@@ -404,7 +404,9 @@ internal object TypoLanguageModel {
      * `sNl`→89.7%, `CoA`/`QoS`/`GPa` 같은 과학 약어가 줄줄이 오탐이었다.)
      *
      * [koreanContext] = 선택 주변에 한글이 있다(한국어 문서). 그러면 "영어 단어" 가설의 사전확률만
-     * [CONTEXT_LOG_ODDS] 만큼 낮춘다 — 약어·알려진 라틴 문자열은 원래 한국어 글에서 센 값이라 그대로.
+     * 낮춘다 — 약어·알려진 라틴 문자열은 원래 한국어 글에서 센 값이라 그대로. 첫 글자가 그 가설로 칠 수
+     * 있는 모양(꺼짐 = 소문자 또는 Q·W·E·R·T·O·P 대문자 / 켜짐 = 대문자 또는 그 키의 소문자)이면
+     * [CONTEXT_STRONG_LOG_ODDS], 아니면(`Dirk`·`Duden` 같은 이름) [CONTEXT_LOG_ODDS] 만.
      *
      * 실측 근거와 수치는 docs/한영타_검증.md.
      */
@@ -419,10 +421,12 @@ internal object TypoLanguageModel {
         var shiftedInner = false
         var shiftedLower = false
         var firstUpper = false
+        var firstShiftKey = false
         for (c in text) {
             val isUpper = c in 'A'..'Z'
             if (!isUpper && c !in 'a'..'z') continue
             val shiftKey = c.lowercaseChar() in SHIFT_KEYS
+            if (latin == 0) firstShiftKey = shiftKey
             if (isUpper) {
                 if (latin == 0) firstUpper = true
                 else if (shiftKey) shiftedInner = true
@@ -442,7 +446,16 @@ internal object TypoLanguageModel {
             else -> ACRONYM_CASE_MIXED
         }
         val acronym = caseLog + acronymLogProb(letters)
-        val context = if (koreanContext) CONTEXT_LOG_ODDS else 0.0
+        val contextOff = when {
+            !koreanContext -> 0.0
+            !firstUpper || firstShiftKey -> CONTEXT_STRONG_LOG_ODDS
+            else -> CONTEXT_LOG_ODDS
+        }
+        val contextOn = when {
+            !koreanContext -> 0.0
+            firstUpper || firstShiftKey -> CONTEXT_STRONG_LOG_ODDS
+            else -> CONTEXT_LOG_ODDS
+        }
         val lexLower = lexiconLogProb(text, upper = false)
         var best = Double.NEGATIVE_INFINITY
         var bestCaps = false
@@ -454,7 +467,7 @@ internal object TypoLanguageModel {
                     shiftedInner -> SHIFT_BONUS
                     else -> 0.0
                 }
-                var z = wordLogit((ko - englishLogProb(letters) + context) / n + shift)
+                var z = wordLogit((ko - englishLogProb(letters) + contextOff) / n + shift)
                 if (lexLower != null) z = minOf(z, ko - lexLower)
                 z = minOf(z, ko - acronym - NEEDLESS_SHIFT_PENALTY * needlessOff)
                 if (z > best) best = z
@@ -475,7 +488,7 @@ internal object TypoLanguageModel {
                 }
                 val short = if (n <= 3) CAPS_SHORT_LOG_ODDS else 0.0
                 val prior = CAPS_PRIOR + short
-                var z = wordLogit((ko - english + context) / n + shift + CAPS_WORD_BONUS) + short
+                var z = wordLogit((ko - english + contextOn) / n + shift + CAPS_WORD_BONUS) + short
                 lexiconLogProb(text, upper = true)?.let { z = minOf(z, prior + ko - it) }
                 z = minOf(z, prior + ko - acronym - NEEDLESS_SHIFT_PENALTY * needlessOn)
                 if (z > best) {
@@ -568,14 +581,19 @@ internal object TypoLanguageModel {
     private const val ACRONYM_CASE_MIXED = -3.0
     private const val ACRONYM_CASE_TITLE = -4.0
 
-    /** 선택 주변에 한글이 있을 때 "영어 단어" 가설에 주는 불리함(총 로그오즈). */
+    /**
+     * 선택 주변에 한글이 있을 때 "영어 단어" 가설에 주는 불리함(총 로그오즈). 첫 글자가 그 가설로 칠 수 있는
+     * 모양이면 [CONTEXT_STRONG_LOG_ODDS](2026-09-30: 3.0 → 10.0 — 한국어 문맥 감지 98.2% → 99.3%, 한국어 글 속
+     * 라틴 오탐 45 → 67회/10.3만 회), 대문자로 시작하는 이름(`Dirk`·`Duden`)은 예전 값 [CONTEXT_LOG_ODDS] 만.
+     */
     private const val CONTEXT_LOG_ODDS = 3.0
+    private const val CONTEXT_STRONG_LOG_ODDS = 10.0
 
     /**
      * 최종 보정: 기존 영어 오탐 수준(영어 사전 47만 단어 중 102개)에서의 판정 경계가 설정 기본값
      * 70% 에 오도록 로짓을 민다 — 사용자가 보는 "70%"의 의미(오탐 수준)를 예전과 같게 유지.
      */
-    private const val CALIBRATION_SHIFT = 0.2515
+    private const val CALIBRATION_SHIFT = 0.2604
 
     /** 글자당 점수 → 로짓(= [confidence] 의 로지스틱 안쪽). */
     private fun wordLogit(score: Double): Double = (score - CENTER) / SCALE
@@ -724,7 +742,7 @@ internal object TypoLanguageModel {
         return TypoTables.POS_FLOOR[pos]
     }
 
-    /** 자주 쓰는 어절(상위 1천 개)의 실제 빈도. 처음 쓸 때 한 번만 푼다(첫 선택 전까지 메모리 0). */
+    /** 자주 쓰는 어절(상위 5천 개, 구어체 30%+정제된 글 70% 혼합)의 실제 빈도. 처음 쓸 때 한 번만 푼다(첫 선택 전까지 메모리 0). */
     private val eojeols: Map<String, Double> by lazy {
         val words = TypoTables.EOJ_WORDS.split(',')
         HashMap<String, Double>(words.size * 2).also { map ->
@@ -740,7 +758,7 @@ internal object TypoLanguageModel {
      * "Shift 증인" 사전 — 한국어 글에서 **Shift 가 무의미한 키에 대문자가 있는 모양**으로 쓰인
      * 적이 있는 라틴 문자열(`SNS`, `DLC`, `tvN`)은 한글을 치다 생길 수 없으므로 진짜 라틴 문자열이다.
      * 이 원리로 라벨 없이 한국어 원문(뉴스·위키·리뷰 등 학습 분할의 라틴 토큰 77만 회)에서 자동 채굴했고, 그중
-     * 판정에 영향을 주는 643개만 담았다. 값은 한국어 글 속 라틴 토큰 가운데 그 문자열의 비율:
+     * 판정에 영향을 주는 750개만 담았다. 값은 한국어 글 속 라틴 토큰 가운데 그 문자열의 비율:
      * 소문자는 (소문자 출현 + 0.2×대문자 증인), 대문자는 전부 대문자 출현.
      */
     private class LexEntry(val lower: Double, val upper: Double)

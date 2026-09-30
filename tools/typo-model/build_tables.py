@@ -26,15 +26,17 @@ csv.field_size_limit(10 ** 9)
 # ── 매개변수(실측으로 정함 — docs/한영타_검증.md) ────────────────────────────
 P = dict(
     ALPHA=200.0, FLOOR_UNI=0.5,        # 위치별 분포를 전체 음절 분포 쪽으로 평활
-    EOJ_K=1000, EOJ_LAMBDA=0.5,        # 자주 쓰는 어절 기억
+    EOJ_K=5000, EOJ_LAMBDA=0.5,        # 자주 쓰는 어절 기억
+    EOJ_COLLOQUIAL=0.3,                # 어절 기억 = 구어체 30% + 정제된 글 70% 혼합(구어체 말뭉치는 전체의 6%뿐이라 풀어 세면 묻힌다)
     LEX_R=0.2,                         # 증인 사전 소문자 확률 = (소문자 출현 + r × 대문자 증인)
     A=3.0, B=1.0,                      # 의미 없는 Shift 벌점 / 의미 있는 Shift 가산(글자당)
     CAPS_BONUS=3.0, CAPS_PRIOR=-3.0, CAPS_SHORT=-2.0,
     ACR={"lower": -4.0, "upper": -0.5, "mixed": -3.0, "title": -4.0}, P_ACR=0.7,
-    CTX=3.0, SHIFT=0.2515,
+    CTX=3.0, CTX_STRONG=10.0, SHIFT=0.2604,  # 주변 한글: 첫 글자가 그 가설로 칠 수 있는 모양이면 STRONG, 아니면 CTX
     LEX_NEED=0.3,                      # 사전 없이 이 신뢰도 이상 나오는 모양이 있는 항목만 담는다
 )
 SHIFT_KEYS = set("qwertop")
+COLLOQUIAL_CORPORA = {"nsmc.train", "unsmile.train", "hate.train", "chatbot.train"}
 
 # ── 말뭉치 → 줄(학습 분할만) ─────────────────────────────────────────────
 def _lines(gen):
@@ -158,17 +160,18 @@ def latin_tokens(line):
     return out
 
 def count_all():
-    pos = {k: Counter() for k in ["single", "first", "mid", "last", "uni", "lens", "eoj"]}
+    pos = {k: Counter() for k in ["single", "first", "mid", "last", "uni", "lens", "eoj_col", "eoj_for"]}
     latin = Counter()
     for name, gen in CORPORA:
         n = 0
+        eoj = pos["eoj_col" if name in COLLOQUIAL_CORPORA else "eoj_for"]
         for line in _lines(gen()):
             n += 1
             for w in line.split():
                 for m in RUN.finditer(w):
                     r = m.group(); k = len(r)
                     pos["lens"][min(k, 12)] += 1
-                    pos["eoj"][r] += 1
+                    eoj[r] += 1
                     for ch in r: pos["uni"][ch] += 1
                     if k == 1: pos["single"][r] += 1
                     else:
@@ -192,9 +195,13 @@ def build_tables(pos, latin):
         T[k + "_floor"] = math.log((a * fu / (N + fu * V)) / (tot + a))
     lt = sum(pos["lens"].values())
     T["lens"] = [math.log(pos["lens"].get(i, 1) / lt) for i in range(1, 13)]
-    # 자주 쓰는 어절: 빈도 내림차순, 같은 빈도는 글자순(재현성)
-    top = sorted(pos["eoj"].items(), key=lambda kv: (-kv[1], kv[0]))[:P["EOJ_K"]]
-    T["eoj"] = [(e, math.log(n / lt)) for e, n in top]
+    # 자주 쓰는 어절: 구어체·정제된 글 분포를 섞은 확률의 내림차순, 같으면 글자순(재현성)
+    k, wc = P["EOJ_K"], P["EOJ_COLLOQUIAL"]
+    cc, cf = pos["eoj_col"], pos["eoj_for"]; tc, tf = sum(cc.values()), sum(cf.values())
+    keys = {e for e, _ in cc.most_common(k)} | {e for e, _ in cf.most_common(k)}
+    mix = {e: wc * cc.get(e, 0) / tc + (1 - wc) * cf.get(e, 0) / tf for e in keys}
+    top = sorted(mix.items(), key=lambda kv: (-kv[1], kv[0]))[:k]
+    T["eoj"] = [(e, math.log(p)) for e, p in top]
     # Shift 증인: 라틴 연속 구간별 모양 빈도
     forms = defaultdict(Counter)
     for t, n in latin.items():
@@ -408,14 +415,18 @@ class Model:
         kind = "lower" if not any(ups) else "upper" if all(ups) else "title" if ups[0] and not any(ups[1:]) else "mixed"
         n_off = sum(1 for i, c in enumerate(L) if i > 0 and c.isupper() and c.lower() not in SHIFT_KEYS)
         n_on = sum(1 for c in L if c.islower() and c not in SHIFT_KEYS)
-        acr = P["ACR"][kind] + self.acr(lower); cx = P["CTX"] if ctx else 0.0
+        acr = P["ACR"][kind] + self.acr(lower)
+        # 주변 한글 문맥: 첫 글자가 그 가설로 칠 수 있는 모양(꺼짐 = 소문자 또는 Shift 키 대문자 / 켜짐 = 대문자 또는
+        # Shift 키 소문자)이면 강하게, 아니면(`Dirk`·`Duden` 같은 이름) 예전 값만
+        cx_off = (P["CTX_STRONG"] if L[0].islower() or L[0].lower() in SHIFT_KEYS else P["CTX"]) if ctx else 0.0
+        cx_on = (P["CTX_STRONG"] if L[0].isupper() or L[0] in SHIFT_KEYS else P["CTX"]) if ctx else 0.0
         best = -1e18; lx = self.lexp(tok, False)
         if not all_upper:
             ko = self.ko(eng_to_kor(tok))
             if ko is not None:
                 inner = any(c.isupper() and c.lower() in SHIFT_KEYS for c in L[1:])
                 term = -P["A"] * n_off if n_off else (P["B"] if inner else 0.0)
-                z = ((ko - en_logprob(lower) + cx) / n + term - CENTER) / 2.0
+                z = ((ko - en_logprob(lower) + cx_off) / n + term - CENTER) / 2.0
                 if lx is not None: z = min(z, ko - lx)
                 best = max(best, min(z, ko - acr - P["A"] * n_off))
         if sum(ups) * 2 > len(L):
@@ -425,7 +436,7 @@ class Model:
                 term = -P["A"] * n_on if n_on else (P["B"] if inner2 else 0.0)
                 en = _lae(math.log(1 - P["P_ACR"]) + en_logprob(lower), math.log(P["P_ACR"]) + self.acr(lower)) if all_upper else en_logprob(lower)
                 short = P["CAPS_SHORT"] if n <= 3 else 0.0; cp = P["CAPS_PRIOR"] + short
-                z = ((ko2 - en + cx) / n + term + P["CAPS_BONUS"] - CENTER) / 2.0 + short
+                z = ((ko2 - en + cx_on) / n + term + P["CAPS_BONUS"] - CENTER) / 2.0 + short
                 lxu = self.lexp(tok, True)
                 if lxu is not None: z = min(z, cp + ko2 - lxu)
                 best = max(best, min(z, cp + ko2 - acr - P["A"] * n_on))
