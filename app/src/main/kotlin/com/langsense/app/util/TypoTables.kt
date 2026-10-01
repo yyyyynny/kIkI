@@ -445,64 +445,73 @@ internal object TypoTables {
     const val EOJ_LO = -10.726783740468331
     const val EOJ_HI = -4.40748162006175
 
-    /** Shift 증인 사전 736개(쉼표 구분, 사전순): 한국어 글에서 Shift 가 무의미한 키에 대문자로 쓰인 적이 있는 라틴 문자열 중 판정에 영향을 주는 것. */
+    /** Shift 증인 사전 867개(쉼표 구분, 사전순): 한국어 글에서 Shift 가 무의미한 키에 대문자로 쓰인 적이 있는 라틴 문자열 중 판정에 영향을 주는 것. */
     const val LEX_WORDS =
-        "abcl,abcp,abdl,abeek,abtb,abth,abtn,abvh,abvk,aha,ahah,ahb,ahci,ahd,ahdb,ahdl,ahf,ajfe,aka,akb,akel," +
-        "akm,aks,akt,ala,alb,alc,alcm,alf,alfu,algo,alr,als,alsb,alt,altl,alty,amgn,amtek,anb,andy,anfo,anr,a" +
-        "ns,ansel,ansi,ansys,aoa,aocnqo,aod,aom,aorus,aos,aosp,aotj,apb,apbqhr,apcp,apq,aprn,apru,aps,apsk,ap" +
-        "t,aptld,auc,aucl,aud,aus,auth,auto,cbgk,cbrn,chaka,chan,chaos,chch,chcl,chco,chkdsk,chr,chro,chs,cjb" +
-        ",cjd,cjeu,cjr,cjvk,ckd,ckdb,cla,cld,clf,clr,cls,clsid,clstp,cmd,cmdi,cmgl,cmr,cna,cnb,cnd,cndd,cndp," +
-        "cnm,cnngo,cnp,cnr,cnrp,cns,cnsmdl,cnsmdp,cnto,cnzm,cocl,cogo,cor,coreos,corfo,corn,cosy,cpan,cpb,cpc" +
-        "l,cpdna,cpfsk,cpgb,cprm,cps,cpsp,cpsu,cpt,cptm,cpttp,cucl,curb,cuso,dbb,dbc,dbd,dbf,dbm,dbr,dbs,dbsi" +
-        ",dbsm,dha,dhb,dhc,dhcp,dhd,dheh,dhl,dhm,dho,dhr,dhs,dhtml,dick,dicm,diem,dimm,dircm,dirco,dis,disk,d" +
-        "ism,divo,djb,djs,djsi,djvu,dka,dkfz,dkg,dksh,dkw,dkz,dla,dlb,dlf,dlm,dlr,dls,dlss,dlsu,dlt,dlvo,dma," +
-        "dmd,dmf,dml,dmr,dms,dmtn,dmvpn,dmz,dnb,dnd,dnf,dnm,dnn,dnp,dnso,dntp,dnvp,dnxhd,docu,dod,dodo,dof,do" +
-        "gma,dos,dosb,doslfn,dot,dpa,dpb,dpcm,dpd,dpf,dpm,dpn,dpr,dprk,dps,dpsk,dpt,dual,dumdi,dur,dut,duty,d" +
-        "uv,dyn,ebs,ebsi,ehb,ehc,ehf,ehr,ehs,eht,eigo,eismd,ejb,ejn,ejsm,ekb,ekd,ekg,elf,elr,els,elsi,ema,emb" +
-        ",emd,emf,emfs,emls,emr,emro,ems,emsb,emt,emtek,ena,end,endif,eneman,enf,enfj,enfp,enj,enr,ens,ensem," +
-        "enso,entj,entp,eob,eod,eof,eog,epa,epb,epems,epfl,epn,eps,fbf,fbs,fha,fhd,fhm,fitl,fjd,fks,fktu,flak" +
-        ",flash,flq,fmso,fna,fndb,fnf,fngu,fnl,fnr,fns,fod,fos,foxp,fpa,fpb,fpcb,fpry,fps,fpsb,fpso,fpt,fudan" +
-        ",fur,fus,gba,gbd,gbfms,ghb,ghd,ghdl,ghq,ghrg,ghrh,ghs,girls,gkgk,gkn,gks,gla,gladiator,gld,gls,glsdb" +
-        ",glsi,glsl,glxp,gma,gmd,gmf,gml,gmr,gmsk,gmt,gnp,gnrh,gnso,goa,godaddy,gof,gogo,gogoeigo,gogogo,goq," +
-        "gor,gosub,got,goto,goty,gpd,gpep,gpg,gpr,gpstp,gpt,gud,gus,qhd,qkd,qlc,qnan,qnb,qnd,qnt,qos,qps,qpsk" +
+        "abcb,abcl,abcp,abdl,abeek,abf,abtb,abth,abtn,abvh,abvk,aha,ahah,ahb,ahci,ahd,ahdb,ahdl,ahf,ajfe,aka," +
+        "akb,akel,akm,aks,akt,ala,alb,alc,alcm,ald,alf,alfu,algo,alm,aln,alq,alr,als,alsb,alt,altl,alty,amcl," +
+        "amcp,amgn,amtek,anb,andy,anfo,anr,ans,ansel,ansi,ansys,ant,anti,antid,anzus,aoa,aocnqo,aod,aom,aon,a" +
+        "orus,aos,aosp,aotj,apap,apb,apbqhr,apcp,apq,aprn,apru,aps,apsk,apt,aptld,auc,aucl,aud,aus,auth,auto," +
+        "cbgb,cbgk,cbrn,cbs,chaka,chan,chanel,chanels,chaos,chapel,chb,chch,chcl,chco,chkdsk,chr,chro,chs,cir" +
+        "p,cjb,cjd,cjenm,cjeu,cjr,cjvk,ckd,ckdb,ckm,cla,cld,clf,clr,cls,clsid,clstp,cmd,cmdi,cmepsp,cmgl,cmr," +
+        "cmrr,cna,cnb,cnd,cndd,cndp,cnm,cnn,cnngo,cnp,cnr,cnrp,cnrs,cns,cnsmdl,cnsmdp,cnto,cnzm,coap,cocl,cog" +
+        "o,cor,coreos,corfo,corn,cos,cosy,cot,cpan,cpap,cpb,cpcl,cpdna,cpf,cpfsk,cpgb,cpm,cprm,cps,cpsp,cpsu," +
+        "cpt,cptm,cpttp,cucl,cucn,curb,cusi,cuso,dbb,dbc,dbd,dbf,dbm,dbr,dbs,dbsi,dbsm,dbt,dha,dhb,dhc,dhcp,d" +
+        "hd,dheh,dhl,dhm,dho,dhr,dhs,dhtml,dia,dib,dick,dicm,diem,dimm,dircm,dirco,dis,disk,dism,dit,divo,djb" +
+        ",djs,djsi,djvu,dka,dkfz,dkg,dksc,dksh,dkw,dkz,dla,dlb,dlc,dlf,dlm,dlr,dls,dlss,dlsu,dlt,dlvo,dma,dmd" +
+        ",dmf,dml,dmr,dms,dmt,dmtn,dmvpn,dmz,dnb,dnd,dnf,dnm,dnn,dnp,dnso,dntp,dnvp,dnxhd,doa,docu,dod,dodo,d" +
+        "of,dogma,dos,dosb,doslfn,dot,dpa,dpb,dpcm,dpd,dpf,dpm,dpn,dpr,dprk,dps,dpsk,dpt,dual,dumdi,dun,dur,d" +
+        "ut,duty,duv,dyn,ebs,ebsi,ehb,ehc,ehf,ehr,ehrc,ehs,eht,eigo,eismd,ejae,ejb,ejn,ejsm,ekb,ekd,ekg,elana" +
+        ",elb,elf,eln,elr,els,elsi,elspa,ema,emb,emd,emf,emfs,emls,emm,emr,emro,ems,emsb,emt,emtek,ena,end,en" +
+        "dif,eneman,enf,enfj,enfp,enj,enp,enr,ens,ensem,enso,entj,entp,eob,eod,eof,eog,epa,epb,epci,epd,epems" +
+        ",epfl,epm,epn,eps,fbf,fbr,fbs,fha,fhd,fhm,field,fifm,fifo,fispt,fitl,fjd,fks,fktu,flak,flash,fln,flq" +
+        ",fma,fmg,fmso,fmt,fna,fndb,fnf,fngu,fnl,fnr,fns,fod,forb,fos,foxp,fpa,fpb,fpcb,fpm,fpry,fps,fpsb,fps" +
+        "o,fpt,fudan,fur,fus,gba,gbd,gbfms,gbn,ghb,ghci,ghd,ghdl,ghq,ghrg,ghrh,ghs,gigo,girl,girls,gkgk,gkn,g" +
+        "ks,gla,glacial,glad,gladiator,glaha,gld,gls,glsdb,glsi,glsl,glxp,gma,gmd,gmf,gmg,gml,gmr,gms,gmsk,gm" +
+        "t,gmti,gnd,gnp,gnrh,gnso,gnz,goa,godaddy,goe,gof,gogo,gogoeigo,gogogo,gom,goq,gor,gosub,got,goto,got" +
+        "y,gpa,gpd,gpep,gpg,gpr,gps,gpstp,gpt,gud,gurps,gus,gym,qhd,qkd,qlc,qms,qnan,qnb,qnd,qnt,qos,qps,qpsk" +
         ",quan,quel,rbau,rbb,rbs,rbt,rha,rhapsody,rhcl,rhd,rhdl,rhealth,rhel,rho,rhs,rhsm,rht,riau,ridl,rir,r" +
         "jff,rjfo,rjr,rjsf,rkb,rkdd,rkf,rkm,rkrr,rks,rla,rld,rlm,rlq,rmb,rmr,rms,rmse,rmv,rna,rnb,rndus,rne,r" +
-        "nf,rnm,rnn,rnp,roadian,roan,rob,rock,rocks,rod,romeo,ros,rovl,rpa,rpf,rpm,rpn,rps,rpvm,rucl,rudp,ruf" +
-        ",ruq,ruqoa,rur,rus,rush,ryb,sbcl,sbsi,sbsm,sbsu,sbti,sbtm,sha,shanels,sharp,shazna,shb,shd,shf,shk,s" +
-        "hrm,shs,sid,siek,sjb,sjm,ska,skb,skc,skdb,skf,skm,skn,skr,sks,skt,sktcj,skti,sktkdb,sktkt,sktms,skts" +
-        "k,sktsm,skvm,sla,slf,slfp,slgb,slr,sls,slv,smawk,smcu,smd,smej,smf,smtown,snan,snap,snb,snel,snl,snp" +
-        ",snr,snrna,snry,sns,soa,soap,socks,socl,sod,sof,sofm,sogo,sorl,sorn,sory,sotp,soxl,spak,span,spd,spd" +
-        "if,spdy,spf,spr,spt,suek,surl,sus,syfy,sys,sysk,tbcl,tbd,tbf,tbq,tbr,tbs,tbt,thb,thd,thek,theo,theor" +
-        "y,thf,thk,thl,thm,tho,thq,thru,thsi,thx,tia,tick,ticl,tif,titan,tjb,tkb,tkf,tkn,tkr,tks,tkx,tlb,tlcl" +
-        ",tld,tlen,tlf,tlr,tlrs,tlru,tls,tlt,tltco,tltro,tlv,tma,tmao,tmap,tmb,tmd,tmf,tmn,tmr,tmrna,tms,tna," +
-        "tnb,tnc,tnd,tnf,tnn,tnr,tns,tnt,tobb,tod,today,toefl,tof,togo,torgos,tos,tosel,town,towns,tpa,tpf,tp" +
-        "m,tpn,tps,tudn,tuf,tus,tytn,vhdl,vhdsl,vhf,vhs,vidp,vla,vlan,vlb,vldb,vldl,vlf,vlm,vlr,vls,vlsi,vlsm" +
-        ",vlt,vmf,vmfs,vmm,vmro,vna,vnd,vnl,voa,vod,vofan,vogl,vor,vos,vpn,vprj,vps,wbru,wbs,wha,whc,whd,whdh" +
-        ",whflq,whk,whl,whrb,widy,wkb,wkw,wlan,wlb,wlss,wltp,wma,wmd,wmf,wmfo,wml,wmt,wna,wocn,wordml,works,w" +
-        "os,wpa,wpch,wpf,wpm,wps,xhb,xhtml,xjr,xjs,xkr,xlm,xls,xma,xmb,xml,xmm,xmn,xms,xmt,xna,xns,xom,xor,xo" +
-        "xo,xpb,xpcl,xps,zbrush,zbtj,zhao,zhdk,zhg,zhr,zht,zirp,zkm,zmd,zncl,zncu,zozo,zpr,zpt"
+        "nf,rnm,rnn,rnp,roa,roadian,roadmap,roan,rob,roci,rock,rocks,rod,romeo,ros,rovl,rpa,rpf,rpm,rpn,rps,r" +
+        "pvm,rub,rucl,rudp,ruf,ruq,ruqoa,rur,rus,rush,russia,ryb,sbb,sbcl,sbd,sbn,sbsi,sbsm,sbsu,sbti,sbtm,sh" +
+        "a,shanels,sharp,shazna,shb,shd,shf,shk,shrm,shs,sid,siek,sissl,sjb,sjm,ska,skb,skc,skdb,skf,skm,skn," +
+        "skr,sks,skt,sktcj,skti,sktkdb,sktkt,sktms,sktsk,sktsm,skvm,sla,sld,slf,slfp,slgb,slr,sls,slt,slv,sma" +
+        ",smackdown,smap,smawk,smcu,smd,smej,smf,sml,smn,smr,smtown,sna,snan,snap,snb,snel,snl,snm,snp,snr,sn" +
+        "rna,snry,sns,soa,soap,socks,socl,sod,sof,sofm,sogo,sorl,sorn,sory,sotp,soxl,spa,spak,span,spd,spdif," +
+        "spdy,spf,spg,spr,spt,suck,sud,suek,surl,sus,syfy,sys,sysk,tbb,tbcl,tbd,tbf,tbq,tbr,tbs,tbt,thb,thd,t" +
+        "hek,theo,theory,thf,thgbm,thk,thl,thm,tho,thor,thq,thru,thsi,thx,tia,tick,ticl,tif,tisi,titan,tivo,t" +
+        "jb,tkb,tkf,tkn,tkr,tks,tksa,tkx,tlb,tlcl,tld,tlen,tlf,tlr,tlrs,tlru,tls,tlt,tltco,tltro,tlv,tma,tmao" +
+        ",tmap,tmb,tmd,tmds,tmf,tmn,tmr,tmrna,tms,tmt,tna,tnb,tnc,tnd,tnf,tnn,tnr,tns,tnt,tob,tobb,tod,today," +
+        "tods,toefl,tof,togo,torgos,tos,tosel,total,town,towns,tpa,tpf,tpm,tpn,tps,tudn,tuf,tus,tym,tytn,vhdl" +
+        ",vhdsl,vhf,vhs,vidp,virgo,vla,vlan,vlb,vldb,vldl,vlf,vlm,vlr,vls,vlsd,vlsi,vlsm,vlt,vmf,vmfs,vmm,vmr" +
+        "o,vms,vna,vnd,vnl,voa,vob,vod,vofan,vogl,vor,vos,vpn,vprj,vps,vpvb,wbru,wbs,wha,whc,whd,whdh,whflq,w" +
+        "hk,whl,whrb,widy,wkb,wkw,wlan,wlb,wlcsp,wlss,wltp,wlvi,wma,wmd,wmf,wmfo,wml,wms,wmt,wna,wocn,wordml," +
+        "works,wos,wpa,wpch,wpf,wpm,wps,wut,xhb,xhtml,xjr,xjs,xkr,xlm,xls,xma,xmb,xml,xmm,xmn,xms,xmt,xna,xns" +
+        ",xom,xor,xoxo,xpb,xpcl,xpfe,xpm,xps,zbrush,zbtj,zhao,zhdk,zhg,zhr,zht,zirp,zkm,zmd,zncl,zncu,zozo,zp" +
+        "r,zpt"
 
     /** 소문자로 쓰일 로그확률(소문자 출현 + 0.2×대문자 증인). */
     const val LEX_LOWER =
-        "!81(.!(!!8/(!(!(!!?@!958496.((!/B!F.!(+(+(!B!F!A!++.C!!!!.+!!@!=.(+6D(H.!(@5!(!++!(5+!!!=!+!3213(;.!" +
-        "+!+!(+(!/++J!!!!(!:1!(!.!!!(((E((2!((2(((5.:+?!(713;!!=!!!!61(.=(!<=!!(!8(<!!!(/68C!5H(!2!A1+(:/++K(" +
-        "2C!2.(/!!!3176R!(E8/4(91+(.>!!@(616?1^?!!(3+.!!+!.!!(@.O!=775!!C!@!!!L[!+!9D!!>!13@(.(/F(!!!H!2!8!!!" +
-        "!!.>(!33((2!8!!!+!4!S!5(!7(:4!!!!A!!!7!(+..!A!+(!<1!!1(?@!!!(.<!!!!!HL+7!((!<!16D+.+!(:!.!(!+3!(!!!!" +
-        "!95!!(!!;!!!!(!+.!!!!!+(EF!+V6!!+1/(+!(H56!?!D;R26!!!(((.691((!!2(E!>(!3(!7!;5+!;GF!+31+4X35!(!/!!3(" +
-        "(+A7!!.!..A+54!F26+!i147.!+(!((!!:!=B!+:3/!+1!>.+1.(!Q/G(!1Q1:!(!.5!5/1+85;(!!!(!@!9!!5!.@.!8(.!:!+(" +
-        "!+!@/+/!5!2+C(2381(!5!E!6+/!9.7((<!BB!6+5(!+!!:<.!!!(!12?DO!!A8I!3!6/7!!!!!!(!!=!!3:68!3!!.!@!9!((+(" +
-        "G+!!.<!5P6(!!7!(?+!!1!!!(!((!!!!!!;!"
+        "(!81((.!(!!8/(!(!(!!?@!958496./((!/(5/B!F.!.!(+(+(!B!F!AH!(A!++!.C!!!!!.+!!@!=.(+6D(H2.!Q(@!!5!+!(!+" +
+        "+!(!5+2!!!=!1+!3213(;.!!++!+!(+(M!/++3J!!!!!(!:1!(;!1.!!!!/((6(E((2!((!2!(((5.:+?!((713;!!=!!!!6F@1(" +
+        ".=(!<=!5!(!8(<!!F!(/68:C!5H(!2!A1+(:/(++K(2C!2.(/!!7!3176R!(E8/4(91+(.>!!@(.616?1^?!!(3!+.!!!+!.!!(+" +
+        "9@!.O!!=775!!<C!@!!!L[!+!9D!.!>!13@(.(/F(!(!!!!H!!2!8!J!1!!!!!.>8((.!(33((2!8!!!!+!48!S!5(!7(:4!+!!!" +
+        "!A!!!!F7!(+.!!.!!A!+(!<1!!!1+(?(!@!!!!(7.<!!6!!!HL+87!((T!<!+156D+2.+!(:!.!(!+3!(!!!!!95!!(!!;!!!!(!" +
+        "+.!!!!!+(EF!+V6!!+1/(5+!!((H56!?!D;R26!5!!(((.69111(.1(!!2(E!>(!3(!7!;5/+!;GF!+31+4X35!(!/!!3!((+A7!" +
+        "!?(I!.!...3HA8+54!F!26+!i147.!+(!((!!:J!=B!+:?3/5:!+1!>.(+1.(!Q/G(!1Q1(:!(!C.5!5/1+8!5(;(!!!(!!@!9!!" +
+        "5!.@.!8(.!:!+;(!+!@./+/!5!2+C!(23181(!5!CE!6+/!9.7(B(<!BB!16+5(!+!!:(<.!!!(!<12?D2O!!A8I!3!!6/7!!!!!" +
+        "!(!!=!+!3!:68!35!!.!@!9!((+((G+!!.<!5P6(!!7!(?+!!!(1!!!(!((!!!!!!;!"
 
     /** 전부 대문자로 쓰일 로그확률(공백 = 대문자 출현 없음). */
     const val LEX_UPPER =
-        "/D=5:/5//D<5/5/5//5K/F=/:B@: 5/<C K:/5 585/8/R/E 88:J/ / :8//L/F:5 >/5>:/5/// /88/5A8///I/8/=>=?5F:/" +
-        "8/8/585 <88V//// /< /5/:// 555J55>/5 5 55A: 5K/ D=?G/ I////B/5:I5/B8//5 E 5///5<BDO/AT5/>/M=85E<88V/" +
-        "/O/>:5 / /5/:5_/5AA<@5E/85:G/// 5=5K h>//5?8://8/://5F:[/ID@// P/L// WD/8/EH//J/=>D5:5<R5 //U/5/D///" +
-        "// B5/? 55>/D///8/@/V/B5/85G?////M///:/58::/M/ 5/E=//=5KM //  5 ////IJ8@/55/G//BP8 8/5 /:/5 8?/5/ //" +
-        " F///5//G////5/8://///85QR/8c/// =<58/5E/5/B/QGL5B/ //55:/5// /  5P//5/?5/C/5B8/:TR/8?= @e?A/5/<//?5" +
-        "58MC//:/::N <@/L>B /n=@? /85 55//G/DN/8F8</8/ J: =/ /]<S5//?8D///:/ B:/ BBG5///5/M F/ A :L:/E5:/F 85" +
-        "/8 M<8</A/58O5=8E 5///?/@8</E:/  H/NM/B8A5/8//FH:///5/=>LQV//IAU/?/><D/// //5//I//?A>=/?//: E/E/5585" +
-        "T8//://A[B5//?/5H8//= // /55///  /H/"
+        "5/D=55:/5//D<5/5/5//5K/F=/:B@:< 5/</A<C K:/  5 585/8/R/55 5E 88/:J/ // :8//L/F:5 >/5>5:/]5/////8/ /8" +
+        "8/5/A8>///I/=8/=>=?5F://88/8/585Y <88?V////  /< /5?//:/// <5555J55>/5  5  55A: 5K/ 5D=?G/ I////BFL/5" +
+        ":I5/B8/</5 E 5//R/5<BDFO/AT5/>/M=85E<588V//O/>:5 / B/5/:5_/5AA<@5E/85:G/// :5=5K h>//5?/8:///8/://5 " +
+        "EF/:[//ID@// DP/L// WD/8/EH/:/J/=>D5:5<R5/5 ///U//5/D///=///// BE55:/5? 55>/D/ //8/@B/V/B5/85G?/8/ /" +
+        "/M/// B:/58://://M/ 5/E=///=85K5/M /// C 5 /5///IJ8D@/55a/G/8//BP8> 8/5 /:/5 8?/5/ // F///5//G////5/" +
+        "8://///85QR/8c/// =<5A8 /55E/5/B/QGL5B/< //55:/5//=/:= /  5P//5/?5/C/5B<8/:TR/8?= @e?A/5/<//?/558MC/" +
+        "/H/T/:/:::/UNA <@/L/>B /n=@? /85 55//GW/DN/8FK8< B/8/ J:/ =/ /]<S5//?85D///=:/ B:/ B B G5///5//M F/ " +
+        "A :L:/E5:/F 8G5/8 M:<8</A/58O/5=8/E 5///8?/@8</E:/ N H/NM//B8A5/8//F5H:///5/H=>LQ5V//IAU/? /><D/// /" +
+        "/5//I/8/?/A>=/?=//: E/E/55855T8//://A[B5//?/5H8///5= // /55///  /H/"
 
     const val LEX_LO = -15.332958173678719
     const val LEX_HI = -3.60041536717084
@@ -520,5 +529,14 @@ internal object TypoTables {
 
     const val ACR_LO = -10.702052747100838
     const val ACR_HI = -0.7669944305116949
+
+    /** 흔한 영어 단어 98개(쉼표 구분, 사전순): 자막 빈도 상위 20000개 중 주변 한글 없이도 한영타로 볼 만큼 한글 같은 것 — 주변 한글이 없으면 판정하지 않는다. */
+    const val COMMON_EN_WORDS =
+        "absorb,aha,ahem,aka,alan,alaska,aldo,andi,andy,angus,audi,auf,augustus,chandu,chao,clark,claus,cleo," +
+        "cobb,cochran,cody,cowl,cozy,cuddy,curl,curls,dharma,didi,didn,didnt,dirk,dodgy,dork,doth,dud,dude,du" +
+        "dley,duel,duffy,dunn,duran,dusk,dusty,duval,dyson,emery,ems,envy,fisk,giddy,gideon,gladys,goa,goal,g" +
+        "oals,gob,gogh,gordo,goro,gosh,gospel,gown,gowns,gus,rid,rodeo,rory,rosy,roth,ruddy,rudi,rudy,rufus,r" +
+        "ural,russo,ruth,ryan,shah,sharma,shawl,sheba,shep,slag,slash,soak,sod,susan,theo,tidy,titus,tofu,tor" +
+        "o,tudor,tutor,vodka,wha,woah,zhen"
 
 }

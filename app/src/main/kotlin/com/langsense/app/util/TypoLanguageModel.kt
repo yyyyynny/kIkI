@@ -23,7 +23,7 @@ package com.langsense.app.util
  *   Gutenberg 29권 + AG News(4,890만 자)로 학습.
  * - **Shift 증인 사전**([lexiconLogProb]): 한국어 글에서 Shift 가 무의미한 키에 대문자가 있는 모양
  *   (`SNS`, `tvN`)으로 쓰인 라틴 문자열 — 한글을 치다 생길 수 없는 모양이라 라벨 없이 원문에서
- *   자동 채굴된다. 판정에 영향을 주는 736개만 담았다.
+ *   자동 채굴된다. 판정에 영향을 주는 867개만 담았다.
  * - **약어 글자 bigram**([acronymLogProb]): 사전에 없는 약어·모델명의 일반화.
  * - **음절 unigram**([KO_SYLLABLE_TABLE]) + **구어체 단위 전이**([UNIT_TRANSITION_TABLE]):
  *   교체 문자열을 정할 때만 쓴다([koreanInformal]).
@@ -413,6 +413,9 @@ internal object TypoLanguageModel {
     fun judge(text: String, letters: String, mappable: Int, allUpper: Boolean, koreanContext: Boolean): Judgement {
         val n = letters.length
         if (n == 0) return NO_JUDGEMENT
+        // 주변 한글이 없으면 흔한 영어 단어(`goal`·`dude`·`gosh`)는 판정하지 않는다 — 문맥 없는 판정은 아래에서
+        // 더 적극적으로 하는 대신, 한국인이 실제로 칠 흔한 영어만큼은 지킨다([commonEnglish]).
+        if (!koreanContext && letters in commonEnglish) return NO_JUDGEMENT
         // 라틴(ASCII) 글자의 대소문자 모양
         var latin = 0
         var upper = 0
@@ -497,6 +500,9 @@ internal object TypoLanguageModel {
                 }
             }
         }
+        // 문맥 없는 판정 강화는 두 한영타 가설에만 — 약어+꼬리 규칙은 따로 맞춘 구조 가산점이라 그대로 두지 않으면
+        // `ZENworks`·`LONDONFans` 같은 진짜 영어가 넘어온다(평가로 확인).
+        if (!koreanContext && best != Double.NEGATIVE_INFINITY) best += NO_CONTEXT_LOG_ODDS
         acronymTailLogit(text, lexLower)?.let { z ->
             if (z > best) {
                 best = z
@@ -594,6 +600,17 @@ internal object TypoLanguageModel {
      * 70% 에 오도록 로짓을 민다 — 사용자가 보는 "70%"의 의미(오탐 수준)를 예전과 같게 유지.
      */
     private const val CALIBRATION_SHIFT = 0.2620
+
+    /**
+     * 주변 한글이 없을 때의 추가 보정(2026-10-01) = logit(0.70) − logit(0.45): 문맥 없는 판정의 경계를 예전 45%
+     * 상당으로 낮춘다(감지 97.2 → 99.0%). 대가는 전문적인 영어(뉴스 기사 단어 오탐 37 → 448/457만, `Dhaka`·`Shrek`)
+     * 인데, 이 앱의 사용자(한국인)가 실제로 치는 영어는 흔한 단어라 그쪽은 [commonEnglish] 로 따로 지킨다
+     * (자막 빈도 상위 1만 단어 오탐 0). 근거는 docs/한영타_검증.md 4.10.
+     */
+    private val NO_CONTEXT_LOG_ODDS = Math.log(0.7 / 0.3) - Math.log(0.45 / 0.55)
+
+    /** 흔한 영어 단어 보호 목록([TypoTables.COMMON_EN_WORDS]) — 처음 쓸 때 한 번만 푼다. */
+    private val commonEnglish: Set<String> by lazy { TypoTables.COMMON_EN_WORDS.split(',').toHashSet() }
 
     /** 글자당 점수 → 로짓(= [confidence] 의 로지스틱 안쪽). */
     private fun wordLogit(score: Double): Double = (score - CENTER) / SCALE
@@ -758,7 +775,7 @@ internal object TypoLanguageModel {
      * "Shift 증인" 사전 — 한국어 글에서 **Shift 가 무의미한 키에 대문자가 있는 모양**으로 쓰인
      * 적이 있는 라틴 문자열(`SNS`, `DLC`, `tvN`)은 한글을 치다 생길 수 없으므로 진짜 라틴 문자열이다.
      * 이 원리로 라벨 없이 한국어 원문(뉴스·위키·리뷰 등 학습 분할의 라틴 토큰 77만 회)에서 자동 채굴했고, 그중
-     * 판정에 영향을 주는 736개만 담았다. 값은 한국어 글 속 라틴 토큰 가운데 그 문자열의 비율:
+     * 판정에 영향을 주는 867개만 담았다. 값은 한국어 글 속 라틴 토큰 가운데 그 문자열의 비율:
      * 소문자는 (소문자 출현 + 0.2×대문자 증인), 대문자는 전부 대문자 출현.
      */
     private class LexEntry(val lower: Double, val upper: Double)

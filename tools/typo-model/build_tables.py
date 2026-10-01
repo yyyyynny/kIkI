@@ -33,7 +33,11 @@ P = dict(
     CAPS_BONUS=3.0, CAPS_PRIOR=-3.0, CAPS_SHORT=-2.0,
     ACR={"lower": -4.0, "upper": -0.5, "mixed": -3.0, "title": -4.0}, P_ACR=0.7,
     CTX=3.0, CTX_STRONG=10.0, SHIFT=0.2620,  # 주변 한글: 첫 글자가 그 가설로 칠 수 있는 모양이면 STRONG, 아니면 CTX
-    LEX_NEED=0.3,                      # 사전 없이 이 신뢰도 이상 나오는 모양이 있는 항목만 담는다
+    LEX_NEED=0.3,
+    # 주변 한글이 없을 때(2026-10-01): 한국인이 실제로 칠 영어는 흔한 단어라, 문맥 없는 판정은 임계를 0.45 상당으로
+    # 낮추고(로짓 차이 = logit(0.70) − logit(0.45)) 대신 흔한 영어 단어(자막 빈도 상위 2만 개 중 낮춘 판정에서
+    # PROTECT_NEED 이상인 것)는 문맥이 없으면 판정하지 않는다.
+    NOCTX_DELTA=math.log(0.7 / 0.3) - math.log(0.45 / 0.55), PROTECT_TOP=20000, PROTECT_NEED=0.65,                      # 사전 없이 이 신뢰도 이상 나오는 모양이 있는 항목만 담는다
 )
 SHIFT_KEYS = set("qwertop")
 COLLOQUIAL_CORPORA = {"nsmc.train", "unsmile.train", "hate.train", "chatbot.train", "kmhas.train", "persona.train",
@@ -355,8 +359,8 @@ def eng_to_kor(s):
     return "".join(out)
 
 class Model:
-    def __init__(self, Q, lex=None):
-        self.Q = Q; self.lex = Q["lex"] if lex is None else lex
+    def __init__(self, Q, lex=None, protect=()):
+        self.Q = Q; self.lex = Q["lex"] if lex is None else lex; self.protect = set(protect)
     def pos_lp(self, kind, s):
         i = self.Q["syl_index"].get(s)
         return self.Q[kind][i] if i is not None else self.Q[kind + "_floor"]
@@ -426,6 +430,7 @@ class Model:
         letters = [c for c in tok if c.isalpha()]; lower = "".join(letters).lower(); n = len(letters)
         mappable = sum(1 for c in letters if (ENG_UP.get(c) or ENG.get(c) or ENG.get(c.lower())))
         if n < 3 or mappable == 0 or lower in STOP: return 0.0
+        if not ctx and lower in self.protect: return 0.0
         all_upper = all(c.isupper() for c in letters)
         L = [c for c in tok if 'a' <= c <= 'z' or 'A' <= c <= 'Z']
         ups = [c.isupper() for c in L]
@@ -457,6 +462,7 @@ class Model:
                 lxu = self.lexp(tok, True)
                 if lxu is not None: z = min(z, cp + ko2 - lxu)
                 best = max(best, min(z, cp + ko2 - acr - P["A"] * n_on))
+        if not ctx and best > -1e17: best += P["NOCTX_DELTA"]  # 두 한영타 가설에만(약어+꼬리 규칙은 그대로)
         tl = self.tail(tok, lx)
         if tl is not None: best = max(best, tl)
         x = best - P["SHIFT"]
@@ -472,7 +478,7 @@ def kstr(name, s, doc):
     body = " +\n".join(f'        "{s[i:i + 100]}"' for i in range(0, len(s), 100))
     return f"    /** {doc} */\n    const val {name} =\n{body}\n"
 
-def export(Q, lex_words):
+def export(Q, lex_words, protect=()):
     out = ["package com.langsense.app.util", "", "/**",
            " * 한영타 판정 보조 표(2026-09, `TypoLanguageModel` 참조). 전부 실측 데이터에서 만든 뒤 91단계로 양자화했다 —",
            " * 만드는 방법·출처·검증 수치는 docs/한영타_검증.md. 손으로 고치지 말 것(tools/typo-model/build_tables.py 로 재생성).",
@@ -492,6 +498,7 @@ def export(Q, lex_words):
     out.append(f"    const val LEX_LO = {Q['lex_lo']!r}\n    const val LEX_HI = {Q['lex_hi']!r}\n")
     out.append(kstr("ACR_BIGRAM", Q["acr_str"], "대문자 약어 글자 bigram(27기호: a~z + 경계) 로그확률, [이전*27 + 다음]."))
     out.append(f"    const val ACR_LO = {Q['acr_lo']!r}\n    const val ACR_HI = {Q['acr_hi']!r}\n")
+    out.append(kstr("COMMON_EN_WORDS", ",".join(protect), f"흔한 영어 단어 {len(protect)}개(쉼표 구분, 사전순): 자막 빈도 상위 {P['PROTECT_TOP']}개 중 주변 한글 없이도 한영타로 볼 만큼 한글 같은 것 — 주변 한글이 없으면 판정하지 않는다."))
     out.append("}\n")
     with open(OUT, "w", encoding="utf-8") as f: f.write("\n".join(out))
 
@@ -505,8 +512,22 @@ def main():
     need = sorted(w for w in Q["lex"]
                   if any(max(bare.score(f), bare.score(f, ctx=True)) >= P["LEX_NEED"] for f in {w, w.capitalize(), w.upper()}))
     print(f"   증인 {len(Q['lex'])}개 중 {len(need)}개", file=sys.stderr)
+    protect = common_english_protect(Model(Q, lex={w: Q["lex"][w] for w in need}))
+    print(f"   흔한 영어 보호 {len(protect)}개", file=sys.stderr)
     print("4/4 내보내기 →", os.path.relpath(OUT, ROOT), file=sys.stderr)
-    export(Q, need)
+    export(Q, need, protect)
+
+def common_english_protect(model):
+    """자막 단어 빈도(tools/typo-model/data/en_subtitles_full.txt) 상위 PROTECT_TOP 개 중 문맥 없는 판정에서
+    PROTECT_NEED 이상 나오는 흔한 영어 단어(`goal`·`dude`·`gosh`·`vodka`). 한국인이 실제로 치는 영어는 흔한 단어다."""
+    words, seen = [], set()
+    with open(os.path.join(DATA, "en_subtitles_full.txt"), encoding="utf-8") as f:
+        for line in f:  # 빈도 내림차순
+            w = line.split(" ", 1)[0].lower()
+            if w.isascii() and w.isalpha() and len(w) >= 3 and w not in seen:
+                seen.add(w); words.append(w)
+                if len(words) >= P["PROTECT_TOP"]: break
+    return sorted({w for w in words if model.score(w) >= P["PROTECT_NEED"]})
 
 if __name__ == "__main__":
     main()

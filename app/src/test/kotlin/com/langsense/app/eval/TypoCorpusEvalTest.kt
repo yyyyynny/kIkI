@@ -83,10 +83,32 @@ class TypoCorpusEvalTest {
         val n = hits.values.sum()
         val rate = n.toDouble() / tokens
         println("EVAL 영어 기사 오탐: $n/$tokens (${"%.4f".format(rate * 100)}%) 상위 ${hits.entries.sortedByDescending { it.value }.take(10).map { "${it.key}×${it.value}" }}")
-        assertTrue("영어 기사 오탐률 상승: $rate", rate <= 0.00003) // 기록 0.0016%, 여유 두 배
+        // 2026-10-01 부터 주변 한글 없는 판정을 더 적극적으로 해(한국인이 치는 영어는 흔한 단어 — 아래
+        // commonEnglishWords 로 따로 지킨다) 전문 영어 기사 단어 오탐이 0.0008% → 0.0098% 로 늘었다. 기록의 약 1.5배까지 허용.
+        assertTrue("영어 기사 오탐률 상승: $rate", rate <= 0.00015)
     }
 
-    /** 영어 사전 단어(대소문자 그대로) 오탐률. */
+    /**
+     * 한국인이 실제로 칠 만한 **흔한 영어 단어**: 영어 기사에서 가장 많이 나온 소문자 단어(3글자 이상) 상위 5천/1만 개.
+     * 앱의 보호 목록은 영화 자막 빈도로 만들었으므로 기사 빈도로 재는 이 집합과 독립이다. 기록: 0 / 1(`cusp`).
+     */
+    @Test
+    fun commonEnglishWords() {
+        val counts = HashMap<String, Int>()
+        val word = Regex("\\b[a-z]{3,}\\b")
+        listOf("train.csv", "test.csv").forEach { f -> data(f).forEachLine { line -> word.findAll(line).forEach { counts.merge(it.value, 1, Int::plus) } } }
+        val top = counts.entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key }).map { it.key }
+        val hit5k = top.take(5000).filter { detected(it) }
+        val hit10k = top.take(10000).filter { detected(it) }
+        println("EVAL 흔한 영어 단어 오탐: 상위 5천 ${hit5k.size} / 상위 1만 ${hit10k.size} $hit10k")
+        assertTrue("흔한 영어(상위 5천) 오탐: $hit5k", hit5k.isEmpty())
+        assertTrue("흔한 영어(상위 1만) 오탐 증가: $hit10k", hit10k.size <= 3)
+    }
+
+    /**
+     * 영어 사전 단어(대소문자 그대로) 오탐률. 47만 개 대부분이 `Clwyd`·`tbsp`·`dks` 같은 희귀어라 한국인 사용자에겐
+     * 비중이 낮다 — 2026-10-01 문맥 없는 판정 강화 뒤 0.022% → 0.16%. 큰 회귀만 막는 안전망.
+     */
     @Test
     fun englishDictionaryFalsePositive() {
         var total = 0
@@ -99,7 +121,7 @@ class TypoCorpusEvalTest {
         }
         val rate = hits.size.toDouble() / total
         println("EVAL 영어 사전 오탐: ${hits.size}/$total (${"%.3f".format(rate * 100)}%) 예 ${hits.take(15)}")
-        assertTrue("영어 사전 오탐률 상승: $rate", rate <= 0.0005)
+        assertTrue("영어 사전 오탐률 상승: $rate", rate <= 0.0025)
     }
 
     /**
@@ -139,7 +161,8 @@ class TypoCorpusEvalTest {
 
     /**
      * 한영타 감지율(어절 단위, 라틴 3글자 이상) — 주변 문맥 없음(통째로 잘못 친 경우)과 한국어 문맥
-     * (한국어 문서 속 일부만 잘못 친 경우). 기록: 97.46% / 99.30%(2026-09-30 강한 문맥 가산·구어체 어절 기억,
+     * (한국어 문서 속 일부만 잘못 친 경우). 기록: 99.08% / 99.34%(2026-10-01 문맥 없는 판정 강화 — 이전 97.38% /
+     * 2026-09-30 강한 문맥 가산·구어체 어절 기억,
      * 재설계 직후 96.4% / 97.6%, 재설계 전 94.0%).
      */
     @Test
@@ -157,7 +180,7 @@ class TypoCorpusEvalTest {
         val r0 = plain.toDouble() / total
         val r1 = context.toDouble() / total
         println("EVAL 한영타 감지(NSMC 어절): 문맥없음 ${"%.2f".format(r0 * 100)}%  한국어문맥 ${"%.2f".format(r1 * 100)}%  ($total 회)")
-        assertTrue("한영타 감지율 하락: $r0", r0 >= 0.965)
+        assertTrue("한영타 감지율 하락: $r0", r0 >= 0.985)
         assertTrue("한국어 문맥 감지율 하락: $r1", r1 >= 0.99)
     }
 
@@ -216,7 +239,7 @@ class TypoCorpusEvalTest {
         val fp = enHit.toDouble() / en
         println("EVAL 문장 선택: 한영타 문장 감지 ${"%.2f".format(rate * 100)}% ($total 문장) / 영어 기사 문장 오탐 ${"%.3f".format(fp * 100)}% ($enHit/$en)")
         assertTrue("문장 단위 감지율 하락: $rate", rate >= 0.99)
-        assertTrue("영어 문장 오탐 상승: $fp", fp <= 0.0005)
+        assertTrue("영어 문장 오탐 상승: $fp", fp <= 0.003) // 2026-10-01 문맥 없는 판정 강화 뒤 기록 약 0.14%
     }
 
     /**

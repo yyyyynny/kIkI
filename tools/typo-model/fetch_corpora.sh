@@ -23,6 +23,8 @@ FILES=(
   "kmhas_train.parquet|https://huggingface.co/api/datasets/jeanlee/kmhas_korean_hate_speech/parquet/default/train/0.parquet|b46422a5d19e3364ddb62aea68004c1c607f525a0d4ba703a95b397958abbd32"
   "persona_train.parquet|https://huggingface.co/api/datasets/NLPBada/korean-persona-chat-dataset/parquet/default/train/0.parquet|9e74835464173de5ea934fa324ec434fb204fa20d03c66b836c162fcf2a2170e"
   "multisession_train.parquet|https://huggingface.co/api/datasets/nayohan/141_korean_multi_session_dialogue/parquet/default/train/0.parquet|6a1c21b582076150b4bfdc06b0635bf146bc8da67474514a875ed82495ca8f5c"
+  # 흔한 영어 단어 보호 목록(2026-10-01)용 영어 단어 빈도 — OpenSubtitles 2018(hermitdave/FrequencyWords)
+  "en_subtitles_full.txt|https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/en/en_full.txt|7fea67ab954e2c01df6c608c9826e594cf36f8823b3243554f88245fb75dc506"
   "safeconv_train.parquet|https://huggingface.co/api/datasets/jojo0217/korean_safe_conversation/parquet/default/train/0.parquet|1fdc85292a4f765d1eedf4b2b1a592a3ffea2b80c70692d1a07653db6e473e9b"
   # 한국어 위키백과 2026-09-01 덤프 1번 조각(문서 2.6만 개, 93MB). 위키미디어는 날짜별 덤프를 몇 달만
   # 보관하므로 없어졌으면 다른 날짜의 같은 조각을 받아도 된다(수치가 조금 달라질 수 있음 — 체크섬 경고).
