@@ -347,7 +347,7 @@ object HangulConverter {
             }
             var j = i
             while (j < text.length && isLatin(text[j])) j++
-            out.append(convertRunInTypoContext(text.substring(i, j), capsLock))
+            out.append(convertRunInTypoContext(text.substring(i, j), capsLock, standalone = text.length == 1))
             i = j
         }
         return out.toString()
@@ -359,7 +359,7 @@ object HangulConverter {
      * [convertInTypoContext] 의 라틴 글자 구간 하나(전부 a-z/A-Z). [capsLock] 이면 CapsLock 을 켠 채
      * 친 것으로 보고 대소문자를 뒤집은 글자열([typed])로 한글 가설을 세운다 — 영어 가설은 원문 그대로.
      */
-    private fun convertRunInTypoContext(run: String, capsLock: Boolean): String {
+    private fun convertRunInTypoContext(run: String, capsLock: Boolean, standalone: Boolean = false): String {
         // 전부 대문자는 약어(OST/EBS) — 단, Shift 가 한글에서 의미 있는 키로만 이뤄졌으면(`WW`→ㅉㅉ)
         // 대문자가 영어의 증거가 못 되므로 모델에 맡긴다. CapsLock 중엔 대문자가 기본 상태라 이 규칙을
         // 쓰지 않고 우도 비교에 맡긴다(`GUI` 처럼 한글로 깨지는 약어는 영어 쪽이 자연히 이긴다).
@@ -371,7 +371,14 @@ object HangulConverter {
         val whole = convertEngToKor(typed)
         TypoLanguageModel.koreanInformal(whole)?.let { ko ->
             // 실제 구어체에서 거의 안 나오는 전이가 필요한 변환(`체ㅕ`)은 문맥 가산점을 못 받는다.
-            val prior = if (ko.rarestTransition >= MALFORMED_TRANSITION_LOG) CONTEXT_TOKEN_PRIOR else 0.0
+            // 단, 앞뒤가 공백뿐인 소문자 자음 한 글자(`w rkxdms`→`ㅈ 같은`, `태클 ㄴ`)는 기형이 아니라 흔한
+            // 초성 줄임이다 — 다만 "단어 경계→자음→단어 경계" 전이가 말뭉치에서 드물어(-9 안팎) 위 규칙에
+            // 걸려 영어 한 글자(`w`)에게 졌다(사용자 제보 2026-10). 구두점·숫자가 붙은 것(`T.T`, `'s`,
+            // `T2`, `^^v`)과 대문자(`T T` 우는 얼굴, `C 언어`)는 영어·이모티콘 쪽이 흔해서 제외하고,
+            // 영어 관사 `a`·곱하기 `x`(`x 100`)도 뺀다(NSMC 영어 섞인 리뷰 평가로 확인).
+            val loneConsonant = standalone && run.length == 1 && run[0].isLowerCase() && run[0] !in LONE_LETTER_KEEP &&
+                whole.length == 1 && whole[0] in 'ㄱ'..'ㅎ'
+            val prior = if (loneConsonant || ko.rarestTransition >= MALFORMED_TRANSITION_LOG) CONTEXT_TOKEN_PRIOR else 0.0
             val ll = koreanLl(typed, ko.logProb) + prior
             if (ll >= bestLl) { bestLl = ll; bestText = whole }
         }
@@ -423,6 +430,9 @@ object HangulConverter {
         for (c in run) if (c.isUpperCase() && c !in ENG_UPPER_TO_JAMO) ll += KO_NEEDLESS_SHIFT_LOG
         return ll + CONTEXT_PRIOR_PER_LETTER * run.length
     }
+
+    /** 홀로 선 한 글자라도 영어로 남길 글자 — 관사 `a`, 곱하기 `x`. */
+    private const val LONE_LETTER_KEEP = "ax"
 
     /** 문맥 사전확률: 조각 전체가 한글이라는 가설에 주는 로그오즈(약 2만:1). */
     private const val CONTEXT_TOKEN_PRIOR = 10.0

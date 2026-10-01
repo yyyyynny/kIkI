@@ -181,6 +181,22 @@ class HangulConverterTest {
      * 사용자 제보(2026-09): 한영타 옆의 영어 단어까지 통째로 변환돼 `cpu`→`체ㅕ`, `gpu`→`헤ㅕ`
      * 가 됐다. 감지는 그대로 되면서, 교체 문자열에서는 영어 단어를 지켜야 한다.
      */
+    /**
+     * 홀로 선 자음 한 글자(초성 줄임)는 한영타 선택 안에서 한글로 교체돼야 한다 — 사용자 제보(2026-10):
+     * `w rkxdms` 가 `ㅈ 같은` 이 아니라 `w 같은` 으로 바뀌었다. 구두점·대문자가 붙은 한 글자(`T.T`,
+     * `'s`)와 관사 `a` 는 영어 그대로.
+     */
+    @Test
+    fun analyze_convertsLoneConsonantInTypoSelection() {
+        assertEquals("ㅈ 같은", HangulConverter.analyze("w rkxdms").converted)
+        assertEquals("ㅈ 같은", HangulConverter.analyze("w rkxdms", koreanContext = true).converted)
+        assertEquals("태클 ㄴ", HangulConverter.analyze("xozmf s").converted)
+        assertEquals("ㄴ 같은", HangulConverter.analyze("s rkxdms").converted)
+        assertEquals("에휴. T.T", HangulConverter.analyze("dpgb. T.T").converted)
+        assertEquals("굳 it's", HangulConverter.analyze("rne it's").converted)
+        assertEquals("내용은 a 급", HangulConverter.analyze("sodyddms a rmq").converted)
+    }
+
     @Test
     fun analyze_keepsEnglishWordsNextToTypo() {
         val cases = mapOf(
