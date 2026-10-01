@@ -15,23 +15,26 @@ package com.langsense.app.util
  * 진짜 한영타 `dkssud`(→안녕)보다 "더 한영타 같다"는 역전이 생긴다.
  *
  * ## 모델과 표
- * - **한국어: 어절 위치별 음절 모델 + 자주 쓰는 어절 기억**([koreanWordLogProb], [TypoTables]).
- *   같은 음절이라도 어절의 홀로/첫/가운데/끝 어디에 오느냐에 따라 확률이 다르다(`왜`는 홀로, `다`는
- *   끝에 흔함). 자주 쓰는 어절 5천 개(구어체 30% + 정제된 글 70% 혼합 빈도)는 실제 빈도와 섞는다
- *   (`너무`·`그냥`). 한국어 위키·뉴스·KLUE·NSMC train·혐오표현/챗봇 말뭉치 약 2,500만 어절로 셌다.
+ * - **한국어: 어절 안 음절 2-gram + 자주 쓰는 어절 기억**([koreanWordLogProb], [TypoTables]).
+ *   여러 음절 덩어리는 어절 경계를 포함한 음절 2-gram(Kneser-Ney, 구어체 30% + 정제된 글 70%, 이득순
+ *   10만 쌍)으로 음절끼리의 연결(`너`→`무`)을 보고, 한 음절 어절은 '홀로 쓰인 음절' 분포로 잰다(`왜`·`좀`).
+ *   자주 쓰는 어절 5천 개(같은 혼합 빈도)는 실제 빈도와 섞는다(`너무`·`그냥`). 한국어 위키·뉴스·KLUE·
+ *   NSMC train·댓글·챗봇·일상 대화 말뭉치로 셌다. 2026-10-01 전에는 어절 위치별(홀로/첫/가운데/끝) 음절
+ *   unigram 이었다 — 음절끼리 독립이라 흔한 음절로만 된 무의미한 조합(`님쇼`)을 가리지 못했다.
  * - **영어 문자 trigram**([EN_TRIGRAM_TABLE]): 소문자 26자 + 단어 경계 27심볼(27³칸). Project
  *   Gutenberg 29권 + AG News(4,890만 자)로 학습.
  * - **Shift 증인 사전**([lexiconLogProb]): 한국어 글에서 Shift 가 무의미한 키에 대문자가 있는 모양
  *   (`SNS`, `tvN`)으로 쓰인 라틴 문자열 — 한글을 치다 생길 수 없는 모양이라 라벨 없이 원문에서
- *   자동 채굴된다. 판정에 영향을 주는 867개만 담았다.
+ *   자동 채굴된다. 판정에 영향을 주는 849개만 담았다.
  * - **약어 글자 bigram**([acronymLogProb]): 사전에 없는 약어·모델명의 일반화.
  * - **음절 unigram**([KO_SYLLABLE_TABLE]) + **구어체 단위 전이**([UNIT_TRANSITION_TABLE]):
  *   교체 문자열을 정할 때만 쓴다([koreanInformal]).
  *
- * ## 성능(학습에 쓰지 않은 데이터, 설정 기본값 70%) — 상세는 docs/한영타_검증.md
- * 한영타 감지 96.4%(한국어 문맥이면 97.5%, 이전 94.0%) · CapsLock 한영타 96.0%(이전 16%) ·
- * 영어 기사 오탐 0.0010%(이전 0.0016%) · 영어 사전 오탐 0.022%(동일) · 한국어 글 속 라틴
- * 토큰(약어 등) 오탐 42회/10.3만(이전 730회).
+ * ## 성능(학습에 쓰지 않은 데이터, 설정 기본값 70%, 2026-10-01) — 상세는 docs/한영타_검증.md
+ * 한영타 감지: 단어 하나 99.1%(한국어 문맥 99.4%) · 앱처럼 주변 글까지 본 한영타 문장 속 단어 99.5% ·
+ * CapsLock(4글자 이상) 98.0%. 오탐: 영어 기사 단어 0.005%(읽기 전용 글을 주변 글까지 보면 0) · 영어 사전
+ * 47만 단어 0.064%(대부분 희귀어) · 흔한 영어 단어 상위 1만 0 · 한국어 글 속 라틴 토큰 30회/10.3만.
+ * 주변 글을 쓰는 규칙(이웃 증거·문장 중간 대문자·자동 대문자)은 [HangulConverter.analyze] 쪽에 있다.
  *
  * ## 테이블 표현
  * 모든 표는 로그확률을 [LEVELS](91)단계로 선형 양자화해 인쇄 가능 ASCII 문자 하나에 대응시킨
@@ -381,7 +384,18 @@ internal object TypoLanguageModel {
         val confidence: Float,
         /** CapsLock 을 켠 채 친 한영타라는 가설이 이겼는가 — 교체 때 대소문자를 뒤집어 변환한다. */
         val capsLock: Boolean,
+        /**
+         * 신뢰도의 로지스틱 안쪽 값(보정 후). 판정할 가설이 없으면 음의 무한대. 문맥 규칙([HangulConverter] 의
+         * 이웃 증거·자동 대문자 가설)이 이 값에 로그오즈를 더하고 [confidenceOf] 로 다시 신뢰도로 바꾼다.
+         */
+        val logit: Double = Double.NEGATIVE_INFINITY,
+        /** 매핑 가능한 글자 비율(신뢰도 = σ(logit) × 이 값). */
+        val mappableFraction: Double = 0.0,
     )
+
+    /** 로짓([Judgement.logit] 에 문맥 로그오즈를 더한 값일 수 있다)을 신뢰도로: σ([logit]) × [mappableFraction]. */
+    fun confidenceOf(logit: Double, mappableFraction: Double): Float =
+        if (logit == Double.NEGATIVE_INFINITY) 0f else (1.0 / (1.0 + Math.exp(-logit)) * mappableFraction).toFloat()
 
     /**
      * 라틴 토큰 하나가 한영타일 신뢰도. 두 "한영타 가설"을 각각 여러 "대안 설명"과 맞붙여,
@@ -408,14 +422,29 @@ internal object TypoLanguageModel {
      * 있는 모양(꺼짐 = 소문자 또는 Q·W·E·R·T·O·P 대문자 / 켜짐 = 대문자 또는 그 키의 소문자)이면
      * [CONTEXT_STRONG_LOG_ODDS], 아니면(`Dirk`·`Duden` 같은 이름) [CONTEXT_LOG_ODDS] 만.
      *
+     * 문맥 규칙(2026-10-01, [HangulConverter.analyze] 가 쓴다):
+     * - [midSentence]: 문장 중간(자동 대문자가 붙을 수 없는 자리)이면 첫 글자의 의미 없는 대문자(`Dhaka`·`Shrek`)도
+     *   반대 증거([FIRST_CAP_PENALTY]). 문장 첫머리는 안드로이드 자동 대문자(TextKeyListener)가 붙일 수 있어 그대로 둔다.
+     * - [raw]: 이웃 토큰의 "한영타다움"만 잴 때 — 문맥 없는 판정 강화([NO_CONTEXT_LOG_ODDS])와 흔한 영어 보호를 끈다.
+     * - [ignoreCommonEnglish]: 주변이 뚜렷한 한영타라 흔한 영어 단어(`wha`=좀)도 판정할 때.
+     *
      * 실측 근거와 수치는 docs/한영타_검증.md.
      */
-    fun judge(text: String, letters: String, mappable: Int, allUpper: Boolean, koreanContext: Boolean): Judgement {
+    fun judge(
+        text: String,
+        letters: String,
+        mappable: Int,
+        allUpper: Boolean,
+        koreanContext: Boolean,
+        midSentence: Boolean = false,
+        raw: Boolean = false,
+        ignoreCommonEnglish: Boolean = false,
+    ): Judgement {
         val n = letters.length
         if (n == 0) return NO_JUDGEMENT
         // 주변 한글이 없으면 흔한 영어 단어(`goal`·`dude`·`gosh`)는 판정하지 않는다 — 문맥 없는 판정은 아래에서
         // 더 적극적으로 하는 대신, 한국인이 실제로 칠 흔한 영어만큼은 지킨다([commonEnglish]).
-        if (!koreanContext && letters in commonEnglish) return NO_JUDGEMENT
+        if (!koreanContext && !raw && !ignoreCommonEnglish && letters in commonEnglish) return NO_JUDGEMENT
         // 라틴(ASCII) 글자의 대소문자 모양
         var latin = 0
         var upper = 0
@@ -463,6 +492,8 @@ internal object TypoLanguageModel {
         var best = Double.NEGATIVE_INFINITY
         var bestCaps = false
 
+        // 문장 중간의 의미 없는 첫 대문자(고유명사 모양) — 자동 대문자로 설명할 수 없는 자리에서만
+        val firstCap = if (midSentence && !koreanContext && firstUpper && !firstShiftKey) FIRST_CAP_PENALTY else 0.0
         if (!allUpper) {
             koreanWordLogProb(HangulConverter.convertEngToKor(text))?.let { ko ->
                 val shift = when {
@@ -470,7 +501,7 @@ internal object TypoLanguageModel {
                     shiftedInner -> SHIFT_BONUS
                     else -> 0.0
                 }
-                var z = wordLogit((ko - englishLogProb(letters) + contextOff) / n + shift)
+                var z = wordLogit((ko - englishLogProb(letters) + contextOff) / n + shift) - firstCap
                 if (lexLower != null) z = minOf(z, ko - lexLower)
                 z = minOf(z, ko - acronym - NEEDLESS_SHIFT_PENALTY * needlessOff)
                 if (z > best) best = z
@@ -502,7 +533,7 @@ internal object TypoLanguageModel {
         }
         // 문맥 없는 판정 강화는 두 한영타 가설에만 — 약어+꼬리 규칙은 따로 맞춘 구조 가산점이라 그대로 두지 않으면
         // `ZENworks`·`LONDONFans` 같은 진짜 영어가 넘어온다(평가로 확인).
-        if (!koreanContext && best != Double.NEGATIVE_INFINITY) best += NO_CONTEXT_LOG_ODDS
+        if (!koreanContext && !raw && best != Double.NEGATIVE_INFINITY) best += NO_CONTEXT_LOG_ODDS
         acronymTailLogit(text, lexLower)?.let { z ->
             if (z > best) {
                 best = z
@@ -510,8 +541,9 @@ internal object TypoLanguageModel {
             }
         }
         if (best == Double.NEGATIVE_INFINITY) return NO_JUDGEMENT
-        val conf = 1.0 / (1.0 + Math.exp(-(best - CALIBRATION_SHIFT))) * mappable / n
-        return Judgement(conf.toFloat(), bestCaps)
+        val logit = best - CALIBRATION_SHIFT
+        val frac = mappable.toDouble() / n
+        return Judgement(confidenceOf(logit, frac), bestCaps, logit, frac)
     }
 
     private val NO_JUDGEMENT = Judgement(0f, false)
@@ -591,9 +623,18 @@ internal object TypoLanguageModel {
      * 선택 주변에 한글이 있을 때 "영어 단어" 가설에 주는 불리함(총 로그오즈). 첫 글자가 그 가설로 칠 수 있는
      * 모양이면 [CONTEXT_STRONG_LOG_ODDS](2026-09-30: 3.0 → 10.0 — 한국어 문맥 감지 98.2% → 99.3%, 한국어 글 속
      * 라틴 오탐 45 → 67회/10.3만 회), 대문자로 시작하는 이름(`Dirk`·`Duden`)은 예전 값 [CONTEXT_LOG_ODDS] 만.
+     * 2026-10-01 어절 2-gram 도입 뒤 10 → 11: 2-gram 이 한국어 글 속 라틴 오탐을 43 → 28 로 줄인 여유를 한국어 문맥
+     * 감지(99.30 → 99.36%)로 돌렸다(오탐 30).
      */
     private const val CONTEXT_LOG_ODDS = 3.0
-    private const val CONTEXT_STRONG_LOG_ODDS = 10.0
+    private const val CONTEXT_STRONG_LOG_ODDS = 11.0
+
+    /**
+     * 문장 중간에서 첫 글자가 Shift 무의미 키의 대문자일 때(`Dhaka`·`Shrek`·`Goran`)의 벌점(로그오즈). 한글을 치던
+     * 사람은 그 키에 Shift 를 누를 이유가 없고, 문장 중간이라 자동 대문자로도 설명이 안 된다 — 영어 기사 속 단어 오탐
+     * 0.0131% → 0.0048%(감지 변화 없음). 2 이상이면 효과가 같아 다른 Shift 벌점과 같은 값.
+     */
+    private const val FIRST_CAP_PENALTY = 3.0
 
     /**
      * 최종 보정: 기존 영어 오탐 수준(영어 사전 47만 단어 중 102개)에서의 판정 경계가 설정 기본값
@@ -627,7 +668,7 @@ internal object TypoLanguageModel {
         return sb.toString()
     }
 
-    // ── 한국어 쪽: 어절 위치별 음절 모델 + 자주 쓰는 어절 기억([TypoTables]) ──────────────
+    // ── 한국어 쪽: 어절 안 음절 2-gram + 자주 쓰는 어절 기억([TypoTables]) ──────────────
 
     /**
      * 두벌식 변환 결과가 한국어 **어절**로 나올 로그확률. 한글이 전혀 없으면 null.
@@ -635,8 +676,11 @@ internal object TypoLanguageModel {
      * 예전 음절 unigram 은 음절이 어디에 있든 같은 확률을 줘서 "홀로 쓰이는 흔한 말"(왜/좀/난)과
      * "단어로서 흔한 말"(너무/그냥/내가)을 몰랐다 — 실측에서 가장 많이 놓친 한영타가 드문 단어가
      * 아니라 `sjan`(너무, NSMC 5만 문장에서 2,803회 누락)·`rmsid`(그냥)·`dho`(왜)였다.
-     * 이제 한글 구간마다 길이 확률 × 음절별 위치(홀로/첫/가운데/끝) 확률을 곱하고, 변환 결과가
+     * 위치별 모델(홀로/첫/가운데/끝)을 거쳐, 2026-10-01 부터 여러 음절 덩어리는 **어절 안 음절 2-gram**
+     * ([bigramLogProb])으로 잰다 — 음절끼리의 연결(`너`→`무`)을 보니 흔한 음절로만 된 무의미한 조합(`님쇼`)과
+     * 진짜 단어가 갈린다. 한 음절 어절은 '홀로 쓰인 음절' 분포 그대로([syllableSegmentLogProb]). 변환 결과가
      * 자주 쓰는 어절이면 그 실제 빈도와 반반 섞는다. 조합 실패한 낱자모는 [KO_FLOOR].
+     * ⚠️ tools/typo-model/build_tables.py 의 `Model.ko` 와 한 줄씩 같아야 한다(증인 사전·보호 목록 선별이 이걸로 됨).
      */
     fun koreanWordLogProb(converted: String, colloquialJamo: Boolean = true): Double? {
         var total = 0.0
@@ -656,37 +700,44 @@ internal object TypoLanguageModel {
             var j = i
             while (j < len && isHangulUnit(converted[j])) j++
             val k = j - i
-            total += TypoTables.POS_LEN[minOf(k, POS_LEN_MAX) - 1]
             // 낱자모: 앞서 음절이 나왔으면(`재밌다ㅋㅋ`, `영화..ㅠㅠ`) 구어체 전이 확률([UNIT_TRANSITION_TABLE]). 예전엔 전부 최저라
-            // `rhakqtmqslekbb`(고맙습니다ㅠㅠ)·`dlTdjdybb`(있어요ㅠㅠ) 같은 한영타를 12%만 잡았다. 음절 앞머리
-            // (`ㅡ도야`=Mehdi)와 낱자모만인 토큰(`zzz`=조는 소리, `bbbb`=엄지척)은 영문 그대로 쓰는 경우와
-            // 겹쳐 여전히 최저 확률로 둔다(한국어 리뷰 실측에서 둘 다 오탐으로 나왔다).
+            // `rhakqtmqslekbb`(고맙습니다ㅠㅠ)·`dlTdjdybb`(있어요ㅠㅠ) 같은 한영타를 12%만 잡았다. 낱자모만인 토큰
+            // (`zzz`=조는 소리, `bbbb`=엄지척)과 앞머리 모음(`ㅡ도야`=Mehdi)은 영문 그대로 쓰는 경우와 겹쳐 여전히
+            // 최저 확률로 둔다(한국어 리뷰 실측에서 둘 다 오탐으로 나왔다). 앞머리 **자음** 1개 + 음절(`ㅈ같은`·`ㅅ발`,
+            // 2026-10-01 사용자 제보)은 구어체로 흔해 시작→자음→음절 전이로 채점한다 — 웃음 자모 ㅋ·ㅎ 는 z·g 로 시작하는
+            // 외국어 이름(`Zakah`·`Gaud`)이 넘어와 뺐다(4도메인 평가 집합에서 한영타 386회 추가 감지, 영어 기사 오탐 증가 0).
             var prev = ROW_BOS
+            var segStart = -1
             for (p in i until j) {
                 val c = converted[p]
                 val code = c.code
                 if (code in HANGUL_FIRST..HANGUL_LAST) {
-                    val pos = when {
-                        k == 1 -> POS_SINGLE
-                        p == i -> POS_FIRST
-                        p == j - 1 -> POS_LAST
-                        else -> POS_MID
-                    }
-                    total += positionalLogProb(c, pos)
+                    if (segStart < 0) segStart = p
                     prev = ROW_SYLLABLE
                     seenSyllable = true
-                } else {
-                    allSyllables = false
-                    if (code in UNIT_JAMO_FIRST..UNIT_JAMO_LAST) {
-                        val idx = code - UNIT_JAMO_FIRST
-                        total += if (colloquialJamo && seenSyllable && c in COLLOQUIAL_JAMO) transition(prev, COL_JAMO + idx) else KO_FLOOR
-                        prev = ROW_JAMO + idx
-                    } else {
-                        total += KO_FLOOR
-                        prev = ROW_SYLLABLE
+                    continue
+                }
+                if (segStart >= 0) {
+                    total += syllableSegmentLogProb(converted, segStart, p, k)
+                    segStart = -1
+                }
+                allSyllables = false
+                if (code in UNIT_JAMO_FIRST..UNIT_JAMO_LAST) {
+                    val idx = code - UNIT_JAMO_FIRST
+                    val lead = colloquialJamo && !seenSyllable && p == i && k >= 2 && code <= LAST_CONSONANT &&
+                        c !in LEAD_EXCLUDE && converted[i + 1].code in HANGUL_FIRST..HANGUL_LAST
+                    total += when {
+                        lead -> transition(ROW_BOS, COL_JAMO + idx) + transition(ROW_JAMO + idx, COL_SYLLABLE)
+                        colloquialJamo && seenSyllable && c in COLLOQUIAL_JAMO -> transition(prev, COL_JAMO + idx)
+                        else -> KO_FLOOR
                     }
+                    prev = ROW_JAMO + idx
+                } else {
+                    total += KO_FLOOR
+                    prev = ROW_SYLLABLE
                 }
             }
+            if (segStart >= 0) total += syllableSegmentLogProb(converted, segStart, j, k)
             if (colloquialJamo && prev >= ROW_JAMO) total += transition(prev, COL_EOS)
             units += k
             runs++
@@ -736,10 +787,8 @@ internal object TypoLanguageModel {
         c.code in HANGUL_FIRST..HANGUL_LAST || c.code in JAMO_FIRST..JAMO_LAST
 
     private const val POS_SINGLE = 0
-    private const val POS_FIRST = 1
     private const val POS_MID = 2
     private const val POS_LAST = 3
-    private const val POS_LEN_MAX = 12
     private val LOG_HALF = Math.log(0.5)
 
     /** 음절 [c] 가 어절 안 위치 [pos] 에 올 로그확률. 학습 글에 없던 음절은 위치별 바닥값. */
@@ -759,6 +808,115 @@ internal object TypoLanguageModel {
         return TypoTables.POS_FLOOR[pos]
     }
 
+    /** 음절 [c] 의 2-gram 기호 번호(1..음절 수, [TypoTables.POS_SYLLABLES] 순서 + 1). 표에 없는 음절은 -1. */
+    private fun syllableSymbol(c: Char): Int {
+        val syl = TypoTables.POS_SYLLABLES
+        var lo = 0
+        var hi = syl.length - 1
+        while (lo <= hi) {
+            val mid = (lo + hi) ushr 1
+            val m = syl[mid]
+            when {
+                m < c -> lo = mid + 1
+                m > c -> hi = mid - 1
+                else -> return mid + 1
+            }
+        }
+        return -1
+    }
+
+    /**
+     * 한 어절(한글 구간) 안의 음절 덩어리 [from]..[to] 의 로그확률. 구간 전체가 음절 하나면([runLength] == 1)
+     * '홀로 쓰인 음절' 분포 그대로 — 2-gram 은 P(첫 음절)×P(끝)의 곱이라 한 음절 어절(`센`·`봉`)을 과대평가해
+     * 한국어 글 속 3글자 약어(`tps`·`qhd`)가 오탐으로 넘어왔다. 그 밖엔 어절 2-gram([bigramLogProb])에서
+     * [BIGRAM_OFFSET] 을 뺀다(위치별 모델과 눈금을 맞춰, 같은 보정값에서 한 음절 한영타 감지가 그대로 유지되게).
+     */
+    private fun syllableSegmentLogProb(s: String, from: Int, to: Int, runLength: Int): Double =
+        if (runLength == 1) TypoTables.POS_LEN[0] + positionalLogProb(s[from], POS_SINGLE)
+        else bigramLogProb(s, from, to) - BIGRAM_OFFSET
+
+    /**
+     * 어절 안 음절 2-gram(2026-10-01) 로그확률 — 시작→첫 음절→…→끝 음절→끝. Kneser-Ney 보간으로 만든 뒤 학습 우도
+     * 이득이 큰 10만 쌍만 담았고([TypoTables.bigramKeyParts]), 없는 쌍은 λ(앞 음절)·연속 확률(뒤 음절).
+     *
+     * 왜 필요한가: 위치별 음절 모델은 음절끼리 독립이라 흔한 음절로만 된 무의미한 조합(`님쇼`·`샘샘`·`야요` —
+     * 영어 사전 단어의 두벌식 변환)도 한국어처럼 봤다. 2-gram 은 진짜 한국어 어절의 로그확률을 평균 +3.7,
+     * 영어 단어 변환은 +2.5 만 올려 둘의 간격을 벌린다 — 같은 감지율에서 영어 사전 오탐 742 → 297, 기사 단어
+     * 445 → 232, 한국어 글 속 라틴 43 → 30(docs/한영타_검증.md 4.11).
+     */
+    private fun bigramLogProb(s: String, from: Int, to: Int): Double {
+        val bg = bigram
+        var total = 0.0
+        var a = 0 // 어절 시작
+        for (p in from..to) {
+            val b = if (p < to) syllableSymbol(s[p]) else 0 // 어절 끝
+            total += bg.logProb(a, b)
+            a = b
+        }
+        return total
+    }
+
+    /** 2-gram 표: 정렬된 키(앞 기호 × [width] + 뒤 기호)와 같은 순서의 양자화 로그확률, 문맥별 λ·연속 확률. */
+    private class Bigram(
+        private val keys: IntArray,
+        private val levels: String,
+        private val lambda: DoubleArray,
+        private val cont: DoubleArray,
+        private val width: Int,
+    ) {
+        fun logProb(a: Int, b: Int): Double {
+            if (a >= 0 && b >= 0) {
+                val i = java.util.Arrays.binarySearch(keys, a * width + b)
+                if (i >= 0) return decode(levels[i], TypoTables.BIGRAM_LO, TypoTables.BIGRAM_HI)
+            }
+            val pc = if (b >= 0 && !cont[b].isNaN()) cont[b] else TypoTables.BIGRAM_FLOOR
+            val la = if (a >= 0) lambda[a] else Double.NaN
+            return if (la.isNaN()) pc else la + pc
+        }
+    }
+
+    /** 처음 쓸 때 한 번만 푼다(키 10만 개 = IntArray 400KB). 키는 정렬된 차이를 45진 가변 길이로 적었다(생성기와 같은 방식). */
+    private val bigram: Bigram by lazy {
+        val width = TypoTables.POS_SYLLABLES.length + 1
+        val keys = IntArray(TypoTables.BIGRAM_COUNT)
+        var n = 0
+        var prev = 0
+        var x = 0
+        for (part in TypoTables.bigramKeyParts()) {
+            for (ch in part) {
+                val v = DECODE_STEP[ch.code]
+                if (v >= BIGRAM_DIGIT_BASE) {
+                    x = x * BIGRAM_DIGIT_BASE + (v - BIGRAM_DIGIT_BASE)
+                } else {
+                    prev += x * BIGRAM_DIGIT_BASE + v
+                    keys[n++] = prev
+                    x = 0
+                }
+            }
+        }
+        check(n == keys.size) { "2-gram 키 수 불일치: $n / ${keys.size}" }
+        fun levels(s: String, lo: Double, hi: Double) = DoubleArray(s.length) { i -> if (s[i] == ' ') Double.NaN else decode(s[i], lo, hi) }
+        Bigram(
+            keys,
+            TypoTables.bigramLevelParts().joinToString(""),
+            levels(TypoTables.BIGRAM_LAMBDA, TypoTables.BIGRAM_LAMBDA_LO, TypoTables.BIGRAM_LAMBDA_HI),
+            levels(TypoTables.BIGRAM_CONT, TypoTables.BIGRAM_CONT_LO, TypoTables.BIGRAM_CONT_HI),
+            width,
+        )
+    }
+
+    /** 2-gram 키 인코딩의 한 자리 값 범위(생성기 encode_keys 와 같다). */
+    private const val BIGRAM_DIGIT_BASE = 45
+
+    /** 2-gram 으로 잰 음절 구간마다 빼는 값([syllableSegmentLogProb]). */
+    private const val BIGRAM_OFFSET = 0.5
+
+    /** 마지막 자음(ㅎ) 코드 — 호환 자모 0x3131..0x314E 가 자음. */
+    private const val LAST_CONSONANT = 0x314E
+
+    /** 어절 앞머리 자음으로 인정하지 않는 자모(웃음 ㅋ·ㅎ — [koreanWordLogProb] 참조). */
+    private const val LEAD_EXCLUDE = "ㅋㅎ"
+
     /** 자주 쓰는 어절(상위 5천 개, 구어체 30%+정제된 글 70% 혼합)의 실제 빈도. 처음 쓸 때 한 번만 푼다(첫 선택 전까지 메모리 0). */
     private val eojeols: Map<String, Double> by lazy {
         val words = TypoTables.EOJ_WORDS.split(',')
@@ -775,7 +933,7 @@ internal object TypoLanguageModel {
      * "Shift 증인" 사전 — 한국어 글에서 **Shift 가 무의미한 키에 대문자가 있는 모양**으로 쓰인
      * 적이 있는 라틴 문자열(`SNS`, `DLC`, `tvN`)은 한글을 치다 생길 수 없으므로 진짜 라틴 문자열이다.
      * 이 원리로 라벨 없이 한국어 원문(뉴스·위키·리뷰 등 학습 분할의 라틴 토큰 77만 회)에서 자동 채굴했고, 그중
-     * 판정에 영향을 주는 867개만 담았다. 값은 한국어 글 속 라틴 토큰 가운데 그 문자열의 비율:
+     * 판정에 영향을 주는 849개만 담았다. 값은 한국어 글 속 라틴 토큰 가운데 그 문자열의 비율:
      * 소문자는 (소문자 출현 + 0.2×대문자 증인), 대문자는 전부 대문자 출현.
      */
     private class LexEntry(val lower: Double, val upper: Double)
@@ -839,7 +997,7 @@ internal object TypoLanguageModel {
     /**
      * 음절 unigram([KO_SYLLABLE_TABLE]) 기반 구어체 모델 — 낱자모를 [KO_FLOOR] 대신 실제 구어체
      * 빈도로 본다. **교체 문자열을 정할 때만** 쓴다([HangulConverter] 의 문맥 변환). 감지는
-     * [koreanWordLogProb](어절 위치별 모델)가 맡는다 — 둘은 목적이 다르다(감지는 "한국어 어절로
+     * [koreanWordLogProb](어절 2-gram 모델)가 맡는다 — 둘은 목적이 다르다(감지는 "한국어 어절로
      * 흔한가", 교체는 "ㅋㅋ/ㅠㅠ 같은 구어체 낱자모까지 한글로 볼 것인가").
      *
      * 왜 필요한가: 정제된 글에는 `ㅋㅋ`/`ㅠㅠ`/`ㅡㅡ` 가 없어 모든 낱자모가 최저 확률이 되는데,

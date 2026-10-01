@@ -32,7 +32,12 @@ P = dict(
     A=3.0, B=1.0,                      # 의미 없는 Shift 벌점 / 의미 있는 Shift 가산(글자당)
     CAPS_BONUS=3.0, CAPS_PRIOR=-3.0, CAPS_SHORT=-2.0,
     ACR={"lower": -4.0, "upper": -0.5, "mixed": -3.0, "title": -4.0}, P_ACR=0.7,
-    CTX=3.0, CTX_STRONG=10.0, SHIFT=0.2620,  # 주변 한글: 첫 글자가 그 가설로 칠 수 있는 모양이면 STRONG, 아니면 CTX
+    CTX=3.0, CTX_STRONG=11.0, SHIFT=0.2620,  # 주변 한글: 첫 글자가 그 가설로 칠 수 있는 모양이면 STRONG, 아니면 CTX
+    # 어절 안 음절 2-gram(2026-10-01): Kneser-Ney 보간(할인 D), 학습 우도 이득순 상위 BIGRAM_KEEP 쌍만 저장.
+    # 한 음절 어절은 '홀로 쓰인 음절' 분포 그대로(2-gram 은 첫×끝 곱이라 과대평가), 2-gram 으로 잰 음절 구간마다
+    # BIGRAM_OFFSET 을 빼 위치별 모델과 눈금을 맞춘다(한 음절 한영타 감지가 같은 SHIFT 에서 그대로 유지).
+    BIGRAM_KEEP=100000, BIGRAM_D=0.75, BIGRAM_OFFSET=0.5,
+    LEAD_EXCLUDE="ㅋㅎ",  # 어절 앞머리 자음 1개 + 음절(ㅈ같은)을 구어체로 인정하되 웃음 자모(ㅋㅎ)는 제외(z·g 로 시작하는 외국어 오탐)
     LEX_NEED=0.3,
     # 주변 한글이 없을 때(2026-10-01): 한국인이 실제로 칠 영어는 흔한 단어라, 문맥 없는 판정은 임계를 0.45 상당으로
     # 낮추고(로짓 차이 = logit(0.70) − logit(0.45)) 대신 흔한 영어 단어(자막 빈도 상위 2만 개 중 낮춘 판정에서
@@ -181,11 +186,12 @@ def latin_tokens(line):
     return out
 
 def count_all():
-    pos = {k: Counter() for k in ["single", "first", "mid", "last", "uni", "lens", "eoj_col", "eoj_for"]}
+    pos = {k: Counter() for k in ["single", "first", "mid", "last", "uni", "lens", "eoj_col", "eoj_for", "bi_col", "bi_for"]}
     latin = Counter()
     for name, gen in CORPORA:
         n = 0
         eoj = pos["eoj_col" if name in COLLOQUIAL_CORPORA else "eoj_for"]
+        bi = pos["bi_col" if name in COLLOQUIAL_CORPORA else "bi_for"]
         for line in _lines(gen()):
             n += 1
             for w in line.split():
@@ -193,6 +199,8 @@ def count_all():
                     r = m.group(); k = len(r)
                     pos["lens"][min(k, 12)] += 1
                     eoj[r] += 1
+                    b = "^" + r + "$"
+                    for x in range(len(b) - 1): bi[b[x:x + 2]] += 1
                     for ch in r: pos["uni"][ch] += 1
                     if k == 1: pos["single"][r] += 1
                     else:
@@ -252,7 +260,39 @@ def build_tables(pos, latin):
         s = [26] + [ord(c) - 97 for c in w] + [26]
         for i in range(1, len(s)): ng[(s[i - 1], s[i])] += 1; ctx[s[i - 1]] += 1
     T["acr"] = [math.log((ng[(i, j)] + 0.5) / (ctx[i] + 27 * 0.5)) for i in range(27) for j in range(27)]
+    T["bigram"] = build_bigram(pos["bi_col"], pos["bi_for"], syl)
     return T
+
+def build_bigram(col, form, syl):
+    """어절 안 음절 2-gram(Kneser-Ney 보간). 기호 번호 0 = 어절 시작(문맥)/끝(다음), i+1 = syl[i].
+    전체 카운트로 확률을 만든 뒤 '빼면 학습 우도가 가장 많이 줄어드는' 쌍 BIGRAM_KEEP 개만 저장하고, 빠진 쌍은
+    λ(문맥)·P_cont(다음 음절)로 받는다. 구어체/정제된 글은 어절 기억과 같은 비율(EOJ_COLLOQUIAL)로 섞는다."""
+    wc, d = P["EOJ_COLLOQUIAL"], P["BIGRAM_D"]
+    tc, tf = sum(col.values()), sum(form.values())
+    idx = {s: i + 1 for i, s in enumerate(syl)}; idx["^"] = 0; idx["$"] = 0
+    c = {}
+    for k in sorted(set(col) | set(form)):  # 정렬 순서로 더해야 실행마다 마지막 자리까지 같다(파이썬 해시 순서 무작위)
+        if k[0] == "$" or k[1] == "^" or k[0] not in idx or k[1] not in idx: continue
+        c[k] = (wc * col.get(k, 0) / tc + (1 - wc) * form.get(k, 0) / tf) * 1e8
+    ca = defaultdict(float); n1a = Counter(); n1b = Counter()
+    for k, v in c.items(): ca[k[0]] += v; n1a[k[0]] += 1; n1b[k[1]] += 1
+    types = sum(n1b.values())
+    pcont = {b: n / types for b, n in n1b.items()}
+    floor = 0.5 / types
+    lam = {a: d * n1a[a] / ca[a] for a in ca}
+    gains = []
+    for k, v in c.items():
+        a, b = k[0], k[1]
+        p = math.log(max(v - d, 0.0) / ca[a] + lam[a] * pcont[b])
+        back = math.log(lam[a] * pcont[b])
+        if v * (p - back) > 0: gains.append((v * (p - back), k, p))
+    gains.sort(key=lambda g: (-g[0], g[1]))
+    kept = sorted(((idx[k[0]] * (len(syl) + 1) + idx[k[1]], p) for _, k, p in gains[:P["BIGRAM_KEEP"]]))
+    n = len(syl) + 1
+    lam_arr = [None] * n; pc_arr = [None] * n
+    for a, v in lam.items(): lam_arr[idx[a]] = math.log(v)
+    for b, v in pcont.items(): pc_arr[idx[b]] = math.log(v)
+    return dict(keys=[k for k, _ in kept], lp=[p for _, p in kept], lam=lam_arr, pcont=pc_arr, floor=math.log(floor))
 
 # ── 양자화(91단계, TypoLanguageModel.decode 와 같은 문자표) ───────────────────
 ENC = [chr(c) for c in range(33, 127) if chr(c) not in '"\\$']
@@ -278,7 +318,33 @@ def quantize(T):
     Q["acr_str"] = "".join(q(v, Q["acr_lo"], Q["acr_hi"]) for v in T["acr"])
     Q["acr"] = [dq(c, Q["acr_lo"], Q["acr_hi"]) for c in Q["acr_str"]]
     Q["syl_index"] = {s: i for i, s in enumerate(T["syl"])}
+    bg = T["bigram"]
+    Q["bi_lo"], Q["bi_hi"] = min(bg["lp"]), max(bg["lp"])
+    Q["bi_keys"] = bg["keys"]
+    Q["bi_lv_str"] = "".join(q(v, Q["bi_lo"], Q["bi_hi"]) for v in bg["lp"])
+    Q["bi_lp"] = {k: dq(ch, Q["bi_lo"], Q["bi_hi"]) for k, ch in zip(bg["keys"], Q["bi_lv_str"])}
+    lv = [v for v in bg["lam"] if v is not None]; Q["bi_lam_lo"], Q["bi_lam_hi"] = min(lv), max(lv)
+    Q["bi_lam_str"] = "".join(" " if v is None else q(v, Q["bi_lam_lo"], Q["bi_lam_hi"]) for v in bg["lam"])
+    Q["bi_lam"] = [None if ch == " " else dq(ch, Q["bi_lam_lo"], Q["bi_lam_hi"]) for ch in Q["bi_lam_str"]]
+    pv = [v for v in bg["pcont"] if v is not None]; Q["bi_pc_lo"], Q["bi_pc_hi"] = min(pv), max(pv)
+    Q["bi_pc_str"] = "".join(" " if v is None else q(v, Q["bi_pc_lo"], Q["bi_pc_hi"]) for v in bg["pcont"])
+    Q["bi_pc"] = [None if ch == " " else dq(ch, Q["bi_pc_lo"], Q["bi_pc_hi"]) for ch in Q["bi_pc_str"]]
+    Q["bi_floor"] = bg["floor"]
     return Q
+
+# 2-gram 키 = 앞 기호 × (음절 수 + 1) + 뒤 기호. 정렬된 키의 차이를 45진 가변 길이로 적는다(마지막 자리 = ENC[0..44],
+# 앞자리 = ENC[45..89]) — TypoLanguageModel.bigram 이 같은 방식으로 푼다.
+def encode_keys(keys):
+    out = []; prev = 0
+    for k in keys:
+        x = k - prev; prev = k
+        digits = []
+        while True:
+            digits.append(x % 45); x //= 45
+            if not x: break
+        digits.reverse()
+        out.extend(ENC[45 + v] for v in digits[:-1]); out.append(ENC[digits[-1]])
+    return "".join(out)
 
 # ── Kotlin 판정의 파이썬 이식(사전 선별용) ──────────────────────────────────
 _TLM = open(os.path.join(UTIL, "TypoLanguageModel.kt"), encoding="utf-8").read()
@@ -364,27 +430,51 @@ class Model:
     def pos_lp(self, kind, s):
         i = self.Q["syl_index"].get(s)
         return self.Q[kind][i] if i is not None else self.Q[kind + "_floor"]
+    def bigram(self, seg):
+        """음절 구간 seg 의 어절 2-gram 로그확률(시작·끝 포함) — TypoLanguageModel.bigramLogProb 와 같다."""
+        Q = self.Q; n = len(Q["syl"]) + 1; si = Q["syl_index"]
+        syms = [0] + [(si[c] + 1) if c in si else -1 for c in seg] + [0]
+        t = 0.0
+        for a, b in zip(syms, syms[1:]):
+            v = Q["bi_lp"].get(a * n + b) if a >= 0 and b >= 0 else None
+            if v is not None: t += v; continue
+            pc = Q["bi_pc"][b] if b >= 0 else None
+            pc = Q["bi_floor"] if pc is None else pc
+            la = Q["bi_lam"][a] if a >= 0 else None
+            t += pc if la is None else la + pc
+        return t
     def ko(self, conv, colloquial=True):
+        """한국어 어절 로그확률 — 음절 구간은 어절 2-gram(한 음절 어절은 '홀로' 위치 분포), 낱자모는 구어체 규칙.
+        Kotlin TypoLanguageModel.koreanWordLogProb 와 한 줄씩 같다."""
         total = 0.0; units = 0; runs = []; cur = []
         for c in conv + " ":
             if is_hangul(c): cur.append(c)
             elif cur: runs.append(cur); cur = []
         seen_syl = False  # 토큰 안에서 앞서 음절이 나왔는가(영화..ㅠㅠ 의 ㅠㅠ 덩어리도 인정)
         for run in runs:
-            k = len(run)
-            total += self.Q["lens"][min(k, 12) - 1]
-            # 낱자모: 앞서 음절이 나왔으면(재밌다ㅋㅋ) 구어체 전이 확률. 앞머리·낱자모만(zzz=조는 소리, bbbb=엄지척)은 최저
-            prev = 0
+            k = len(run); prev = 0; seg = []
+            def flush():
+                nonlocal total
+                if not seg: return
+                if k == 1: total += self.pos_lp("single", seg[0]) + self.Q["lens"][0]
+                else: total += self.bigram("".join(seg)) - P["BIGRAM_OFFSET"]
+                seg.clear()
             for i, c in enumerate(run):
                 o = ord(c)
                 if 0xAC00 <= o <= 0xD7A3:
-                    total += self.pos_lp("single" if k == 1 else "first" if i == 0 else "last" if i == k - 1 else "mid", c)
-                    prev = 1; seen_syl = True
-                elif 0x3131 <= o <= 0x3163:
-                    total += unit_tr(prev, 2 + o - 0x3131) if colloquial and seen_syl and c in COLLOQUIAL_JAMO else KO_FLOOR
+                    seg.append(c); prev = 1; seen_syl = True
+                    continue
+                flush()
+                if 0x3131 <= o <= 0x3163:
+                    # 어절 앞머리 자음 1개 + 음절(ㅈ같은·ㅅ발): 구어체 전이(시작→자음→음절). 모음(ㅡ도야=Mehdi)·ㅋㅎ 제외
+                    lead = (colloquial and not seen_syl and i == 0 and k >= 2 and o <= 0x314E and c not in P["LEAD_EXCLUDE"]
+                            and 0xAC00 <= ord(run[1]) <= 0xD7A3)
+                    if lead: total += unit_tr(0, 2 + o - 0x3131) + unit_tr(2 + o - 0x3131, 0)
+                    else: total += unit_tr(prev, 2 + o - 0x3131) if colloquial and seen_syl and c in COLLOQUIAL_JAMO else KO_FLOOR
                     prev = 2 + o - 0x3131
                 else:
                     total += KO_FLOOR; prev = 1
+            flush()
             if colloquial and prev >= 2: total += unit_tr(prev, 1)
             units += k
         if not units: return None
@@ -474,8 +564,10 @@ def _lae(a, b):
     return a + math.log1p(math.exp(b - a))
 
 # ── Kotlin 내보내기 ─────────────────────────────────────────────────────
-def kstr(name, s, doc):
-    body = " +\n".join(f'        "{s[i:i + 100]}"' for i in range(0, len(s), 100))
+def kstr(name, s, doc, width=100):
+    # ⚠️ 큰 표(2-gram)는 width 를 크게 — 조각을 수백 개 `+` 로 이으면 Kotlin 컴파일러의 상수 계산이 그 깊이만큼 재귀해
+    # 간헐적으로 내부 오류(스택 한계)가 났다(2026-10-01, 6만 자 = 100자 × 600 조각).
+    body = " +\n".join(f'        "{s[i:i + width]}"' for i in range(0, len(s), width))
     return f"    /** {doc} */\n    const val {name} =\n{body}\n"
 
 def export(Q, lex_words, protect=()):
@@ -498,6 +590,24 @@ def export(Q, lex_words, protect=()):
     out.append(f"    const val LEX_LO = {Q['lex_lo']!r}\n    const val LEX_HI = {Q['lex_hi']!r}\n")
     out.append(kstr("ACR_BIGRAM", Q["acr_str"], "대문자 약어 글자 bigram(27기호: a~z + 경계) 로그확률, [이전*27 + 다음]."))
     out.append(f"    const val ACR_LO = {Q['acr_lo']!r}\n    const val ACR_HI = {Q['acr_hi']!r}\n")
+    keys = encode_keys(Q["bi_keys"])
+    CH = 60000  # 클래스 파일 문자열 상수 한도(65535 바이트) 아래로 나눈다
+    kparts = [keys[i:i + CH] for i in range(0, len(keys), CH)]
+    lparts = [Q["bi_lv_str"][i:i + CH] for i in range(0, len(Q["bi_lv_str"]), CH)]
+    for i, part in enumerate(kparts):
+        out.append(kstr(f"BIGRAM_KEYS_{i}", part, f"어절 2-gram 키(정렬된 차이, 45진 가변 길이) {i + 1}/{len(kparts)}.", width=2000))
+    for i, part in enumerate(lparts):
+        out.append(kstr(f"BIGRAM_LEVELS_{i}", part, f"어절 2-gram 로그확률(키 순서) {i + 1}/{len(lparts)}.", width=2000))
+    out.append(f"    /** 2-gram 조각 수(키, 확률). */\n    const val BIGRAM_KEY_PARTS = {len(kparts)}\n    const val BIGRAM_LEVEL_PARTS = {len(lparts)}\n    const val BIGRAM_COUNT = {len(Q['bi_keys'])}\n")
+    out.append(f"    const val BIGRAM_LO = {Q['bi_lo']!r}\n    const val BIGRAM_HI = {Q['bi_hi']!r}\n")
+    out.append(kstr("BIGRAM_LAMBDA", Q["bi_lam_str"], "문맥 기호별 보간 가중 λ 의 로그(0 = 어절 시작, i+1 = POS_SYLLABLES[i], 공백 = 없음)."))
+    out.append(f"    const val BIGRAM_LAMBDA_LO = {Q['bi_lam_lo']!r}\n    const val BIGRAM_LAMBDA_HI = {Q['bi_lam_hi']!r}\n")
+    out.append(kstr("BIGRAM_CONT", Q["bi_pc_str"], "다음 기호별 연속 확률(Kneser-Ney) 로그(0 = 어절 끝, i+1 = POS_SYLLABLES[i], 공백 = 없음)."))
+    out.append(f"    const val BIGRAM_CONT_LO = {Q['bi_pc_lo']!r}\n    const val BIGRAM_CONT_HI = {Q['bi_pc_hi']!r}\n")
+    out.append(f"    /** 표에 없는 다음 음절의 연속 확률 로그(바닥값). */\n    const val BIGRAM_FLOOR = {Q['bi_floor']!r}\n")
+    out.append("    /** 2-gram 조각을 차례대로(이어 붙여 푼다 — 상수 한 개의 한도 때문에 나눠 적었다). */\n"
+               f"    fun bigramKeyParts(): Array<String> = arrayOf({', '.join(f'BIGRAM_KEYS_{i}' for i in range(len(kparts)))})\n"
+               f"    fun bigramLevelParts(): Array<String> = arrayOf({', '.join(f'BIGRAM_LEVELS_{i}' for i in range(len(lparts)))})\n")
     out.append(kstr("COMMON_EN_WORDS", ",".join(protect), f"흔한 영어 단어 {len(protect)}개(쉼표 구분, 사전순): 자막 빈도 상위 {P['PROTECT_TOP']}개 중 주변 한글 없이도 한영타로 볼 만큼 한글 같은 것 — 주변 한글이 없으면 판정하지 않는다."))
     out.append("}\n")
     with open(OUT, "w", encoding="utf-8") as f: f.write("\n".join(out))

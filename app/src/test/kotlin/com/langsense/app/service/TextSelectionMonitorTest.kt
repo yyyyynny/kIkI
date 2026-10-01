@@ -1,6 +1,9 @@
 package com.langsense.app.service
 
+import android.text.InputType
+import com.langsense.app.util.HangulConverter
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -85,5 +88,85 @@ class TextSelectionMonitorTest {
         val r = TextSelectionMonitor.pickAnalysis("wha", threshold, koreanContext = true)
         assertTrue(r.confidence >= threshold)
         assertEquals("좀", r.converted)
+    }
+
+    // ── 선택 주변 정보(2026-10-01): 이웃 증거 · 자동 대문자 · 문장 중간 대문자 ─────────────────
+
+    private fun pick(text: String, sel: String, editable: Boolean = true, autocap: Boolean = true): HangulConverter.Analysis {
+        val a = text.indexOf(sel)
+        val b = a + sel.length
+        val kc = TextSelectionMonitor.hasHangulNear(text, a, b)
+        val ctx = TextSelectionMonitor.selectionContext(text, a, b, editable, collectNeighbors = !kc, autocap = autocap)
+        return TextSelectionMonitor.pickAnalysis(sel, threshold, kc, emptySet(), ctx)
+    }
+
+    @Test
+    fun selectionContext_neighborsAreLatinTokensOutsideSelection() {
+        val ctx = TextSelectionMonitor.selectionContext("rmsid wha tlfgek", 6, 9, editable = true)
+        assertEquals(listOf("rmsid", "tlfgek"), ctx.neighbors)
+        assertEquals('d', ctx.charBefore)
+        // 한글 조각·숫자만인 조각은 이웃이 아니다
+        assertEquals(listOf("abc"), TextSelectionMonitor.selectionContext("가나 123 wha abc", 7, 10, true).neighbors)
+    }
+
+    /** 창(앞뒤 40자) 경계에 걸친 토큰은 잘리지 않고 통째로 읽고, 창 밖 토큰은 넣지 않는다. */
+    @Test
+    fun selectionContext_windowBoundaryTokenReadWhole() {
+        val text = "aaaa " + "x".repeat(50) + " wha " + "y".repeat(45) + " far"
+        val s = text.indexOf(" wha ") + 1
+        val ctx = TextSelectionMonitor.selectionContext(text, s, s + 3, editable = true)
+        assertEquals(listOf("x".repeat(50), "y".repeat(45)), ctx.neighbors)
+    }
+
+    @Test
+    fun selectionContext_charBeforeSkipsSpacesForSentenceStart() {
+        assertEquals('.', TextSelectionMonitor.selectionContext("Hi.  Dkssud", 5, 11, true).charBefore)
+        assertEquals(null, TextSelectionMonitor.selectionContext("Dkssud", 0, 6, true).charBefore)
+    }
+
+    /** 자동 대문자는 편집 칸이 대문자를 요청할 때만(TextKeyListener 규칙). 읽기 전용·알 수 없음(0)은 가능으로 본다. */
+    @Test
+    fun mayAutocap_followsInputTypeCapFlags() {
+        val text = InputType.TYPE_CLASS_TEXT
+        assertFalse(TextSelectionMonitor.mayAutocap(true, text))
+        assertTrue(TextSelectionMonitor.mayAutocap(true, text or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES))
+        assertTrue(TextSelectionMonitor.mayAutocap(true, 0))
+        assertTrue(TextSelectionMonitor.mayAutocap(false, text))
+    }
+
+    /** 앞뒤가 한영타면 흔한 영어 보호 단어(`wha`)도 판정한다 — 홀로 있으면 영어로 둔다. */
+    @Test
+    fun neighbors_typoSentenceJudgesCommonEnglishWord() {
+        val inTypo = pick("rmsid wha tlfgek", "wha")
+        assertTrue(inTypo.confidence >= threshold)
+        assertEquals("좀", inTypo.converted)
+        assertTrue(pick("wha", "wha").confidence < threshold)
+    }
+
+    /** 영어 이웃은 읽기 전용 글(남이 쓴 영어)에서만 사전확률을 내린다 — 내가 치는 칸의 한영타는 그대로 잡는다. */
+    @Test
+    fun neighbors_englishLowersOnlyInReadOnlyText() {
+        val text = "Buy this game, sork tlfgek it."
+        assertTrue(pick(text, "sork", editable = false).confidence < threshold)
+        assertTrue(pick(text, "sork", editable = true).confidence >= threshold)
+    }
+
+    /** 문장 중간의 첫 대문자(고유명사 모양)는 자동 대문자로 설명이 안 돼 한영타로 보지 않는다. */
+    @Test
+    fun midSentenceCapital_properNounNotDetected() {
+        assertTrue(pick("He met Dhaka officials today.", "Dhaka").confidence < threshold)
+    }
+
+    /**
+     * 문장 첫머리 자동 대문자: Shift 가 무의미한 키(`Gksmf`)는 그대로 같은 자모, Shift 키(`Rmfoeh` = 끄래도)는 대문자를
+     * 요청하는 칸에서만 되돌린 읽기(그래도)로 교체한다. 영어 단어의 대소문자는 바꾸지 않는다.
+     */
+    @Test
+    fun autocap_sentenceStartReadsLowercase() {
+        assertEquals("하늘 을 보라", pick("Gksmf dmf qhfk", "Gksmf dmf qhfk").converted)
+        val sentence = "Rmfoeh wkf ehlf rjtdla"
+        assertEquals("그래도 잘 될 것임", pick(sentence, sentence, autocap = true).converted)
+        assertEquals("끄래도 잘 될 것임", pick(sentence, sentence, autocap = false).converted)
+        assertEquals("That's 안녕", pick("That's dkssud", "That's dkssud").converted)
     }
 }

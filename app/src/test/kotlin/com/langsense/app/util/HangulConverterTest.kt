@@ -186,6 +186,19 @@ class HangulConverterTest {
      * `w rkxdms` 가 `ㅈ 같은` 이 아니라 `w 같은` 으로 바뀌었다. 구두점·대문자가 붙은 한 글자(`T.T`,
      * `'s`)와 관사 `a` 는 영어 그대로.
      */
+    /**
+     * 어절 앞머리 자음 1개 + 음절(사용자 제보 2026-10-01: 붙여 쓴 `wrkxdms`=ㅈ같은이 아예 감지되지 않았다). 같은 모양의
+     * "영어 한 글자 + 한글"(`x같은`)은 글자마다 실제 비율로 가린다 — `w` 는 거의 늘 ㅈ, `x` 는 거의 늘 영어.
+     */
+    @Test
+    fun analyze_leadConsonantSlang() {
+        val a = HangulConverter.analyze("wrkxdms")
+        assertTrue(a.confidence >= 0.7f)
+        assertEquals("ㅈ같은", a.converted)
+        assertEquals("ㅈ같은 영화", HangulConverter.analyze("wrkxdms dudghk").converted)
+        assertEquals("x같은 영화", HangulConverter.analyze("xrkxdms dudghk").converted)
+    }
+
     @Test
     fun analyze_convertsLoneConsonantInTypoSelection() {
         assertEquals("ㅈ 같은", HangulConverter.analyze("w rkxdms").converted)
@@ -383,7 +396,7 @@ class HangulConverterTest {
     }
 
     /**
-     * 어절 위치별 모델 + 자주 쓰는 어절 기억: 예전에 가장 많이 놓친 한영타는 드문 단어가 아니라 가장
+     * 어절 단위 한국어 모델(현재 어절 안 음절 2-gram) + 자주 쓰는 어절 기억: 예전에 가장 많이 놓친 한영타는 드문 단어가 아니라 가장
      * 흔한 짧은 단어였다(`sjan`=너무 — NSMC 5만 문장에서 2,803회 누락, `rmsid`=그냥, `dho`=왜).
      */
     @Test

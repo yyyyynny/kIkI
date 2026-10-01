@@ -206,8 +206,25 @@ object HangulConverter {
      * 포함시키면 긴 정상 한글 문장에 짧은 한영타 조각이 섞였을 때 신호가 묻힌다.
      * [Analysis.converted] 는 토큰마다 따로 정한다 — 영어 단어(`cpu`)는 그대로 두고 한영타만
      * 바꾼다([convertInTypoContext]). 한글·공백은 원문 그대로 보존된다.
+     *
+     * [context](선택 주변 정보, 2026-10-01)가 있으면 문맥 규칙을 더한다 — 선택한 조각만 보고는 갈리지 않는 것을
+     * 실제 앱처럼 앞뒤 글로 가른다(근거·수치는 docs/한영타_검증.md 4.11):
+     * - **이웃 증거**(주변 한글이 없을 때): 앞뒤 라틴 토큰이 한영타처럼 보이면 "이 칸은 한영타로 치고 있다"는 쪽으로
+     *   사전확률을 올린다([neighborLogOdds]). 영어처럼 보이는 이웃은 **읽기 전용 글에서만** 내린다 — 내가 치는
+     *   칸에서 내리면 영어 문장 속 진짜 한영타(`tkwlak don't buy this`)를 놓친다(영어 문장 속 한영타 99% → 40%).
+     * - **문장 첫머리 자동 대문자**: 입력 칸이 대문자를 요청하면(inputType) 문장 첫 글자가 대문자가 될 수 있다
+     *   (`rne`→`Rne`=꿀 — 외장 키보드 입력에서 실제로 붙는지는 기기·입력기마다 달라 실기기 미확인). 그 자리의 첫
+     *   대문자는 소문자로 되돌린 읽기도 함께 본다([AUTOCAP_LOG_ODDS]).
+     * - **문장 중간의 첫 대문자**(`Dhaka`·`Shrek`): 자동 대문자로 설명이 안 되는 자리라 반대 증거
+     *   ([TypoLanguageModel.judge] 의 midSentence).
+     * - **흔한 영어 보호 해제**: 이웃이 뚜렷한 한영타면(로그오즈 ≥ [PROTECT_RELEASE_LOG_ODDS]) `wha`(좀)도 판정한다.
      */
-    fun analyze(input: String, koreanContext: Boolean = false, exceptions: Set<String> = emptySet()): Analysis {
+    fun analyze(
+        input: String,
+        koreanContext: Boolean = false,
+        exceptions: Set<String> = emptySet(),
+        context: SelectionContext? = null,
+    ): Analysis {
         // 라틴 토큰(공백/한글로 구분되는 조각) 하나 = 원문 텍스트([text], 구두점/숫자 포함 —
         // convertEngToKor 입력용) + 글자만 모아 소문자화한 것([letters], 스톱워드 비교·매핑
         // 비율 계산용) + 매핑 가능 글자 수. [text] 와 [letters] 를 분리해 두는 이유: "1cm" 처럼
@@ -235,9 +252,7 @@ object HangulConverter {
             tokLatinUpper = 0
         }
         for ((i, c) in input.withIndex()) {
-            val code = c.code
-            val isHangul = code in HANGUL_BASE..HANGUL_LAST || code in COMPAT_JAMO_START..COMPAT_JAMO_END
-            if (isHangul || c.isWhitespace()) {
+            if (isTokenBoundary(c)) {
                 flushToken()
                 continue
             }
@@ -262,14 +277,55 @@ object HangulConverter {
         // 후보로 남는다. 스톱워드 정확 일치는 이제 안전망일 뿐이다(아래 [ENGLISH_STOPWORDS] 주석).
         var best = 0f
         var bestCaps = false
-        for (t in tokens) {
+        val autocapWon = BooleanArray(tokens.size) // 판정(어절 2-gram)에서 '첫 대문자를 되돌린 읽기'가 이긴 토큰
+        val typoSide = BooleanArray(tokens.size) // 판정 모델이 그 토큰 자체를 한영타 쪽(로짓 ≥ 0)으로 본 토큰
+        // 이웃 증거: 주변 한글이 없을 때만(한국어 문서는 koreanContext 가 이미 훨씬 강한 증거다)
+        val useNeighbors = context != null && !koreanContext
+        var outN = 0
+        var outSum = 0.0
+        var tokenR = DoubleArray(0)
+        if (useNeighbors) {
+            for (u in context!!.neighbors) {
+                val r = neighborTypoProb(u) ?: continue
+                outN++
+                outSum += r
+            }
+            tokenR = DoubleArray(tokens.size) { i -> neighborTypoProb(tokens[i].text) ?: Double.NaN }
+        }
+        for ((i, t) in tokens.withIndex()) {
             val letters = t.letters.length
             if (letters < TypoLanguageModel.MIN_LATIN_LENGTH || t.mappable == 0) continue
             if (t.letters in ENGLISH_STOPWORDS || t.letters in exceptions) continue
-            val j = TypoLanguageModel.judge(t.text, t.letters, t.mappable, t.allUpper, koreanContext)
-            if (j.confidence > best) {
-                best = j.confidence
-                bestCaps = j.capsLock
+            val sentenceStart = context != null && sentenceStartAt(input, t.start, context.charBefore)
+            val autocapPossible = sentenceStart && context!!.autocap && autocapReadable(t.text)
+            var j = TypoLanguageModel.judge(t.text, t.letters, t.mappable, t.allUpper, koreanContext,
+                midSentence = context != null && !sentenceStart)
+            var alt: TypoLanguageModel.Judgement? = null
+            if (autocapPossible) {
+                alt = TypoLanguageModel.judge(lowerFirstLatin(t.text), t.letters, t.mappable, false, koreanContext)
+            }
+            var d = 0.0
+            if (useNeighbors) {
+                d = neighborLogOdds(i, outN, outSum, tokenR, context!!.editable)
+                if (j.logit == Double.NEGATIVE_INFINITY && (alt == null || alt.logit == Double.NEGATIVE_INFINITY) &&
+                    d >= PROTECT_RELEASE_LOG_ODDS
+                ) {
+                    // 흔한 영어 보호 목록이라 판정되지 않은 토큰 — 주변이 뚜렷한 한영타면 판정한다(`wha`=좀)
+                    j = TypoLanguageModel.judge(t.text, t.letters, t.mappable, t.allUpper, false,
+                        midSentence = !sentenceStart, ignoreCommonEnglish = true)
+                }
+            }
+            val baseLogit = if (j.logit == Double.NEGATIVE_INFINITY) j.logit else j.logit + d
+            val altLogit = if (alt == null || alt.logit == Double.NEGATIVE_INFINITY) Double.NEGATIVE_INFINITY
+            else alt.logit - AUTOCAP_LOG_ODDS + d
+            val useAlt = altLogit > baseLogit
+            if (autocapPossible && firstLatinIsShiftKey(t.text)) autocapWon[i] = loweredReadingWins(t.text)
+            val logit = if (useAlt) altLogit else baseLogit
+            typoSide[i] = logit >= 0
+            val conf = TypoLanguageModel.confidenceOf(logit, if (useAlt) alt!!.mappableFraction else j.mappableFraction)
+            if (conf > best) {
+                best = conf
+                bestCaps = if (useAlt) alt!!.capsLock else j.capsLock
             }
         }
         if (best == 0f) return Analysis(0f, input)
@@ -281,15 +337,161 @@ object HangulConverter {
         // 끈 것이라 그대로 둔다.
         val out = StringBuilder(input.length)
         var last = 0
-        for (t in tokens) {
+        for ((i, t) in tokens.withIndex()) {
             out.append(input, last, t.start)
-            if (t.letters in exceptions) out.append(t.text)
-            else out.append(convertInTypoContext(t, capsLock = bestCaps && t.upperMajority))
+            if (t.letters in exceptions) {
+                out.append(t.text)
+            } else {
+                val sentenceStart = context != null && sentenceStartAt(input, t.start, context.charBefore)
+                out.append(convertInTypoContext(t, capsLock = bestCaps && t.upperMajority, sentenceStart = sentenceStart,
+                    preferLowered = autocapWon[i], leadAllowed = typoSide[i]))
+            }
             last = t.start + t.text.length
         }
         out.append(input, last, input.length)
         return Analysis(best, out.toString())
     }
+
+    /**
+     * 선택 주변 정보(2026-10-01, [analyze] 의 문맥 규칙). [com.langsense.app.service.TextSelectionMonitor] 가 선택 앞뒤
+     * 40자에서 만든다 — 판정에 쓰고 버리며 저장하지 않는다.
+     */
+    class SelectionContext(
+        /** 선택 앞뒤 창 안(선택과 겹치지 않는)의 라틴 토큰들 — 이웃 증거. */
+        val neighbors: List<String> = emptyList(),
+        /** 선택 바로 앞의 공백·탭 아닌 글자(없으면 null = 글 시작) — 문장 첫머리 판정용. */
+        val charBefore: Char? = null,
+        /** 편집 가능한 칸(내가 친 글)인가. 아니면 읽기 전용(남이 쓴 글 — 영어 이웃도 증거로 쓴다). */
+        val editable: Boolean = true,
+        /**
+         * 문장 첫 글자에 자동 대문자가 붙었을 수 있는가. 안드로이드 TextKeyListener 는 입력 칸이 대문자를 요청할 때
+         * (inputType 의 CAP_SENTENCES/WORDS/CHARACTERS)만 붙이므로, 그런 요청이 없는 편집 칸은 false.
+         */
+        val autocap: Boolean = true,
+    )
+
+    /** [analyze] 토큰화의 경계(공백·완성형 한글·호환 자모) — 선택 밖 이웃 토큰도 같은 기준으로 자른다. */
+    fun isTokenBoundary(c: Char): Boolean {
+        val code = c.code
+        return c.isWhitespace() || code in HANGUL_BASE..HANGUL_LAST || code in COMPAT_JAMO_START..COMPAT_JAMO_END
+    }
+
+    /** 토큰 [p] 위치가 문장 첫머리(글 시작 또는 `.`·`!`·`?`·`…`·줄바꿈 뒤)인가. 앞은 [input] 에서, 넘치면 [charBefore]. */
+    private fun sentenceStartAt(input: String, p: Int, charBefore: Char?): Boolean {
+        var i = p - 1
+        while (i >= 0 && (input[i] == ' ' || input[i] == '\t')) i--
+        val c = if (i >= 0) input[i] else charBefore
+        return c == null || c in SENTENCE_END
+    }
+
+    private const val SENTENCE_END = ".!?…\n"
+
+    /**
+     * 첫 대문자를 자동 대문자로 되돌려 읽을 수 있는 모양인가 — 첫 라틴 글자가 대문자이고, 되돌린 뒤 대문자가 과반이
+     * 아니어야 한다(과반이면 CapsLock 가설과 겹쳐 `DLF`→`dLF`→일 같은 엉뚱한 읽기가 생긴다).
+     */
+    private fun autocapReadable(text: String): Boolean {
+        var first = true
+        var firstUpper = false
+        var latin = 0
+        var restUpper = 0
+        for (c in text) {
+            if (!isLatin(c)) continue
+            if (first) {
+                firstUpper = c in 'A'..'Z'
+                first = false
+            } else if (c in 'A'..'Z') {
+                restUpper++
+            }
+            latin++
+        }
+        return firstUpper && restUpper * 2 <= latin
+    }
+
+    /** 첫 라틴 글자가 두벌식에서 Shift 가 의미 있는 키(Q·W·E·R·T·O·P — 쌍자음·ㅒㅖ)인가. */
+    private fun firstLatinIsShiftKey(text: String): Boolean {
+        val c = text.firstOrNull { isLatin(it) } ?: return false
+        return c.lowercaseChar() in "qwertop"
+    }
+
+    /**
+     * 문장 첫머리 Shift 키 대문자(`Rnfwoa` = 꿀잼, `Wlfngkwlsms` = 찌루하지는)를 교체할 때 자동 대문자로 되돌린 읽기
+     * (굴잼·지루하지는)를 쓸 것인가 — 판정의 어절 모델([TypoLanguageModel.koreanWordLogProb], 어절 2-gram)로 두 한글
+     * 읽기의 로그확률을 직접 비교한다. 판정 로짓은 한국어 점수를 글자 수로 나눈 척도라 거기서 비교하면 긴 단어일수록
+     * 사전 벌점이 수십 배로 커져(11글자면 0.7 → 15) `지루하지는`이 `찌루하지는`을 못 이겼다(자동 대문자 문장 교체 74%).
+     */
+    private fun loweredReadingWins(text: String): Boolean {
+        val asTyped = TypoLanguageModel.koreanWordLogProb(convertEngToKor(text)) ?: return false
+        val low = TypoLanguageModel.koreanWordLogProb(convertEngToKor(lowerFirstLatin(text))) ?: return false
+        return low - AUTOCAP_READING_LOG_ODDS > asTyped
+    }
+
+    /** 첫 라틴 글자만 소문자로. */
+    private fun lowerFirstLatin(text: String): String {
+        val i = text.indexOfFirst { isLatin(it) }
+        if (i < 0) return text
+        return text.substring(0, i) + text[i].lowercaseChar() + text.substring(i + 1)
+    }
+
+    /**
+     * 이웃 토큰 하나가 한영타일 확률(0~1) — "이 칸은 한영타로 치고 있는가"의 증거. 글자 2개 미만, 완성 음절이 하나도
+     * 안 나오는 토큰(`zz`=ㅋㅋ, `tq`=ㅅㅂ — 판정 모델은 최저 확률로 두지만 한영타 문장에 흔해 영어 증거로 세면 안 된다),
+     * 판정 불가는 증거에서 뺀다(null).
+     */
+    private fun neighborTypoProb(u: String): Double? {
+        var letters = 0
+        var upper = 0
+        var mappable = 0
+        val lower = StringBuilder(u.length)
+        for (c in u) {
+            if (!c.isLetter()) continue
+            letters++
+            if (c.isUpperCase()) upper++
+            lower.append(c.lowercaseChar())
+            if (engToJamo(c) != null) mappable++
+        }
+        if (letters < NEIGHBOR_MIN_LETTERS || mappable == 0) return null
+        if (convertEngToKor(u).none { it.code in HANGUL_BASE..HANGUL_LAST }) return null
+        val j = TypoLanguageModel.judge(u, lower.toString(), mappable, upper == letters, false, raw = true)
+        if (j.logit == Double.NEGATIVE_INFINITY) return null
+        return 1.0 / (1.0 + Math.exp(-j.logit))
+    }
+
+    /**
+     * 토큰 [i] 의 이웃 증거(로그오즈): 이웃 n 개의 한영타 확률 합 s 로 "이 칸이 한영타 모드일 확률"을 베타 사후평균
+     * (0.5·m + s)/(m + n) 으로 갱신하고([NEIGHBOR_PRIOR] 0.5, [NEIGHBOR_STRENGTH] m = 1), 사전확률 대비 로그오즈를 더한다.
+     * 선택 안의 다른 토큰도 이웃이다. [editable] 이면 올리기만 한다(영어 이웃이 내 칸의 한영타를 누르지 않게).
+     */
+    private fun neighborLogOdds(i: Int, outN: Int, outSum: Double, tokenR: DoubleArray, editable: Boolean): Double {
+        var n = outN
+        var s = outSum
+        for (k in tokenR.indices) {
+            if (k == i || tokenR[k].isNaN()) continue
+            n++
+            s += tokenR[k]
+        }
+        if (n == 0) return 0.0
+        val pi = ((NEIGHBOR_PRIOR * NEIGHBOR_STRENGTH + s) / (NEIGHBOR_STRENGTH + n)).coerceIn(1e-6, 1 - 1e-6)
+        val d = Math.log(pi / (1 - pi)) - Math.log(NEIGHBOR_PRIOR / (1 - NEIGHBOR_PRIOR))
+        return if (editable && d < 0) 0.0 else d
+    }
+
+    private const val NEIGHBOR_MIN_LETTERS = 2
+    private const val NEIGHBOR_PRIOR = 0.5
+    private const val NEIGHBOR_STRENGTH = 1.0
+
+    /** 자동 대문자 읽기의 사전 로그오즈 벌점(≈ log 2 — "자동 대문자가 켜져 있을 확률 절반"). */
+    private const val AUTOCAP_LOG_ODDS = 0.7
+
+    /**
+     * 교체 때 되돌린 읽기를 고르는 데 필요한 한국어 로그확률 차(어절 모델 단위, e¹⁰ ≈ 2만 배). 일부러 친 쌍자음도 소문자
+     * 쪽이 더 흔한 단어면(`짱`→장, `또`→도, `딸`→달) 작은 값에선 망가졌다 — NSMC 4.7만 문장에서 값 0.7 이면 300문장,
+     * 10 이면 7문장(0.015%). 자동 대문자가 붙은 문장의 교체 정확도는 이 규칙 없이 54% → 80%.
+     */
+    private const val AUTOCAP_READING_LOG_ODDS = 10.0
+
+    /** 흔한 영어 보호를 풀 이웃 증거 크기(로그오즈) — 주변 토큰이 대부분 한영타일 때. */
+    private const val PROTECT_RELEASE_LOG_ODDS = 1.0
 
     /** [analyze] 의 라틴 토큰(공백/한글로 구분되는 조각). */
     private class LatinToken(
@@ -332,7 +534,13 @@ object HangulConverter {
      * C 에 남은 실패(`xml`→`틔`, `gif`→`햘`, `fps`→`렌`)는 변환 결과가 멀쩡한 음절이라 본질적으로
      * 모호하다.
      */
-    private fun convertInTypoContext(t: LatinToken, capsLock: Boolean): String {
+    private fun convertInTypoContext(
+        t: LatinToken,
+        capsLock: Boolean,
+        sentenceStart: Boolean = false,
+        preferLowered: Boolean = false,
+        leadAllowed: Boolean = false,
+    ): String {
         if (t.mappable == 0) return t.text // 숫자·기호뿐
         // 라틴 글자 연속 구간마다 따로 판단한다 — 구두점·숫자로 붙은 조각(`whgdkdy...OSTeh`,
         // `10wjawnazz`)은 서로 다른 단어다. convertEngToKor 도 그 경계에서 조합을 끊으므로 동치다.
@@ -347,7 +555,10 @@ object HangulConverter {
             }
             var j = i
             while (j < text.length && isLatin(text[j])) j++
-            out.append(convertRunInTypoContext(text.substring(i, j), capsLock, standalone = text.length == 1))
+            // 문장 첫머리 토큰의 첫 라틴 구간이 대문자로 시작하면 자동 대문자였을 수 있다(CapsLock 가설일 땐 아님)
+            val autocapFirst = sentenceStart && !capsLock && out.none { isLatin(it) } && text[i].isUpperCase()
+            out.append(convertRunInTypoContext(text.substring(i, j), capsLock, standalone = text.length == 1,
+                lowered = autocapFirst && preferLowered, leadAllowed = leadAllowed))
             i = j
         }
         return out.toString()
@@ -358,13 +569,30 @@ object HangulConverter {
     /**
      * [convertInTypoContext] 의 라틴 글자 구간 하나(전부 a-z/A-Z). [capsLock] 이면 CapsLock 을 켠 채
      * 친 것으로 보고 대소문자를 뒤집은 글자열([typed])로 한글 가설을 세운다 — 영어 가설은 원문 그대로.
+     *
+     * [lowered](2026-10-01): 문장 첫머리의 Shift 키 대문자(`Rnfwoa` = 꿀잼/굴잼, `Wlfngkwlsms` = 찌루하지는/지루하지는)는
+     * 안드로이드 자동 대문자일 수 있다. 어느 읽기인지는 이 함수의 구어체 모델(음절 unigram — `쓰레기`·`스레기`를 못
+     * 가린다)로 정하지 않고, [analyze] 가 판정의 어절 2-gram 으로 되돌린 읽기를 고른 경우([lowered])에만 그 읽기로 한글
+     * 가설을 세운다. 영어 가설은 원문 그대로라 `That's`·`CGsk`(=CG나)의 대소문자는 바뀌지 않는다. Shift 무의미 키의 첫
+     * 대문자(`Dkssud`)는 소문자와 같은 자모라 읽기가 하나뿐이다([koreanLl] 의 작은 벌점은 그대로 — NSMC 자동 대문자
+     * 문장 4.3만 개 중 이 경우의 교체 실패는 195개, 0.45%).
      */
-    private fun convertRunInTypoContext(run: String, capsLock: Boolean, standalone: Boolean = false): String {
+    private fun convertRunInTypoContext(
+        run: String,
+        capsLock: Boolean,
+        standalone: Boolean = false,
+        lowered: Boolean = false,
+        leadAllowed: Boolean = false,
+    ): String {
         // 전부 대문자는 약어(OST/EBS) — 단, Shift 가 한글에서 의미 있는 키로만 이뤄졌으면(`WW`→ㅉㅉ)
         // 대문자가 영어의 증거가 못 되므로 모델에 맡긴다. CapsLock 중엔 대문자가 기본 상태라 이 규칙을
         // 쓰지 않고 우도 비교에 맡긴다(`GUI` 처럼 한글로 깨지는 약어는 영어 쪽이 자연히 이긴다).
         if (!capsLock && run.length >= 2 && run.all { it.isUpperCase() } && !run.all { it in ENG_UPPER_TO_JAMO }) return run
-        val typed = if (capsLock) TypoLanguageModel.swapCase(run) else run
+        val typed = when {
+            capsLock -> TypoLanguageModel.swapCase(run)
+            lowered && run[0] in ENG_UPPER_TO_JAMO -> run[0].lowercaseChar() + run.substring(1)
+            else -> run
+        }
 
         var bestText = run
         var bestLl = englishLl(run) + logLatinNotGlued(run.length)
@@ -378,11 +606,24 @@ object HangulConverter {
             // 영어 관사 `a`·곱하기 `x`(`x 100`)도 뺀다(NSMC 영어 섞인 리뷰 평가로 확인).
             val loneConsonant = standalone && run.length == 1 && run[0].isLowerCase() && run[0] !in LONE_LETTER_KEEP &&
                 whole.length == 1 && whole[0] in 'ㄱ'..'ㅎ'
-            val prior = if (loneConsonant || ko.rarestTransition >= MALFORMED_TRANSITION_LOG) CONTEXT_TOKEN_PRIOR else 0.0
+            // 어절 앞머리 자음 1개 + 음절(`wrkxdms`→`ㅈ같은`, `tqkf`→`ㅅ발`)도 구어체에 흔하다. 다만 같은 모양으로 영어 한 글자
+            // + 한글(`x같은`·`3d를`·`TV물`)도 흔해서 글자마다 실제 비율을 사전확률로 쓴다([LEAD_JAMO_LOG_ODDS]). "시작→자음"
+            // 전이(-9 안팎)만 드물 뿐 나머지가 멀쩡하면 기형으로 보지 않는다(예전엔 `wrkxdms`가 `w같은`으로 교체됐다).
+            // 판정 모델이 토큰 자체를 한영타 쪽으로 볼 때만([leadAllowed]) — 영어 단어 `ram`(→ㄱ므)·`rap` 을 자모로 읽지 않게
+            val leadOdds = if (leadAllowed && whole.length >= 2 && whole[0] in 'ㄱ'..'ㅎ' && whole[1].code in HANGUL_BASE..HANGUL_LAST &&
+                (TypoLanguageModel.koreanInformal(whole.substring(1))?.rarestTransition ?: Double.NEGATIVE_INFINITY) >= MALFORMED_TRANSITION_LOG
+            ) leadJamoLogOdds(run[0]) else Double.NaN
+            // 앞머리 자음 가설은 "영어 한 글자 + 한글" 가설(아래 접두+접미)과 뒤쪽 한글이 같고 첫 글자만 다르다. 실제로 자모
+            // 쪽이 우세한 글자(`w`·`q`·`r`, 로그오즈 > 0)만 문맥 가산점을 받고, 영어 쪽이 우세한 글자는 그 비율로만 겨룬다 —
+            // 모두에게 +10 을 주면 `x같은`(-4.9)·`3d를`(-2.6)·`TV물`까지 자모로 넘어갔다(영어 섞인 리뷰 교체 -1.8%p).
+            val prior = when {
+                loneConsonant || ko.rarestTransition >= MALFORMED_TRANSITION_LOG -> CONTEXT_TOKEN_PRIOR
+                !leadOdds.isNaN() -> if (leadOdds > 0) CONTEXT_TOKEN_PRIOR + leadOdds else leadOdds
+                else -> 0.0
+            }
             val ll = koreanLl(typed, ko.logProb) + prior
             if (ll >= bestLl) { bestLl = ll; bestText = whole }
         }
-
         // 영어 접두 + 한글 접미(`cpusms`→`cpu는`, `Brmq`→`B급`). 접미엔 음절이 하나는 있어야 한다.
         for (k in 1 until run.length) {
             val suffix = typed.substring(k)
@@ -429,6 +670,33 @@ object HangulConverter {
         var ll = koLogProb
         for (c in run) if (c.isUpperCase() && c !in ENG_UPPER_TO_JAMO) ll += KO_NEEDLESS_SHIFT_LOG
         return ll + CONTEXT_PRIOR_PER_LETTER * run.length
+    }
+
+    /**
+     * 글자 [c] 가 "어절 앞머리 자음"(`wrkxdms`=ㅈ같은)일 로그오즈 — 같은 모양의 "영어 한 글자 + 한글"(`x같은`·`3d를`·`TV물`)
+     * 대비. 구어체 말뭉치 + 뉴스 301만 줄에서 센 (자모 앞머리 + 1)/(라틴 접두 + 자모 앞머리 + 2): `w` 314:6(ㅈ),
+     * `q` 42:5, `r` 52:11 은 자모 쪽, `x` 1:266·`a` 12:5691·`d` 85:1148 은 영어 쪽. 웃음 자모(ㅋ·ㅎ = z·g)는 판정 모델과
+     * 같이 인정하지 않는다(NaN).
+     */
+    private fun leadJamoLogOdds(c: Char): Double = when (c) {
+        'w' -> 3.81
+        'q' -> 1.97
+        'r' -> 1.49
+        't' -> -1.06
+        's' -> -1.55
+        'f' -> -1.61
+        'v' -> -2.46
+        'd' -> -2.59
+        'e' -> -3.26
+        'c' -> -3.57
+        'x' -> -4.89
+        'a' -> -6.08
+        'Q' -> -1.25
+        'R' -> -1.54
+        'T' -> -1.96
+        'W' -> -2.17
+        'E' -> -3.06
+        else -> Double.NaN
     }
 
     /** 홀로 선 한 글자라도 영어로 남길 글자 — 관사 `a`, 곱하기 `x`. */

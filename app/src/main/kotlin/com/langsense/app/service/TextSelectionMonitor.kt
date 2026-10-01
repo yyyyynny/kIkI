@@ -1,5 +1,6 @@
 package com.langsense.app.service
 
+import android.text.InputType
 import android.view.accessibility.AccessibilityNodeInfo
 import com.langsense.app.util.HangulConverter
 
@@ -49,7 +50,12 @@ class TextSelectionMonitor(
         if (selected.isBlank()) return false
 
         val threshold = confidencePercentProvider() / 100f
-        val analysis = pickAnalysis(selected, threshold, hasHangulNear(text, selStart, selEnd), exceptionWordsProvider())
+        val koreanContext = hasHangulNear(text, selStart, selEnd)
+        // 편집 가능 여부는 노드에 이미 담긴 값이라 IPC 가 없다. 읽기 전용 글(남이 쓴 기사·메시지)은 영어 이웃도 증거로 쓴다.
+        val editable = runCatching { node.isEditable }.getOrDefault(false)
+        val inputType = if (editable) runCatching { node.inputType }.getOrDefault(0) else 0
+        val context = selectionContext(text, selStart, selEnd, editable, collectNeighbors = !koreanContext, autocap = mayAutocap(editable, inputType))
+        val analysis = pickAnalysis(selected, threshold, koreanContext, exceptionWordsProvider(), context)
         if (analysis.confidence < threshold) return false
         if (analysis.converted == selected) return false // 변환 결과가 동일하면 의미 없음
 
@@ -83,6 +89,72 @@ class TextSelectionMonitor(
         }
 
         /**
+         * 선택 주변 정보([HangulConverter.SelectionContext])를 만든다 — 순수 함수(JVM 테스트 대상).
+         * - 선택 바로 앞의 공백·탭 아닌 글자(문장 첫머리 판정용, 자동 대문자 가설).
+         * - [collectNeighbors] 면 앞뒤 [CONTEXT_WINDOW] 글자 창과 겹치는 라틴 토큰(선택과 겹치는 것 제외) — 이웃 증거.
+         *   창 경계에 걸친 토큰은 최대 [MAX_NEIGHBOR_TOKEN] 글자까지 넓혀 온전히 읽는다. 주변에 한글이 있으면
+         *   한국어 문맥 판정이 이미 훨씬 강해 이웃은 쓰지 않으므로 모으지 않는다(저사양).
+         */
+        fun selectionContext(
+            text: CharSequence,
+            selStart: Int,
+            selEnd: Int,
+            editable: Boolean,
+            collectNeighbors: Boolean = true,
+            autocap: Boolean = true,
+        ): HangulConverter.SelectionContext {
+            var i = selStart - 1
+            while (i >= 0 && (text[i] == ' ' || text[i] == '\t')) i--
+            val before = if (i >= 0) text[i] else null
+            if (!collectNeighbors) return HangulConverter.SelectionContext(emptyList(), before, editable, autocap)
+            val lo = (selStart - CONTEXT_WINDOW).coerceAtLeast(0)
+            val hi = (selEnd + CONTEXT_WINDOW).coerceAtMost(text.length)
+            var from = lo
+            var guard = 0
+            while (from > 0 && !HangulConverter.isTokenBoundary(text[from - 1]) && guard < MAX_NEIGHBOR_TOKEN) {
+                from--
+                guard++
+            }
+            var to = hi
+            guard = 0
+            while (to < text.length && !HangulConverter.isTokenBoundary(text[to]) && guard < MAX_NEIGHBOR_TOKEN) {
+                to++
+                guard++
+            }
+            val neighbors = ArrayList<String>()
+            var s = -1
+            var hasLatin = false
+            for (p in from..to) {
+                val c = if (p < to) text[p] else ' '
+                if (HangulConverter.isTokenBoundary(c)) {
+                    if (s >= 0) {
+                        val overlapsSelection = s < selEnd && p > selStart
+                        if (hasLatin && !overlapsSelection && p > lo && s < hi) neighbors.add(text.subSequence(s, p).toString())
+                        s = -1
+                        hasLatin = false
+                    }
+                } else {
+                    if (s < 0) s = p
+                    if (c in 'a'..'z' || c in 'A'..'Z') hasLatin = true
+                }
+            }
+            return HangulConverter.SelectionContext(neighbors, before, editable, autocap)
+        }
+
+        /**
+         * 이 칸에 문장 첫 글자 자동 대문자가 붙을 수 있는가. 편집 칸은 inputType 이 대문자를 요청할 때만(안드로이드
+         * TextKeyListener 규칙, 알 수 없으면(0) 가능으로 본다). 읽기 전용 글은 쓴 사람 기기에서 붙었을 수 있어 늘 가능.
+         */
+        fun mayAutocap(editable: Boolean, inputType: Int): Boolean {
+            if (!editable || inputType == 0) return true
+            val caps = InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_CAP_WORDS or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            return inputType and caps != 0
+        }
+
+        /** 창 경계에 걸친 이웃 토큰을 넓혀 읽는 최대 글자 수. */
+        const val MAX_NEIGHBOR_TOKEN = 40
+
+        /**
          * 정방향/역방향 중 최종 판정을 고르는 순수 함수(안드로이드 의존성 없음 — 단위 테스트 대상).
          *
          * [koreanContext] 는 선택 주변에 한글이 있는지([hasHangulNear]) — 선택 안에 한글이 있어도 같은
@@ -104,8 +176,9 @@ class TextSelectionMonitor(
             threshold: Float,
             koreanContext: Boolean = false,
             exceptions: Set<String> = emptySet(),
+            context: HangulConverter.SelectionContext? = null,
         ): HangulConverter.Analysis {
-            val forward = HangulConverter.analyze(selected, koreanContext || HangulConverter.containsHangul(selected), exceptions)
+            val forward = HangulConverter.analyze(selected, koreanContext || HangulConverter.containsHangul(selected), exceptions, context)
             if (forward.confidence >= threshold || !HangulConverter.containsHangul(selected)) return forward
             val reverse = HangulConverter.analyzeReverse(selected)
             return if (reverse.confidence > forward.confidence) reverse else forward

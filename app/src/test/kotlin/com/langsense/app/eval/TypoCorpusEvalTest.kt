@@ -1,5 +1,6 @@
 package com.langsense.app.eval
 
+import com.langsense.app.service.TextSelectionMonitor
 import com.langsense.app.util.HangulConverter
 import com.langsense.app.util.TypoLanguageModel
 import java.io.File
@@ -83,14 +84,16 @@ class TypoCorpusEvalTest {
         val n = hits.values.sum()
         val rate = n.toDouble() / tokens
         println("EVAL 영어 기사 오탐: $n/$tokens (${"%.4f".format(rate * 100)}%) 상위 ${hits.entries.sortedByDescending { it.value }.take(10).map { "${it.key}×${it.value}" }}")
-        // 2026-10-01 부터 주변 한글 없는 판정을 더 적극적으로 해(한국인이 치는 영어는 흔한 단어 — 아래
-        // commonEnglishWords 로 따로 지킨다) 전문 영어 기사 단어 오탐이 0.0008% → 0.0098% 로 늘었다. 기록의 약 1.5배까지 허용.
-        assertTrue("영어 기사 오탐률 상승: $rate", rate <= 0.00015)
+        // 2026-10-01 주변 한글 없는 판정을 더 적극적으로 해(한국인이 치는 영어는 흔한 단어 — 아래 commonEnglishWords 로
+        // 따로 지킨다) 0.0008% → 0.0098% 가 됐다가, 같은 날 어절 2-gram 으로 0.0051% 로 줄었다. 기록의 약 1.5배까지 허용.
+        // (선택한 단어만 보는 값 — 기사 속에서 앞뒤 글과 함께 보면 0%, 아래 contextSelection.)
+        assertTrue("영어 기사 오탐률 상승: $rate", rate <= 0.00008)
     }
 
     /**
      * 한국인이 실제로 칠 만한 **흔한 영어 단어**: 영어 기사에서 가장 많이 나온 소문자 단어(3글자 이상) 상위 5천/1만 개.
-     * 앱의 보호 목록은 영화 자막 빈도로 만들었으므로 기사 빈도로 재는 이 집합과 독립이다. 기록: 0 / 1(`cusp`).
+     * 앱의 보호 목록은 영화 자막 빈도로 만들었으므로 기사 빈도로 재는 이 집합과 독립이다. 기록: 0 / 0(2026-10-01 어절 2-gram
+     * 전에는 0 / 1 `cusp`).
      */
     @Test
     fun commonEnglishWords() {
@@ -102,12 +105,12 @@ class TypoCorpusEvalTest {
         val hit10k = top.take(10000).filter { detected(it) }
         println("EVAL 흔한 영어 단어 오탐: 상위 5천 ${hit5k.size} / 상위 1만 ${hit10k.size} $hit10k")
         assertTrue("흔한 영어(상위 5천) 오탐: $hit5k", hit5k.isEmpty())
-        assertTrue("흔한 영어(상위 1만) 오탐 증가: $hit10k", hit10k.size <= 3)
+        assertTrue("흔한 영어(상위 1만) 오탐 증가: $hit10k", hit10k.size <= 1)
     }
 
     /**
      * 영어 사전 단어(대소문자 그대로) 오탐률. 47만 개 대부분이 `Clwyd`·`tbsp`·`dks` 같은 희귀어라 한국인 사용자에겐
-     * 비중이 낮다 — 2026-10-01 문맥 없는 판정 강화 뒤 0.022% → 0.16%. 큰 회귀만 막는 안전망.
+     * 비중이 낮다 — 2026-10-01 문맥 없는 판정 강화 뒤 0.022% → 0.16%, 같은 날 어절 2-gram 으로 0.064%. 큰 회귀만 막는 안전망.
      */
     @Test
     fun englishDictionaryFalsePositive() {
@@ -121,7 +124,7 @@ class TypoCorpusEvalTest {
         }
         val rate = hits.size.toDouble() / total
         println("EVAL 영어 사전 오탐: ${hits.size}/$total (${"%.3f".format(rate * 100)}%) 예 ${hits.take(15)}")
-        assertTrue("영어 사전 오탐률 상승: $rate", rate <= 0.0025)
+        assertTrue("영어 사전 오탐률 상승: $rate", rate <= 0.001)
     }
 
     /**
@@ -161,7 +164,8 @@ class TypoCorpusEvalTest {
 
     /**
      * 한영타 감지율(어절 단위, 라틴 3글자 이상) — 주변 문맥 없음(통째로 잘못 친 경우)과 한국어 문맥
-     * (한국어 문서 속 일부만 잘못 친 경우). 기록: 99.08% / 99.34%(2026-10-01 문맥 없는 판정 강화 — 이전 97.38% /
+     * (한국어 문서 속 일부만 잘못 친 경우). 기록: 99.12% / 99.36%(2026-10-01 어절 2-gram, 그 전 99.08% / 99.34%
+     * 문맥 없는 판정 강화 — 이전 97.38% /
      * 2026-09-30 강한 문맥 가산·구어체 어절 기억,
      * 재설계 직후 96.4% / 97.6%, 재설계 전 94.0%).
      */
@@ -180,13 +184,14 @@ class TypoCorpusEvalTest {
         val r0 = plain.toDouble() / total
         val r1 = context.toDouble() / total
         println("EVAL 한영타 감지(NSMC 어절): 문맥없음 ${"%.2f".format(r0 * 100)}%  한국어문맥 ${"%.2f".format(r1 * 100)}%  ($total 회)")
-        assertTrue("한영타 감지율 하락: $r0", r0 >= 0.985)
-        assertTrue("한국어 문맥 감지율 하락: $r1", r1 >= 0.99)
+        assertTrue("한영타 감지율 하락: $r0", r0 >= 0.99)
+        assertTrue("한국어 문맥 감지율 하락: $r1", r1 >= 0.993)
     }
 
     /**
      * CapsLock 을 켠 채 친 한영타(위 어절의 대소문자를 뒤집은 것). 3글자 전부 대문자는 약어가
-     * 압도적이라 일부러 CapsLock 으로 보지 않으므로 4글자 이상만 잰다. 기록: 97.0%(이전 약 14%).
+     * 압도적이라 일부러 CapsLock 으로 보지 않으므로 4글자 이상만 잰다. 기록: 98.0%(2026-10-01 어절 2-gram, 그 전 97.0%,
+     * 재설계 전 약 14%).
      */
     @Test
     fun capsLockDetectionRate() {
@@ -199,7 +204,7 @@ class TypoCorpusEvalTest {
         }
         val rate = hit.toDouble() / total
         println("EVAL CapsLock 한영타 감지(4글자 이상): ${"%.2f".format(rate * 100)}%  ($total 회)")
-        assertTrue("CapsLock 감지율 하락: $rate", rate >= 0.95)
+        assertTrue("CapsLock 감지율 하락: $rate", rate >= 0.97)
     }
 
     /**
@@ -239,7 +244,62 @@ class TypoCorpusEvalTest {
         val fp = enHit.toDouble() / en
         println("EVAL 문장 선택: 한영타 문장 감지 ${"%.2f".format(rate * 100)}% ($total 문장) / 영어 기사 문장 오탐 ${"%.3f".format(fp * 100)}% ($enHit/$en)")
         assertTrue("문장 단위 감지율 하락: $rate", rate >= 0.99)
-        assertTrue("영어 문장 오탐 상승: $fp", fp <= 0.003) // 2026-10-01 문맥 없는 판정 강화 뒤 기록 약 0.14%
+        // 선택한 문장만 보는 값(2026-10-01 문맥 없는 판정 강화 뒤 약 0.14%, 어절 2-gram 뒤 0.063%). 기사 속에서 앞뒤 글과
+        // 함께 보면(읽기 전용 — 남이 쓴 글) 0% — 아래 contextSelection.
+        assertTrue("영어 문장 오탐 상승: $fp", fp <= 0.0012)
+    }
+
+    /**
+     * 실제 앱처럼 **선택 + 앞뒤 40자**로 판정한다(2026-10-01 문맥 규칙 — 이웃 증거·문장 첫머리 자동 대문자·문장 중간 대문자).
+     * (1) 한영타로 친 문장(NSMC test 앞 1만 문장, 한글 어절을 전부 영타로) 안에서 영타 단어 하나를 선택 — 편집 칸.
+     * (2) 영어 기사(AG News test 앞 3천 건) 안에서 단어 하나를 선택 — 읽기 전용(남이 쓴 글). 기록: 99.5% / 0%.
+     * 선택한 조각만 보면(위 typoDetectionRate·englishNewsFalsePositive) 99.1% / 0.0051% 다.
+     */
+    @Test
+    fun contextSelection() {
+        fun pick(text: String, a: Int, b: Int, editable: Boolean): Float {
+            val kc = TextSelectionMonitor.hasHangulNear(text, a, b)
+            val ctx = TextSelectionMonitor.selectionContext(text, a, b, editable, collectNeighbors = !kc)
+            return TextSelectionMonitor.pickAnalysis(text.substring(a, b), THRESHOLD, kc, emptySet(), ctx).confidence
+        }
+        var total = 0
+        var hit = 0
+        var lines = 0
+        data("ratings_test.txt").forEachLine { line ->
+            val parts = line.split('\t')
+            if (parts.size < 2 || parts[0] == "id" || lines >= 10000) return@forEachLine
+            lines++
+            val words = parts[1].split(' ')
+            val typo = words.map { w -> w.any { it in '가'..'힣' || it in 'ㄱ'..'ㅣ' } && w.none { it in 'a'..'z' || it in 'A'..'Z' } }
+            val conv = words.mapIndexed { i, w -> if (typo[i]) HangulConverter.convertKorToEng(w) else w }
+            val text = conv.joinToString(" ")
+            var pos = 0
+            for ((i, w) in conv.withIndex()) {
+                if (typo[i] && latinLetters(w) >= 3) {
+                    total++
+                    if (pick(text, pos, pos + w.length, editable = true) >= THRESHOLD) hit++
+                }
+                pos += w.length + 1
+            }
+        }
+        var en = 0
+        val enHits = HashMap<String, Int>()
+        var articles = 0
+        data("test.csv").forEachLine { line ->
+            if (articles >= 3000) return@forEachLine
+            articles++
+            val text = line.split("\",\"").drop(1).joinToString(". ").trim('"')
+            Regex("\\S+").findAll(text).forEach { m ->
+                if (m.value.count { it.isLetter() } < 3 || m.value.none { it in 'a'..'z' || it in 'A'..'Z' }) return@forEach
+                en++
+                if (pick(text, m.range.first, m.range.last + 1, editable = false) >= THRESHOLD) enHits.merge(m.value, 1, Int::plus)
+            }
+        }
+        val rate = hit.toDouble() / total
+        val fp = enHits.values.sum().toDouble() / en
+        println("EVAL 문맥 선택: 한영타 문장 속 단어 ${"%.2f".format(rate * 100)}% ($total 회) / 영어 기사 속 단어(읽기 전용) 오탐 ${"%.4f".format(fp * 100)}% (${enHits.values.sum()}/$en) $enHits")
+        assertTrue("문맥 선택 감지율 하락: $rate", rate >= 0.993)
+        assertTrue("영어 기사 속 단어 오탐: $enHits", fp <= 0.00002)
     }
 
     /**
