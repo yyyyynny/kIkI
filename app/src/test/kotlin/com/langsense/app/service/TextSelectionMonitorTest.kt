@@ -169,4 +169,46 @@ class TextSelectionMonitorTest {
         assertEquals("끄래도 잘 될 것임", pick(sentence, sentence, autocap = false).converted)
         assertEquals("That's 안녕", pick("That's dkssud", "That's dkssud").converted)
     }
+
+    // ── 한/영 전환 직후 제안(2026-10) ──
+
+    private fun run(text: String): String? =
+        TextSelectionMonitor.latinRunBeforeCursor(text, text.length)?.let { text.substring(it.first, it.last + 1) }
+
+    /** 커서 앞 "한글 없는 덩어리": 뒤 공백은 건너뛰고, 한글·줄바꿈에서 멈춘다. 영문이 없으면 null. */
+    @Test
+    fun latinRunBeforeCursor_stopsAtHangulAndNewline() {
+        assertEquals("wkf audtj", run("진짜 wkf audtj"))
+        assertEquals("dkssud", run("dkssud "))
+        assertEquals("dkssud", run("hello\ndkssud"))
+        assertEquals(null, run("안녕"))
+        assertEquals(null, run("진짜 123"))
+        assertEquals(null, TextSelectionMonitor.latinRunBeforeCursor("dkssud", 0))
+    }
+
+    private fun suggest(text: String): String? =
+        TextSelectionMonitor.switchSuggestion(text, text.length, threshold)?.converted
+
+    /** 전환 직후엔 판정 모델이 일부러 빼 둔 짧은 조각(`zz`=ㅋㅋ, `sj`=너)도 받는다 — "곧바로 한글로 바꿨다"가 증거. */
+    @Test
+    fun switchSuggestion_acceptsTypoAndShortColloquial() {
+        assertEquals("안녕", suggest("dkssud"))
+        assertEquals("ㅋㅋ", suggest("진짜 zz"))
+        assertEquals("너", suggest("sj"))
+        assertEquals("ㅠㅠ", suggest("bb"))
+    }
+
+    /** 일부러 친 영문은 그대로 — 대문자 약어, 영어 문장, 숫자 단위, 3글자 이상 음절뿐인 약어(`bgm`). */
+    @Test
+    fun switchSuggestion_keepsIntendedEnglish() {
+        for (t in listOf("EBS", "made in china", "5cm", "bgm", "hello", "the", "OOO", "B")) {
+            assertEquals(t, null, suggest(t))
+        }
+    }
+
+    /** 예외 단어는 보조 판정에서도 막는다. */
+    @Test
+    fun switchSuggestion_respectsExceptions() {
+        assertEquals(null, TextSelectionMonitor.switchSuggestion("zz", 2, threshold, setOf("zz"))?.converted)
+    }
 }

@@ -632,6 +632,42 @@ class LangSenseAccessibilityService : AccessibilityService(),
         if (!featuresEnabled()) return
         overlay.showFlash(lang)
         overlay.updateBadge(lang)
+        if (lang == ImeLocaleParser.KO && prefs.replaceEnabled && prefs.switchSuggestEnabled) {
+            guarded("switchSuggestion") { trySwitchSuggestion() }
+        }
+    }
+
+    /**
+     * 한/영 전환 직후 제안(2026-10, Feature 4 보강): 영문으로 치다가 한글로 바꾼 순간, 입력 포커스가 있는 편집칸의
+     * 커서 바로 앞 영문 덩어리가 한영타면 "교체?" 칩을 띄운다. 글자를 선택하거나 바꾸지 않는다 — 사용자는 그대로 이어서
+     * 치면 되고, 칩을 늦게 눌러도 [OverlayManager] 가 최신 글자를 다시 읽어 그 덩어리가 그대로 있을 때만 바꾼다.
+     * 읽는 범위: 전환 1회당 포커스 노드 조회 1회(IPC) + 그 칸의 글자. 저장·전송하지 않고, 비밀번호 칸·안내 문구는 읽지 않는다.
+     */
+    private fun trySwitchSuggestion() {
+        val node = runCatching { findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull() ?: return
+        var transferred = false
+        try {
+            if (!runCatching { node.isEditable }.getOrDefault(false)) return
+            if (runCatching { node.isPassword }.getOrDefault(true)) return
+            if (runCatching { node.isShowingHintText }.getOrDefault(true)) return
+            val start = runCatching { node.textSelectionStart }.getOrDefault(-1)
+            val end = runCatching { node.textSelectionEnd }.getOrDefault(-1)
+            if (start < 0 || start != end) return // 선택 중이면 드래그 경로의 몫
+            val text = runCatching { node.text }.getOrNull() ?: return
+            if (end > text.length) return
+            val inputType = runCatching { node.inputType }.getOrDefault(0)
+            val suggestion = TextSelectionMonitor.switchSuggestion(
+                text, end, prefs.replaceConfidence / 100f, prefs.typoExceptionWords,
+                autocap = TextSelectionMonitor.mayAutocap(true, inputType),
+            ) ?: return
+            overlay.showReplaceChip(
+                node, text.toString(), suggestion.start, suggestion.end, suggestion.converted,
+                timeoutMs = OverlayManager.SWITCH_CHIP_TIMEOUT_MS, exactRange = true,
+            )
+            transferred = true
+        } finally {
+            if (!transferred) runCatching { node.recycle() }
+        }
     }
 
     /** [diagKeyCodes]/[diagKeyAtUptime] 링 버퍼에 키 다운 1건을 기록(디스패치 스레드, 배열 쓰기만). */

@@ -224,6 +224,8 @@ object HangulConverter {
         koreanContext: Boolean = false,
         exceptions: Set<String> = emptySet(),
         context: SelectionContext? = null,
+        priorLogOdds: Double = 0.0,
+        forceConvert: Boolean = false,
     ): Analysis {
         // 라틴 토큰(공백/한글로 구분되는 조각) 하나 = 원문 텍스트([text], 구두점/숫자 포함 —
         // convertEngToKor 입력용) + 글자만 모아 소문자화한 것([letters], 스톱워드 비교·매핑
@@ -304,16 +306,14 @@ object HangulConverter {
             if (autocapPossible) {
                 alt = TypoLanguageModel.judge(lowerFirstLatin(t.text), t.letters, t.mappable, false, koreanContext)
             }
-            var d = 0.0
-            if (useNeighbors) {
-                d = neighborLogOdds(i, outN, outSum, tokenR, context!!.editable)
-                if (j.logit == Double.NEGATIVE_INFINITY && (alt == null || alt.logit == Double.NEGATIVE_INFINITY) &&
-                    d >= PROTECT_RELEASE_LOG_ODDS
-                ) {
-                    // 흔한 영어 보호 목록이라 판정되지 않은 토큰 — 주변이 뚜렷한 한영타면 판정한다(`wha`=좀)
-                    j = TypoLanguageModel.judge(t.text, t.letters, t.mappable, t.allUpper, false,
-                        midSentence = !sentenceStart, ignoreCommonEnglish = true)
-                }
+            // 이웃 증거 + 호출자의 사전 로그오즈([priorLogOdds] — 한/영 전환 직후 제안처럼 "한영타일 이유"가 따로 있을 때)
+            val d = (if (useNeighbors) neighborLogOdds(i, outN, outSum, tokenR, context!!.editable) else 0.0) + priorLogOdds
+            if (j.logit == Double.NEGATIVE_INFINITY && (alt == null || alt.logit == Double.NEGATIVE_INFINITY) &&
+                d >= PROTECT_RELEASE_LOG_ODDS && !koreanContext
+            ) {
+                // 흔한 영어 보호 목록이라 판정되지 않은 토큰 — 주변이 뚜렷한 한영타면 판정한다(`wha`=좀)
+                j = TypoLanguageModel.judge(t.text, t.letters, t.mappable, t.allUpper, false,
+                    midSentence = context != null && !sentenceStart, ignoreCommonEnglish = true)
             }
             val baseLogit = if (j.logit == Double.NEGATIVE_INFINITY) j.logit else j.logit + d
             val altLogit = if (alt == null || alt.logit == Double.NEGATIVE_INFINITY) Double.NEGATIVE_INFINITY
@@ -328,7 +328,7 @@ object HangulConverter {
                 bestCaps = if (useAlt) alt!!.capsLock else j.capsLock
             }
         }
-        if (best == 0f) return Analysis(0f, input)
+        if (best == 0f && !forceConvert) return Analysis(0f, input)
 
         // 교체 문자열: 토큰마다 따로 정한다. 선택 전체를 통째로 변환하면 진짜 한영타 옆의 영어
         // 단어까지 바뀐다(`cpu wjdakf` → `체ㅕ 정말`). 공백·한글은 원문 그대로 둔다.
@@ -344,7 +344,7 @@ object HangulConverter {
             } else {
                 val sentenceStart = context != null && sentenceStartAt(input, t.start, context.charBefore)
                 out.append(convertInTypoContext(t, capsLock = bestCaps && t.upperMajority, sentenceStart = sentenceStart,
-                    preferLowered = autocapWon[i], leadAllowed = typoSide[i]))
+                    preferLowered = autocapWon[i], leadAllowed = typoSide[i] || forceConvert))
             }
             last = t.start + t.text.length
         }
@@ -369,6 +369,65 @@ object HangulConverter {
          */
         val autocap: Boolean = true,
     )
+
+    /**
+     * 한/영 전환 직후 제안(2026-10)의 보조 판정: [analyze] 의 신뢰도가 기준에 못 미쳐도, 교체 쪽 구어체 모델이 한글로
+     * 바꾼 결과([converted], `analyze(forceConvert = true)`)를 받아들일지. 판정 모델이 일부러 빼 둔 짧은 조각(`sj`=너,
+     * `zz`=ㅋㅋ, `bb`=ㅠㅠ, `zzwoalTekd`=ㅋㅋ재밌당)은 "영어로 치다 곧바로 한글로 바꿨다"는 행동이 증거가 될 때만 받는다.
+     * 일부러 친 영문(`OOO`·`B급`·`EBS`)을 지키려고: 대문자가 하나라도 있으면 안 받고, 영문 2글자 이상, 바뀐 조각의
+     * 한글은 실제 구어체에 있는 전이로만 이뤄져야 한다([MALFORMED_TRANSITION_LOG] — `ebs`→ㄷㅠㄴ 같은 기형 제외).
+     */
+    fun switchFallbackAccepts(original: String, converted: String): Boolean {
+        if (original == converted) return false
+        if (original.any { it in 'A'..'Z' }) return false
+        if (original.count { it in 'a'..'z' } < SWITCH_FALLBACK_MIN_LETTERS) return false
+        if (original.any { it.isDigit() || it == '&' }) return false // 단위(`5cm`)·HTML 엔티티
+        val a = original.split(' ')
+        val b = converted.split(' ')
+        if (a.size != b.size) return false
+        var changed = false
+        for (k in a.indices) {
+            val letters = a[k].filter { it in 'a'..'z' }
+            // 영어 기본 단어(`in`·`the`)가 하나라도 있으면 영어 문장, 한국어 글 속 알려진 영문(Shift 증인 — `sns`·`dlc`)이면 약어
+            if (letters in ENGLISH_STOPWORDS || TypoLanguageModel.lexiconLogProb(letters, false) != null) return false
+            if (a[k] == b[k]) continue
+            changed = true
+            if (b[k].any { isLatin(it) }) return false // 반쪽 변환(`fire재가`)은 받지 않는다
+            if (!switchFallbackToken(letters.length, b[k])) return false
+        }
+        return changed
+    }
+
+    /**
+     * 판정 모델이 일부러 빼 둔 모양만 받는다 — 2글자 이하(`sj`=너), 또는 낱자모가 섞인 것. 3글자 이상 음절뿐인 조각(`sbs`→뉸)은
+     * 이미 판정 모델이 본 것이라 뒤집지 않는다. 낱자모 덩어리는 같은 자모 반복(ㅋㅋ·ㅠㅠ), 자음 하나(ㅈ같은), 자음 둘뿐인 줄임말
+     * (ㅇㅈ·ㄹㅇ)만 — `mate`→ㅡㅁㅅㄷ, `bgm`→ㅠ흐 같은 기형을 막는다(NSMC 시뮬레이션, docs/한영타_검증.md 4.12).
+     */
+    private fun switchFallbackToken(latinLetters: Int, ko: String): Boolean {
+        val syllables = ko.count { it.code in HANGUL_BASE..HANGUL_LAST }
+        val hasJamo = ko.any { it.code in COMPAT_JAMO_START..COMPAT_JAMO_END }
+        if (!hasJamo && latinLetters > 2) return false
+        var i = 0
+        while (i < ko.length) {
+            if (ko[i].code !in COMPAT_JAMO_START..COMPAT_JAMO_END) { i++; continue }
+            var j = i
+            while (j < ko.length && ko[j].code in COMPAT_JAMO_START..COMPAT_JAMO_END) j++
+            val run = ko.substring(i, j)
+            val ok = (run.length >= 2 && run.all { it == run[0] }) ||
+                (run.length == 1 && run[0] in 'ㄱ'..'ㅎ' && syllables > 0) ||
+                (run.length == 2 && syllables == 0 && run.all { it in 'ㄱ'..'ㅎ' })
+            if (!ok) return false
+            i = j
+        }
+        if (syllables > 0) {
+            val score = TypoLanguageModel.koreanInformal(ko.filter { it.code in HANGUL_BASE..HANGUL_LAST || it.code in COMPAT_JAMO_START..COMPAT_JAMO_END })
+                ?: return false
+            if (score.rarestTransition < MALFORMED_TRANSITION_LOG) return false
+        }
+        return true
+    }
+
+    private const val SWITCH_FALLBACK_MIN_LETTERS = 2
 
     /** [analyze] 토큰화의 경계(공백·완성형 한글·호환 자모) — 선택 밖 이웃 토큰도 같은 기준으로 자른다. */
     fun isTokenBoundary(c: Char): Boolean {

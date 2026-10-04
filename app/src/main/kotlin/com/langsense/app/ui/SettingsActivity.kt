@@ -829,6 +829,10 @@ class SettingsActivity : AppCompatActivity() {
                     ) { prefs.replaceConfidence = it; markSaved(); refreshRailSummaries() }
                 )
                 addView(descRow(getString(R.string.settings_replace_confidence_desc)))
+                addView(boundSwitchRow(getString(R.string.settings_switch_suggest), { prefs.switchSuggestEnabled }) {
+                    prefs.switchSuggestEnabled = it; markSaved()
+                })
+                addView(descRow(getString(R.string.settings_switch_suggest_desc)))
             })
             c.addView(sectionCard(getString(R.string.settings_replace_exceptions)).apply {
                 addView(descRow(getString(R.string.settings_replace_exceptions_desc)))
@@ -1223,6 +1227,8 @@ class SettingsActivity : AppCompatActivity() {
                 "한영타, 영타, 오타, 교체, 변환, 교체 버튼, 자동 수정, dkssud, 안녕, 잘못 친, 영어로 쳐짐"),
             item(s(R.string.settings_replace_confidence), path(R.string.settings_group_replace), GROUP_REPLACE,
                 "신뢰도, 정확도, 민감도, 임계값, 기준, 너무 자주 뜸, 안 뜸, 오탐, threshold, 캡스락, CapsLock, 대문자"),
+            item(s(R.string.settings_switch_suggest), path(R.string.settings_group_replace), GROUP_REPLACE,
+                "한영 전환, 한/영 키, 전환 직후, 방금 친, 다시 치기, 자동 고침, 자동 교정, 제안, 바로 고치기, ㅋㅋ, zz, 끄기"),
             item(s(R.string.settings_replace_exceptions), path(R.string.settings_group_replace), GROUP_REPLACE,
                 "예외, 예외 단어, 제외, 무시, 허용 목록, 화이트리스트, 바꾸지 않을 단어, 약어, 아이디, 교체 안 함, " +
                     "잘못 뜸, 자꾸 뜸, 오탐, 길게 누르기, exception, ignore, whitelist"),

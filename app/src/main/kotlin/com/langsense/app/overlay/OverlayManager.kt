@@ -435,7 +435,10 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         fullText: String,
         selStart: Int,
         selEnd: Int,
-        converted: String
+        converted: String,
+        timeoutMs: Long = CHIP_TIMEOUT_MS,
+        /** true 면 원래 자리에 원문이 그대로 있을 때만 바꾼다(한/영 전환 직후 제안 — 문서 안 다른 곳의 같은 글자를 바꾸지 않게). */
+        exactRange: Boolean = false,
     ) = onMain {
         if (released) { node.recycle(); return@onMain }
         // 드래그로 선택을 넓히는 동안 selection-changed 가 연발하는데, 매번 칩을 재생성하면
@@ -453,7 +456,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         view.bind(
             converted,
             onTap = {
-                applyReplacement(node, fullText, selStart, selEnd, converted)
+                applyReplacement(node, fullText, selStart, selEnd, converted, exactRange)
                 removeChip()
             },
             onLongPress = {
@@ -479,7 +482,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         lastChipSelStart = selStart
         lastChipSelEnd = selEnd
 
-        chipDismiss = Runnable { removeChip() }.also { handler.postDelayed(it, CHIP_TIMEOUT_MS) }
+        chipDismiss = Runnable { removeChip() }.also { handler.postDelayed(it, timeoutMs) }
     }
 
     /** 칩을 길게 누름: 선택한 라틴 단어 하나를 한영타 예외로 등록하고 토스트로 알린다. */
@@ -506,7 +509,8 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         fullText: String,
         selStart: Int,
         selEnd: Int,
-        converted: String
+        converted: String,
+        exactRange: Boolean = false,
     ) {
         val s = selStart.coerceIn(0, fullText.length)
         val e = selEnd.coerceIn(s, fullText.length)
@@ -517,14 +521,18 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         // refresh 실패(창·뷰가 사라짐)나 빈 텍스트면 엉뚱하게 덮어쓰지 않도록 교체를 포기한다.
         if (!runCatching { node.refresh() }.getOrDefault(false)) return
         val liveText = runCatching { node.text?.toString() }.getOrNull() ?: return
-        val (es, ee) = resolveReplaceRange(liveText, s, e, original) ?: return
+        val (es, ee) = (if (exactRange) exactReplaceRange(liveText, s, e, original) else resolveReplaceRange(liveText, s, e, original)) ?: return
         val newText = liveText.substring(0, es) + converted + liveText.substring(ee)
 
+        // 교체 전 실제 커서. 칩이 떠 있는 동안 사용자가 교체 범위 뒤에 더 쳤으면(한/영 전환 직후 제안) 그 커서를 길이 차만큼
+        // 옮겨 지킨다 — 교체 자리 뒤로 되돌리면 이어 치던 위치를 잃는다.
+        val liveCaret = runCatching { node.textSelectionEnd }.getOrDefault(-1)
         if (trySetText(node, newText)) {
             // ACTION_SET_TEXT 는 Editable 전체를 갈아끼우므로 대부분의 에디터에서 커서가 문서
             // 끝으로 튄다. 교체한 자리 뒤로 되돌려 사용자가 이어서 타이핑할 수 있게 한다
             // (지원하지 않는 에디터도 있으므로 best-effort).
-            val caret = es + converted.length
+            val caret = if (liveCaret > ee && liveCaret <= liveText.length) liveCaret + converted.length - (ee - es)
+            else es + converted.length
             val caretArgs = Bundle().apply {
                 putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, caret)
                 putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, caret)
@@ -547,6 +555,10 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         if (idx < 0) return null
         return idx to (idx + original.length)
     }
+
+    /** 원래 자리에 원문이 그대로 있을 때만(한/영 전환 직후 제안). 지웠거나 고쳤으면 교체하지 않는다(null). */
+    private fun exactReplaceRange(liveText: String, s: Int, e: Int, original: String): Pair<Int, Int>? =
+        if (e <= liveText.length && liveText.substring(s, e) == original) s to e else null
 
     /** 1차: ACTION_SET_TEXT. editable 이 아니거나 false 반환 시 실패로 간주. */
     private fun trySetText(node: AccessibilityNodeInfo, newText: String): Boolean {
@@ -647,6 +659,9 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         private const val TAG = "OverlayManager"
 
         const val CHIP_TIMEOUT_MS = 2000L
+
+        /** 한/영 전환 직후 제안 칩은 사용자가 치는 중에 뜨므로 조금 더 오래 둔다(누를지 판단할 시간). */
+        const val SWITCH_CHIP_TIMEOUT_MS = 4000L
 
         /**
          * 플래시 재생 종료 후 창을 (숨긴 채) 유지하는 시간(ms). 이 안에 다음 전환이 오면 창 생성/파괴

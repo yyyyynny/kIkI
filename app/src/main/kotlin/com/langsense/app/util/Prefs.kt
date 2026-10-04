@@ -119,6 +119,14 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_REPLACE_ENABLED, true)
         set(v) = sp.edit().putBoolean(KEY_REPLACE_ENABLED, v).apply()
 
+    /**
+     * 한/영 전환 직후 제안(2026-10, 기본 ON): 영문으로 치다 한글로 바꾸는 순간, 커서 바로 앞 영문 덩어리가 한영타면
+     * "교체?" 칩을 띄운다. 한영타 교체([replaceEnabled])가 켜져 있을 때만 동작한다.
+     */
+    var switchSuggestEnabled: Boolean
+        get() = sp.getBoolean(KEY_SWITCH_SUGGEST, true)
+        set(v) = sp.edit().putBoolean(KEY_SWITCH_SUGGEST, v).apply()
+
     /** 신뢰도 임계값(%) 50~90. */
     var replaceConfidence: Int
         get() = sp.getInt(KEY_REPLACE_CONFIDENCE, 70).coerceIn(50, 90)
@@ -463,6 +471,7 @@ class Prefs(context: Context) {
         const val KEY_NOFOCUS_THRESHOLD = "nofocus_threshold"
         const val KEY_REPLACE_ENABLED = "replace_enabled"
         const val KEY_REPLACE_CONFIDENCE = "replace_confidence"
+        const val KEY_SWITCH_SUGGEST = "switch_suggest"
         const val KEY_TYPO_EXCEPTIONS = "typo_exception_words"
         const val KEY_EXCLUDE_TOUCH_KEYBOARD = "exclude_touch_keyboard"
         const val KEY_KEYBOARD_CONNECT_NOTIFY = "keyboard_connect_notify"

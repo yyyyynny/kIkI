@@ -244,15 +244,16 @@ class TypoCorpusEvalTest {
         val fp = enHit.toDouble() / en
         println("EVAL 문장 선택: 한영타 문장 감지 ${"%.2f".format(rate * 100)}% ($total 문장) / 영어 기사 문장 오탐 ${"%.3f".format(fp * 100)}% ($enHit/$en)")
         assertTrue("문장 단위 감지율 하락: $rate", rate >= 0.99)
-        // 선택한 문장만 보는 값(2026-10-01 문맥 없는 판정 강화 뒤 약 0.14%, 어절 2-gram 뒤 0.063%). 기사 속에서 앞뒤 글과
-        // 함께 보면(읽기 전용 — 남이 쓴 글) 0% — 아래 contextSelection.
+        // 선택한 문장만 보는 값(2026-10-01 문맥 없는 판정 강화 뒤 약 0.14%, 어절 2-gram 뒤 0.063%). 2026-10 부터 앱은
+        // 읽기 전용 글(웹 기사 등)을 판정하지 않으므로 실제로 문제가 되는 건 입력칸에 직접 친 영어 문장뿐이다.
         assertTrue("영어 문장 오탐 상승: $fp", fp <= 0.0012)
     }
 
     /**
      * 실제 앱처럼 **선택 + 앞뒤 40자**로 판정한다(2026-10-01 문맥 규칙 — 이웃 증거·문장 첫머리 자동 대문자·문장 중간 대문자).
      * (1) 한영타로 친 문장(NSMC test 앞 1만 문장, 한글 어절을 전부 영타로) 안에서 영타 단어 하나를 선택 — 편집 칸.
-     * (2) 영어 기사(AG News test 앞 3천 건) 안에서 단어 하나를 선택 — 읽기 전용(남이 쓴 글). 기록: 99.5% / 0%.
+     * (2) 영어 기사(AG News test 앞 3천 건) 안에서 단어 하나를 선택 — 편집 칸(입력칸에 영어를 친 경우). 2026-10 부터 앱은
+     *     읽기 전용 글을 아예 판정하지 않으므로 편집 칸만 잰다. 기록: 99.36% / 0.0011%(1/91,627, `Glaxo`).
      * 선택한 조각만 보면(위 typoDetectionRate·englishNewsFalsePositive) 99.1% / 0.0051% 다.
      */
     @Test
@@ -292,14 +293,68 @@ class TypoCorpusEvalTest {
             Regex("\\S+").findAll(text).forEach { m ->
                 if (m.value.count { it.isLetter() } < 3 || m.value.none { it in 'a'..'z' || it in 'A'..'Z' }) return@forEach
                 en++
-                if (pick(text, m.range.first, m.range.last + 1, editable = false) >= THRESHOLD) enHits.merge(m.value, 1, Int::plus)
+                if (pick(text, m.range.first, m.range.last + 1, editable = true) >= THRESHOLD) enHits.merge(m.value, 1, Int::plus)
             }
         }
         val rate = hit.toDouble() / total
         val fp = enHits.values.sum().toDouble() / en
-        println("EVAL 문맥 선택: 한영타 문장 속 단어 ${"%.2f".format(rate * 100)}% ($total 회) / 영어 기사 속 단어(읽기 전용) 오탐 ${"%.4f".format(fp * 100)}% (${enHits.values.sum()}/$en) $enHits")
+        println("EVAL 문맥 선택: 한영타 문장 속 단어 ${"%.2f".format(rate * 100)}% ($total 회) / 영어 기사 속 단어(편집 칸) 오탐 ${"%.4f".format(fp * 100)}% (${enHits.values.sum()}/$en) $enHits")
         assertTrue("문맥 선택 감지율 하락: $rate", rate >= 0.993)
         assertTrue("영어 기사 속 단어 오탐: $enHits", fp <= 0.00002)
+    }
+
+    /**
+     * 한/영 전환 직후 제안(2026-10) 시뮬레이션 — NSMC test.
+     * (1) 한영타: 순수 한국어 리뷰에서 처음 1~3어절, 또는 한글 몇 어절 뒤 1~3어절을 영문 모드로 친 뒤 한글로 전환(커서 = 끝).
+     * (2) 오탐: 실제 리뷰에서 영문 뒤에 한글이 오는 모든 자리(일부러 영어를 치고 한글로 바꾼 자리) — 진짜 한영타(아이디 영타,
+     *     `ekfns`=다룬)도 섞여 있어 실제 오탐은 이보다 적다.
+     * 기록(2026-10-04): 감지 98.58%(보조 판정 없이 97.30%), 오탐 31/2,407 = 1.29%(보조 판정 없이 0.33%).
+     */
+    @Test
+    fun switchSuggestionSimulation() {
+        fun hangul(c: Char) = c in '가'..'힣' || c in 'ㄱ'..'ㅣ'
+        fun latin(c: Char) = c in 'a'..'z' || c in 'A'..'Z'
+        val lines = ArrayList<String>()
+        data("ratings_test.txt").forEachLine { line ->
+            val p = line.split('\t')
+            if (p.size >= 2 && p[0] != "id" && p[1].isNotBlank()) lines += p[1].trim()
+        }
+        val rnd = java.util.Random(7)
+        var typo = 0
+        var hit = 0
+        for (s in lines.take(50000)) {
+            if (s.any { latin(it) } || s.none { hangul(it) }) continue
+            val w = s.split(' ').filter { it.isNotEmpty() }
+            if (w.isEmpty()) continue
+            val k = 1 + rnd.nextInt(minOf(3, w.size))
+            val text = if (rnd.nextBoolean() || w.size <= k) w.take(k).joinToString(" ") { HangulConverter.convertKorToEng(it) }
+            else {
+                val m = 1 + rnd.nextInt(w.size - k)
+                w.take(m).joinToString(" ") + " " + w.subList(m, m + k).joinToString(" ") { HangulConverter.convertKorToEng(it) }
+            }
+            typo++
+            if (TextSelectionMonitor.switchSuggestion(text, text.length, THRESHOLD) != null) hit++
+        }
+        var spots = 0
+        val fpHits = HashMap<String, Int>()
+        for (s in lines) {
+            for (i in 1 until s.length) {
+                if (!hangul(s[i])) continue
+                var j = i
+                while (j > 0 && s[j - 1] == ' ') j--
+                if (j == 0 || !latin(s[j - 1])) continue
+                spots++
+                val text = s.substring(0, i)
+                val sug = TextSelectionMonitor.switchSuggestion(text, text.length, THRESHOLD) ?: continue
+                fpHits.merge(text.substring(sug.start, sug.end), 1, Int::plus)
+            }
+        }
+        val rate = hit.toDouble() / typo
+        val fp = fpHits.values.sum().toDouble() / spots
+        println("EVAL 한/영 전환 직후 제안: 감지 ${"%.2f".format(rate * 100)}% ($typo) / 영문→한글 전환 자리 오탐 ${"%.2f".format(fp * 100)}% " +
+            "(${fpHits.values.sum()}/$spots) ${fpHits.entries.sortedByDescending { it.value }.take(15)}")
+        assertTrue("전환 직후 감지율 하락: $rate", rate >= 0.985)
+        assertTrue("전환 자리 오탐 상승: $fp", fp <= 0.015)
     }
 
     /**

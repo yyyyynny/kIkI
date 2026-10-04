@@ -31,6 +31,10 @@ class TextSelectionMonitor(
 ) {
     /** @return true 면 [onDetected] 로 [node] 소유권을 넘겼다(호출자는 recycle 하지 않는다). */
     fun onSelectionChanged(node: AccessibilityNodeInfo): Boolean {
+        // 읽기 전용 글(웹 기사·받은 메시지)은 판정하지 않는다(2026-10): 앱이 글자를 바꿀 수 없어 칩이 쓸모가 거의 없고,
+        // 영어 글을 읽다 단어를 선택할 때 뜨는 오탐이 대부분 여기서 나왔다. 이 앱의 목적은 "내가 친 글"을 고치는 것.
+        // 편집 가능 여부는 노드에 이미 담긴 값이라 IPC 가 없다.
+        if (!runCatching { node.isEditable }.getOrDefault(false)) return false
         val text: CharSequence = runCatching { node.text }.getOrNull() ?: return false
         if (text.isEmpty()) return false
 
@@ -51,10 +55,8 @@ class TextSelectionMonitor(
 
         val threshold = confidencePercentProvider() / 100f
         val koreanContext = hasHangulNear(text, selStart, selEnd)
-        // 편집 가능 여부는 노드에 이미 담긴 값이라 IPC 가 없다. 읽기 전용 글(남이 쓴 기사·메시지)은 영어 이웃도 증거로 쓴다.
-        val editable = runCatching { node.isEditable }.getOrDefault(false)
-        val inputType = if (editable) runCatching { node.inputType }.getOrDefault(0) else 0
-        val context = selectionContext(text, selStart, selEnd, editable, collectNeighbors = !koreanContext, autocap = mayAutocap(editable, inputType))
+        val inputType = runCatching { node.inputType }.getOrDefault(0)
+        val context = selectionContext(text, selStart, selEnd, editable = true, collectNeighbors = !koreanContext, autocap = mayAutocap(true, inputType))
         val analysis = pickAnalysis(selected, threshold, koreanContext, exceptionWordsProvider(), context)
         if (analysis.confidence < threshold) return false
         if (analysis.converted == selected) return false // 변환 결과가 동일하면 의미 없음
@@ -153,6 +155,79 @@ class TextSelectionMonitor(
 
         /** 창 경계에 걸친 이웃 토큰을 넓혀 읽는 최대 글자 수. */
         const val MAX_NEIGHBOR_TOKEN = 40
+
+        /**
+         * 한/영 전환 직후 제안(2026-10)의 대상 — 커서 바로 앞의 "한글 없는 덩어리"(영문을 하나 이상 포함). 순수 함수.
+         * 커서 뒤 공백(최대 [MAX_TRAILING_SPACES]개)은 건너뛰고, 거기서 한글·줄바꿈을 만나거나 [MAX_SWITCH_RUN] 글자가 될 때까지
+         * 앞으로 간다(상한에 걸리면 잘린 단어를 빼려고 다음 공백부터). 영문이 없으면 null.
+         * 예: `진짜 wkf audtj|` → `wkf audtj`, `dkssud |` → `dkssud`, `안녕|` → null.
+         */
+        fun latinRunBeforeCursor(text: CharSequence, cursor: Int): IntRange? {
+            if (cursor <= 0 || cursor > text.length) return null
+            var end = cursor
+            var spaces = 0
+            while (end > 0 && (text[end - 1] == ' ' || text[end - 1] == '\t') && spaces < MAX_TRAILING_SPACES) {
+                end--
+                spaces++
+            }
+            var start = end
+            while (start > 0 && end - start < MAX_SWITCH_RUN) {
+                val c = text[start - 1]
+                if (c == '\n' || HangulConverter.isTokenBoundary(c) && !c.isWhitespace()) break
+                start--
+            }
+            if (end - start >= MAX_SWITCH_RUN && start > 0 && !HangulConverter.isTokenBoundary(text[start - 1])) {
+                while (start < end && !text[start].isWhitespace()) start++
+            }
+            while (start < end && text[start].isWhitespace()) start++
+            if (start >= end) return null
+            var latin = false
+            for (i in start until end) {
+                val c = text[i]
+                if (c in 'a'..'z' || c in 'A'..'Z') { latin = true; break }
+            }
+            return if (latin) start until end else null
+        }
+
+        /** 한/영 전환 제안 결과 — 바꿀 범위(끝 미포함)와 교체 문자열. */
+        class SwitchSuggestion(val start: Int, val end: Int, val converted: String)
+
+        /**
+         * 한/영 전환(영→한) 직후 제안(2026-10) 판정 — 순수 함수(JVM 테스트 대상). 커서 앞 영문 덩어리([latinRunBeforeCursor])를
+         * "방금 한글로 바꿨다"는 행동을 증거로 판정한다: 기본 판정에 [SWITCH_PRIOR_LOG_ODDS] 를 더하고, 그래도 기준 미달이면
+         * 판정 모델이 일부러 빼 둔 짧은 조각(`sj`=너, `zz`=ㅋㅋ)만 [HangulConverter.switchFallbackAccepts] 로 받는다.
+         * NSMC 시뮬레이션: 전환 직후 한영타 감지 97.30% → 98.58%, 일부러 영어를 치고 바꾼 자리 오탐 0.33% → 1.29%
+         * (docs/한영타_검증.md 4.12).
+         */
+        fun switchSuggestion(
+            text: CharSequence,
+            cursor: Int,
+            threshold: Float,
+            exceptions: Set<String> = emptySet(),
+            autocap: Boolean = true,
+        ): SwitchSuggestion? {
+            val run = latinRunBeforeCursor(text, cursor) ?: return null
+            val start = run.first
+            val end = run.last + 1
+            val selected = text.subSequence(start, end).toString()
+            val koreanContext = hasHangulNear(text, start, end)
+            val context = selectionContext(text, start, end, editable = true, collectNeighbors = !koreanContext, autocap = autocap)
+            val a = HangulConverter.analyze(selected, koreanContext, exceptions, context, SWITCH_PRIOR_LOG_ODDS)
+            if (a.confidence >= threshold) return if (a.converted == selected) null else SwitchSuggestion(start, end, a.converted)
+            // 보조 판정: 교체 쪽 구어체 모델로 강제 변환한 결과를 좁은 조건에서만 받는다
+            if (selected.split(' ').any { w -> w.filter { it.isLetter() }.lowercase() in exceptions }) return null
+            val forced = HangulConverter.analyze(selected, koreanContext, exceptions, context, SWITCH_PRIOR_LOG_ODDS, forceConvert = true)
+            return if (HangulConverter.switchFallbackAccepts(selected, forced.converted)) SwitchSuggestion(start, end, forced.converted) else null
+        }
+
+        /** 한/영 전환 직후라는 행동 증거(로그오즈). 0~3 을 비교해 오탐이 늘지 않는 1.0(시뮬레이션). */
+        const val SWITCH_PRIOR_LOG_ODDS = 1.0
+
+        /** 한/영 전환 제안이 보는 최대 글자 수 — 몇 단어 분량. */
+        const val MAX_SWITCH_RUN = 80
+
+        /** 영문을 치고 띄어쓰기한 뒤 전환하는 경우를 덮는 커서 앞 공백 수. */
+        const val MAX_TRAILING_SPACES = 2
 
         /**
          * 정방향/역방향 중 최종 판정을 고르는 순수 함수(안드로이드 의존성 없음 — 단위 테스트 대상).
