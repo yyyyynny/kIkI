@@ -23,6 +23,7 @@ import com.langsense.app.ui.MainActivity
 import com.langsense.app.ui.SettingsActivity
 import com.langsense.app.util.HardwareKeyboardDetector
 import com.langsense.app.util.ImeLocaleParser
+import com.langsense.app.util.InputStats
 import com.langsense.app.util.KeyTriggerDiagnostics
 import com.langsense.app.util.Prefs
 
@@ -190,6 +191,8 @@ class LangSenseAccessibilityService : AccessibilityService(),
             overlay.setQuickMenuItems(buildQuickMenuItems())
             overlay.setBadgeTapHandler(::handleBadgeTap)
             overlay.setBadgeLongPressHandler(::handleBadgeLongPress)
+            overlay.setChipOutcomeListener { original, converted, outcome -> prefs.recordChipOutcome(original, converted, outcome) }
+            typingSpeedOn = prefs.typingSpeedEnabled
             syncKeyEvalThread()
             syncKeyboardDetector()
             prefs.register(this)
@@ -225,6 +228,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
     }
 
     private fun cleanup() {
+        if (::prefs.isInitialized) runCatching { flushTyping() }
         initialized = false
         mainHandler.removeCallbacksAndMessages(null)
         softKeyboardRecheckPending = false
@@ -289,7 +293,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
             AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
         var flags = info.flags and managed.inv() // 시스템이 붙인 다른 비트는 보존
         if (noFocus || excl) flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-        if (noFocus || diag) flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+        if (noFocus || diag || prefs.typingSpeedEnabled) flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
 
         if (info.eventTypes == types && info.flags == flags &&
             info.notificationTimeout == NOTIFICATION_TIMEOUT_MS
@@ -628,6 +632,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
         // ("왜 전환됐는지"는 오버레이 표시 여부와 별개의 관심사) — 단, 하위 옵션을 켠 사용자는
         // 터치 키보드가 떠 있는 동안 진단도 함께 멈춘다([diagnosticActive] 참조).
         if (diagnosticActive()) captureDiagnosticTrigger()
+        prefs.recordSwitch() // 입력 통계(꺼져 있으면 아무것도 안 함)
         // 터치 키보드 제외 ON + 소프트 키보드 표시 중 → 플래시/배지 모두 비활성(추가 기능 2).
         if (!featuresEnabled()) return
         overlay.showFlash(lang)
@@ -660,6 +665,8 @@ class LangSenseAccessibilityService : AccessibilityService(),
                 text, end, prefs.replaceConfidence / 100f, prefs.typoExceptionWords,
                 autocap = TextSelectionMonitor.mayAutocap(true, inputType),
             ) ?: return
+            // 입력 통계 학습: 자동 제안을 여러 번 무시하고 한 번도 교체하지 않은 덩어리는 그만 묻는다(드래그 선택엔 적용 안 함)
+            if (prefs.isSuggestionSuppressed(text.subSequence(suggestion.start, suggestion.end).toString())) return
             overlay.showReplaceChip(
                 node, text.toString(), suggestion.start, suggestion.end, suggestion.converted,
                 timeoutMs = OverlayManager.SWITCH_CHIP_TIMEOUT_MS, exactRange = true,
@@ -668,6 +675,32 @@ class LangSenseAccessibilityService : AccessibilityService(),
         } finally {
             if (!transferred) runCatching { node.recycle() }
         }
+    }
+
+    // ── 타수 측정(입력 통계, 기본 OFF) — 키 개수와 치던 시간만 센다(어떤 키인지는 기록하지 않음) ──
+    private var typingSpeedOn = false
+    private var typingKeys = 0
+    private var typingMs = 0L
+    private var lastTypingKeyAt = 0L
+    private var typingFlushScheduled = false
+
+    /** 디스패치 스레드에서 정수 더하기만 하고, 저장은 [TYPING_FLUSH_MS] 마다 한 번(키마다 디스크에 쓰지 않게). */
+    private fun countTypingKey() {
+        val now = SystemClock.uptimeMillis()
+        typingMs += InputStats.typingGap(lastTypingKeyAt, now)
+        lastTypingKeyAt = now
+        typingKeys++
+        if (!typingFlushScheduled) {
+            typingFlushScheduled = true
+            mainHandler.postDelayed({ guarded("typingFlush") { flushTyping() } }, TYPING_FLUSH_MS)
+        }
+    }
+
+    private fun flushTyping() {
+        typingFlushScheduled = false
+        if (typingKeys > 0) prefs.addTyping(typingKeys, typingMs)
+        typingKeys = 0
+        typingMs = 0L
     }
 
     /** [diagKeyCodes]/[diagKeyAtUptime] 링 버퍼에 키 다운 1건을 기록(디스패치 스레드, 배열 쓰기만). */
@@ -787,6 +820,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
             // (Bug 1) 메인(디스패치) 스레드에서는 키 이벤트 속성만 보는 저비용 판정만 동기로 하고 즉시
             // 반환한다. 무거운 포커스 조회(노드 트리 IPC)는 백그라운드 스레드로 넘긴다.
             if (!keyMonitor.isTypingCandidate(e)) return false
+            if (typingSpeedOn) countTypingKey()
             // 터치 키보드 제외 ON + 소프트 키보드 표시 중 → 포커스 없는 키 입력 경고 비활성(추가 기능 2).
             if (!featuresEnabled()) return false
             // 최근 입력 실착 여부는 메인 스레드에서 저렴하게 스냅샷(타임스탬프 비교)해 백그라운드로 전달.
@@ -907,6 +941,12 @@ class LangSenseAccessibilityService : AccessibilityService(),
                 Prefs.KEY_KEYBOARD_CONNECT_NOTIFY -> syncKeyboardDetector()
                 // 전환 원인 진단(추가 기능 3) 토글 — 키 필터 구독 여부만 바뀐다.
                 Prefs.KEY_DIAGNOSTIC_KEY_LOGGING -> syncServiceInfo()
+                // 타수 측정(입력 통계) — 키 필터 구독 여부가 바뀐다. 끄는 순간까지 센 것은 저장.
+                Prefs.KEY_TYPING_SPEED -> {
+                    typingSpeedOn = prefs.typingSpeedEnabled
+                    if (!typingSpeedOn) flushTyping()
+                    syncServiceInfo()
+                }
                 // 배지 크기/색/불투명도는 표시 중인 배지에 즉시 재적용(꺼져 있으면 다음 표시 때 반영).
                 // ⚠️ 불투명도 키를 빠뜨리면 슬라이더를 움직여도 떠 있는 배지가 다음 언어 전환까지
                 // 그대로여서 "설정이 안 먹는다"로 보인다(플래시는 발동 때마다 prefs 를 다시 읽어 불필요).
@@ -931,6 +971,9 @@ class LangSenseAccessibilityService : AccessibilityService(),
          * 초당 20건에서 10건으로 준다. 언어 전환 감지는 이미 150ms 합치기 창이 있어 체감 무변화.
          */
         private const val NOTIFICATION_TIMEOUT_MS = 100L
+
+        /** 타수 측정 값을 저장하는 간격(키마다 쓰지 않는다). */
+        private const val TYPING_FLUSH_MS = 30_000L
 
         /**
          * 직전 입력 실착으로 "포커스 있음"을 인정하는 시간(ms). 타이핑 중 편집 이벤트 간격을 넉넉히

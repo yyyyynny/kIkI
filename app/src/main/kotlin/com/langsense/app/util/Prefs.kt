@@ -225,6 +225,47 @@ class Prefs(context: Context) {
 
     fun clearLastSwitchTrigger() = sp.edit().remove(KEY_LAST_TRIGGER_HISTORY).apply()
 
+    // ---- 입력 통계(2026-10, [InputStats]) — 기기 안에만 저장 ----
+
+    /** 입력 통계 기록(기본 ON). 끄면 새로 쌓지 않고, 자동 제안의 "그만 묻기"도 쓰지 않는다. 쌓인 기록은 [clearStats] 로 지운다. */
+    var statsEnabled: Boolean
+        get() = sp.getBoolean(KEY_STATS_ENABLED, true)
+        set(v) = sp.edit().putBoolean(KEY_STATS_ENABLED, v).apply()
+
+    /** 타수 측정(기본 OFF) — 켜면 모든 물리 키가 앱의 키 필터를 거친다(키당 Binder 왕복, 저사양 부담). 키 개수·시간만 센다. */
+    var typingSpeedEnabled: Boolean
+        get() = sp.getBoolean(KEY_TYPING_SPEED, false)
+        set(v) = sp.edit().putBoolean(KEY_TYPING_SPEED, v).apply()
+
+    val statsDays: List<InputStats.Day> get() = InputStats.decodeDays(sp.getString(KEY_STATS_DAYS, null))
+    val statsWords: List<InputStats.Word> get() = InputStats.decodeWords(sp.getString(KEY_STATS_WORDS, null))
+
+    fun recordSwitch() {
+        if (!statsEnabled) return
+        sp.edit().putString(KEY_STATS_DAYS, InputStats.encodeDays(InputStats.addToDay(statsDays, today(), switches = 1))).apply()
+    }
+
+    fun recordChipOutcome(original: String, converted: String, outcome: InputStats.Outcome) {
+        if (!statsEnabled) return
+        val day = today()
+        sp.edit()
+            .putString(KEY_STATS_DAYS, InputStats.encodeDays(InputStats.addToDay(statsDays, day, outcome = outcome)))
+            .putString(KEY_STATS_WORDS, InputStats.encodeWords(InputStats.recordWord(statsWords, original, converted, outcome, day)))
+            .apply()
+    }
+
+    fun addTyping(keys: Int, typingMs: Long) {
+        if (!statsEnabled || keys <= 0) return
+        sp.edit().putString(KEY_STATS_DAYS, InputStats.encodeDays(InputStats.addToDay(statsDays, today(), keys = keys, typingMs = typingMs))).apply()
+    }
+
+    /** 자동 제안(한/영 전환 직후)을 그만 띄울 단어인가([InputStats.shouldSuppress]). */
+    fun isSuggestionSuppressed(original: String): Boolean = statsEnabled && InputStats.shouldSuppress(statsWords, original)
+
+    fun clearStats() = sp.edit().remove(KEY_STATS_DAYS).remove(KEY_STATS_WORDS).apply()
+
+    fun today(): Long = java.time.LocalDate.now().toEpochDay()
+
     // ---- 플로팅 메뉴(배지 탭 래디얼 메뉴) ----
     /**
      * 저사양(움직임 줄이기) 모드. ON 이면 메뉴를 펼친 뒤의 연속 애니메이션(오브 morph/부유/별/먼지/
@@ -472,6 +513,10 @@ class Prefs(context: Context) {
         const val KEY_REPLACE_ENABLED = "replace_enabled"
         const val KEY_REPLACE_CONFIDENCE = "replace_confidence"
         const val KEY_SWITCH_SUGGEST = "switch_suggest"
+        const val KEY_STATS_ENABLED = "stats_enabled"
+        const val KEY_TYPING_SPEED = "typing_speed_enabled"
+        const val KEY_STATS_DAYS = "stats_days"
+        const val KEY_STATS_WORDS = "stats_words"
         const val KEY_TYPO_EXCEPTIONS = "typo_exception_words"
         const val KEY_EXCLUDE_TOUCH_KEYBOARD = "exclude_touch_keyboard"
         const val KEY_KEYBOARD_CONNECT_NOTIFY = "keyboard_connect_notify"

@@ -16,6 +16,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
 import com.langsense.app.R
 import com.langsense.app.util.ImeLocaleParser
+import com.langsense.app.util.InputStats
 import com.langsense.app.util.Prefs
 import kotlin.math.roundToInt
 
@@ -450,17 +451,20 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
             node.recycle()
             return@onMain
         }
-        removeChip() // 이전 칩이 있었다면 그 노드까지 함께 회수
+        removeChip() // 이전 칩이 있었다면 그 노드까지 함께 회수(결과 미집계 — 드래그 중 다른 칩으로 바뀐 것)
         pendingNode = node
+        val original = fullText.substring(selStart.coerceIn(0, fullText.length), selEnd.coerceIn(selStart.coerceIn(0, fullText.length), fullText.length))
         val view = ReplaceChipView(context)
         view.bind(
             converted,
             onTap = {
                 applyReplacement(node, fullText, selStart, selEnd, converted, exactRange)
+                chipOutcomeListener?.invoke(original, converted, InputStats.Outcome.ACCEPTED)
                 removeChip()
             },
             onLongPress = {
-                addSelectionAsTypoException(fullText.substring(selStart.coerceIn(0, fullText.length), selEnd.coerceIn(0, fullText.length)))
+                addSelectionAsTypoException(original)
+                chipOutcomeListener?.invoke(original, converted, InputStats.Outcome.EXCEPTED)
                 removeChip()
             },
         )
@@ -482,7 +486,17 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         lastChipSelStart = selStart
         lastChipSelEnd = selEnd
 
-        chipDismiss = Runnable { removeChip() }.also { handler.postDelayed(it, timeoutMs) }
+        chipDismiss = Runnable {
+            chipOutcomeListener?.invoke(original, converted, InputStats.Outcome.IGNORED)
+            removeChip()
+        }.also { handler.postDelayed(it, timeoutMs) }
+    }
+
+    /** "교체?" 칩의 결과(교체 / 무시 / 예외)를 받는 쪽 — 서비스가 입력 통계에 넣는다(2026-10). */
+    private var chipOutcomeListener: ((original: String, converted: String, outcome: InputStats.Outcome) -> Unit)? = null
+
+    fun setChipOutcomeListener(listener: (original: String, converted: String, outcome: InputStats.Outcome) -> Unit) {
+        chipOutcomeListener = listener
     }
 
     /** 칩을 길게 누름: 선택한 라틴 단어 하나를 한영타 예외로 등록하고 토스트로 알린다. */

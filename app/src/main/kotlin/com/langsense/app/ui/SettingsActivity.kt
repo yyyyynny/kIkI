@@ -29,6 +29,7 @@ import androidx.core.content.ContextCompat
 import com.langsense.app.R
 import com.langsense.app.util.ColorMath
 import com.langsense.app.util.ImeLocaleParser
+import com.langsense.app.util.InputStats
 import com.langsense.app.util.Prefs
 import com.langsense.app.util.SettingsSearch
 import com.langsense.app.util.ThemeManager
@@ -70,7 +71,7 @@ class SettingsActivity : AppCompatActivity() {
      */
     private val prefsListener =
         android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
-            syncToggles(); refreshDiagnosticResult(); refreshRailSummaries()
+            syncToggles(); refreshDiagnosticResult(); refreshStats(); refreshRailSummaries()
         }
 
     /** [diagnosticResultRow] 가 채우는, 최근 캡처된 전환 키를 보여주는 텍스트. */
@@ -882,6 +883,49 @@ class SettingsActivity : AppCompatActivity() {
         },
 
         GroupDef(
+            GROUP_STATS, R.string.settings_group_stats, R.string.settings_group_stats_desc,
+            R.drawable.ic_grp_stats, null,
+            summary = {
+                if (!prefs.statsEnabled) onOff(false)
+                else InputStats.sumRecent(prefs.statsDays, prefs.today(), 1).let { getString(R.string.stats_rail_summary, it.accepted) }
+            }
+        ) { c ->
+            c.addView(sectionCard(getString(R.string.stats_overview)).apply {
+                addView(statsText().also { statsOverviewText = it })
+            })
+            c.addView(sectionCard(getString(R.string.stats_words)).apply {
+                addView(descRow(getString(R.string.stats_words_desc, InputStats.SUPPRESS_AFTER_IGNORED)))
+                addView(statsText().also { statsWordsText = it })
+            })
+            c.addView(sectionCard(getString(R.string.stats_settings)).apply {
+                addView(boundSwitchRow(getString(R.string.stats_enabled), { prefs.statsEnabled }) {
+                    prefs.statsEnabled = it; markSaved(); refreshRailSummaries()
+                })
+                addView(descRow(getString(R.string.stats_enabled_desc)))
+                addView(boundSwitchRow(getString(R.string.stats_typing_speed), { prefs.typingSpeedEnabled }) {
+                    prefs.typingSpeedEnabled = it; markSaved()
+                })
+                addView(descRow(getString(R.string.stats_typing_speed_desc)))
+                addView(TextView(this@SettingsActivity).apply {
+                    text = getString(R.string.stats_clear)
+                    textSize = 13f
+                    setTextColor(themeColor(R.attr.uiAccent))
+                    setTypeface(typeface, Typeface.BOLD)
+                    setPadding(0, dp(8), dp(4), dp(4))
+                    isClickable = true
+                    isFocusable = true
+                    background = rippleBoundedBackground()
+                    setOnClickListener {
+                        prefs.clearStats()
+                        refreshStats(); refreshRailSummaries()
+                        toastMsg(getString(R.string.stats_cleared))
+                    }
+                })
+            })
+            refreshStats()
+        },
+
+        GroupDef(
             GROUP_DIAG, R.string.settings_group_diag, R.string.settings_group_diag_desc,
             R.drawable.ic_grp_diag, null,
             summary = { onOff(prefs.diagnosticKeyLoggingEnabled) }
@@ -1243,6 +1287,15 @@ class SettingsActivity : AppCompatActivity() {
             item(s(R.string.settings_keyboard_connect_notify), path(R.string.settings_group_keyboard), GROUP_KEYBOARD,
                 "블루투스, 연결, 끊김, 해제, 알림, 토스트, 배터리, 외장 키보드, bluetooth"),
             // ── 전환 원인 진단 ──
+            // ── 입력 통계 ──
+            item(s(R.string.stats_overview), path(R.string.settings_group_stats), GROUP_STATS,
+                "통계, 기록, 몇 번, 횟수, 한영타 횟수, 전환 횟수, 수락률, 요약, 오늘, 일주일, stats"),
+            item(s(R.string.stats_words), path(R.string.settings_group_stats), GROUP_STATS,
+                "자주 틀리는 단어, 자주 나온, 오타 목록, 그만 묻기, 학습, 안 뜸, 무시"),
+            item(s(R.string.stats_typing_speed), path(R.string.settings_group_stats), GROUP_STATS,
+                "타수, 타자 속도, 분당 타수, 키 수, 속도, wpm, cpm, typing speed"),
+            item(s(R.string.stats_enabled), path(R.string.settings_group_stats), GROUP_STATS,
+                "기록 끄기, 기록 지우기, 개인정보, 저장, 삭제, 통계 끄기"),
             item(s(R.string.settings_diagnostic_enabled), path(R.string.settings_group_diag), GROUP_DIAG,
                 "진단, 원인, 범인, 단축키, 자동 전환, 저절로 바뀜, 멋대로 바뀜, 키보드가 자꾸 바뀜, 한영이 바뀜, 기록, 로그, 스페이스"),
             item(getString(R.string.settings_search_item_diag_history), path(R.string.settings_group_diag), GROUP_DIAG,
@@ -1335,8 +1388,9 @@ class SettingsActivity : AppCompatActivity() {
         // 배지 오버레이는 이 화면 위에도 떠 있어 보면서 메뉴로 토글할 수 있으므로 요약도 함께.
         syncToggles()
         refreshRailSummaries()
-        // 서비스가 백그라운드에서 캡처했을 수 있는 최신 진단 결과를 반영.
+        // 서비스가 백그라운드에서 캡처했을 수 있는 최신 진단 결과·입력 통계를 반영.
         refreshDiagnosticResult()
+        refreshStats()
         prefs.register(prefsListener)
     }
 
@@ -1444,6 +1498,53 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    // ── 입력 통계(2026-10) ──
+
+    private var statsOverviewText: TextView? = null
+    private var statsWordsText: TextView? = null
+
+    private fun statsText(): TextView = TextView(this).apply {
+        textSize = 13f
+        setTextColor(themeColor(R.attr.uiOnSurface))
+        setLineSpacing(dp(3).toFloat(), 1f)
+        setTextIsSelectable(false)
+        setPadding(0, dp(4), 0, dp(4))
+    }
+
+    /** 오늘·최근 7일 요약, 날짜별 줄, 자주 나온 한영타 목록을 다시 그린다(서비스가 백그라운드에서 쌓으므로 prefs 변경마다). */
+    private fun refreshStats() {
+        val overview = statsOverviewText ?: return
+        val days = prefs.statsDays
+        val today = prefs.today()
+        val d1 = InputStats.sumRecent(days, today, 1)
+        val d7 = InputStats.sumRecent(days, today, 7)
+        overview.text = if (days.isEmpty()) getString(R.string.stats_empty) else buildString {
+            append(getString(R.string.stats_line_today, d1.switches, d1.suggested, d1.accepted))
+            append('\n')
+            val rate = if (d7.suggested > 0) d7.accepted * 100 / d7.suggested else 0
+            append(getString(R.string.stats_line_week, d7.switches, d7.suggested, d7.accepted, rate, d7.ignored, d7.excepted))
+            val kpm1 = InputStats.keysPerMinute(d1)
+            val kpm7 = InputStats.keysPerMinute(d7)
+            if (kpm1 != null || kpm7 != null) {
+                append('\n')
+                append(getString(R.string.stats_line_speed, kpm1?.toString() ?: "–", kpm7?.toString() ?: "–"))
+            }
+            append("\n\n")
+            append(getString(R.string.stats_by_day))
+            days.filter { it.epochDay > today - 7 }.sortedByDescending { it.epochDay }.forEach { d ->
+                val date = java.time.LocalDate.ofEpochDay(d.epochDay)
+                append('\n')
+                append(getString(R.string.stats_line_day, date.monthValue, date.dayOfMonth, d.switches, d.suggested, d.accepted))
+            }
+        }
+        val words = prefs.statsWords
+        statsWordsText?.text = if (words.isEmpty()) getString(R.string.stats_words_empty) else
+            InputStats.topWords(words, 10).joinToString("\n") { w ->
+                getString(R.string.stats_word_line, w.original, w.converted, w.accepted, w.ignored) +
+                    (if (InputStats.shouldSuppress(words, w.original)) getString(R.string.stats_word_suppressed) else "")
+            }
     }
 
     private fun relativeTime(at: Long): CharSequence = android.text.format.DateUtils.getRelativeTimeSpanString(
@@ -2171,6 +2272,7 @@ class SettingsActivity : AppCompatActivity() {
         private const val GROUP_NOFOCUS = "nofocus"
         private const val GROUP_KEYBOARD = "keyboard"
         private const val GROUP_DIAG = "diag"
+        private const val GROUP_STATS = "stats"
         private const val GROUP_THEME = "theme"
 
         /**

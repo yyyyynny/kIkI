@@ -193,6 +193,28 @@
                 android:textSize="13sp"
                 android:lineSpacingExtra="2dp" />
 
+            <!-- 접근성 서비스를 켜기 전에 무엇을 읽고 남기는지 알린다(2026-10). 숨기지 않고 버튼 바로 위에 둔다 —
+                 스토어에 올리게 되면 접근성 API 사용 앱에 요구되는 사전 고지 자리이기도 하다. -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/disclosure_title"
+                android:tag="fg=onSurface"
+                android:textColor="?attr/uiOnSurface"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/disclosure_body"
+                android:tag="fg=onSurfaceMuted"
+                android:textColor="?attr/uiOnSurfaceMuted"
+                android:textSize="12.5sp"
+                android:lineSpacingExtra="3dp" />
+
             <Button
                 android:id="@+id/btnAccessibility"
                 android:layout_width="match_parent"

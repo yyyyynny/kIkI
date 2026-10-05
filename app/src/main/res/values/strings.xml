@@ -25,7 +25,9 @@
     <string name="status_needed">필요함</string>
     <string name="summary_all_set">✓ 모든 설정이 완료되었습니다</string>
     <string name="summary_incomplete">아래에서 남은 설정을 마쳐 주세요</string>
-    <string name="privacy_note">이 앱은 키 입력 내용이나 화면 내용을 수집·저장·전송하지 않습니다. 모든 처리는 온디바이스(로컬)에서만 수행됩니다.</string>
+    <string name="privacy_note">모든 처리는 이 기기 안에서만 합니다. 이 앱에는 인터넷 권한이 없어 어떤 내용도 밖으로 보내지 않습니다.</string>
+    <string name="disclosure_title">kIkI 가 읽는 것과 남기는 것</string>
+    <string name="disclosure_body">• 읽는 것: 지금 입력 언어(한/영), 입력칸에서 드래그로 고른 글자, 영어→한글로 바꾼 순간 입력칸의 커서 바로 앞 글자\n• 읽지 않는 것: 비밀번호 칸, 다른 앱의 화면 내용, 어떤 키를 눌렀는지(타수 측정을 켜도 개수만 셉니다)\n• 남기는 것: 설정과 입력 통계(「교체?」 버튼이 뜬 영문과 바꿀 글자 포함) — 이 기기에만 저장하고, 설정 › 입력 통계에서 끄거나 지울 수 있습니다\n• 보내는 것: 없음</string>
 
     <!-- SettingsActivity -->
     <string name="settings_title">kIkI 설정</string>
@@ -180,6 +182,28 @@
     <string name="settings_group_keyboard">키보드</string>
     <string name="settings_group_keyboard_desc">외장 키보드를 쓸 때와 화면 터치 키보드를 쓸 때를 구분합니다. 아래 두 설정은 서로 독립입니다.</string>
     <string name="settings_group_keyboard_summary">터치 제외 %1$s · 연결 알림 %2$s</string>
+    <string name="settings_group_stats">입력 통계</string>
+    <string name="settings_group_stats_desc">한/영 전환과 한영타를 얼마나 자주 겪는지, 자주 나온 한영타가 무엇인지 보여줍니다. 기록은 이 기기에만 남아요.</string>
+    <string name="stats_rail_summary">오늘 교체 %1$d회</string>
+    <string name="stats_overview">요약</string>
+    <string name="stats_empty">아직 기록이 없어요. 한/영을 바꾸거나 「교체?」 버튼이 뜨면 여기에 쌓여요.</string>
+    <string name="stats_line_today">오늘 — 한/영 전환 %1$d회 · 교체 제안 %2$d회 → 교체 %3$d회</string>
+    <string name="stats_line_week">최근 7일 — 전환 %1$d회 · 제안 %2$d회 → 교체 %3$d회(%4$d%%) · 무시 %5$d · 예외 %6$d</string>
+    <string name="stats_line_speed">평균 타수(글자 키, 분당) — 오늘 %1$s · 최근 7일 %2$s</string>
+    <string name="stats_by_day">날짜별</string>
+    <string name="stats_line_day">%1$d/%2$d  전환 %3$d · 제안 %4$d · 교체 %5$d</string>
+    <string name="stats_words">자주 나온 한영타</string>
+    <string name="stats_words_desc">한/영 전환 직후 자동으로 뜬 제안을 %1$d번 무시하고 한 번도 교체하지 않은 단어는 그 뒤로 묻지 않아요(「그만 묻는 중」). 기록을 지우면 다시 물어요. 드래그로 직접 선택한 경우엔 항상 판정해요.</string>
+    <string name="stats_words_empty">아직 없어요</string>
+    <string name="stats_word_line">%1$s → %2$s   교체 %3$d · 무시 %4$d</string>
+    <string name="stats_word_suppressed"> · 그만 묻는 중</string>
+    <string name="stats_settings">기록 설정</string>
+    <string name="stats_enabled">입력 기록 남기기</string>
+    <string name="stats_enabled_desc">한/영 전환 횟수, 「교체?」 버튼을 눌렀는지·무시했는지, 버튼이 뜬 영문과 바꿀 글자를 이 기기에만 저장해요(최근 30일, 단어는 최대 200개). 밖으로 보내지 않아요. 끄면 새로 쌓지 않고 「그만 묻기」도 멈춰요.</string>
+    <string name="stats_typing_speed">타수 측정</string>
+    <string name="stats_typing_speed_desc">글자 키를 몇 번 눌렀는지와 치던 시간만 세서 분당 타수를 보여줘요(어떤 키인지는 기록하지 않아요, 2초 넘게 쉰 시간은 빼요). 켜면 모든 키 입력이 앱을 한 번씩 거쳐서 저사양 기기에서는 조금 느려질 수 있어요.</string>
+    <string name="stats_clear">기록 모두 지우기</string>
+    <string name="stats_cleared">입력 기록을 지웠어요</string>
     <string name="settings_group_diag">전환 원인 진단</string>
     <string name="settings_group_diag_desc">원인 모를 한/영 자동 전환이 반복될 때만 잠깐 켜세요. 전환 직전에 눌린 물리 키를 기록해 보여줍니다.</string>
     <string name="settings_group_theme">화면 테마</string>
