@@ -205,8 +205,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_DIAGNOSTIC_KEY_LOGGING, false)
         set(v) = sp.edit().putBoolean(KEY_DIAGNOSTIC_KEY_LOGGING, v).apply()
 
-    /** 전환 원인 진단 한 건 — 캡처 시각(epoch ms) + 그 순간 눌려 있던 키 조합("" 이면 못 찾음). */
-    data class SwitchTrigger(val atMillis: Long, val keys: String)
+    /**
+     * 전환 원인 진단 한 건 — 캡처 시각(epoch ms) + 그 순간 눌려 있던 키 조합("" 이면 못 찾음)
+     * + 전환 순간의 상황(2026-10: 발동 근거·터치 키보드 표시·앞 화면 앱, "" 이면 없음).
+     */
+    data class SwitchTrigger(val atMillis: Long, val keys: String, val context: String = "")
 
     /**
      * 최근 캡처된 전환 이력, **최신이 맨 앞**, 최대 [MAX_SWITCH_TRIGGER_HISTORY]건(2026-09: 1건→10건
@@ -218,8 +221,8 @@ class Prefs(context: Context) {
         private set(v) = sp.edit().putString(KEY_LAST_TRIGGER_HISTORY, encodeSwitchTriggers(v)).apply()
 
     /** 새 캡처 1건을 이력 맨 앞에 추가하고 [MAX_SWITCH_TRIGGER_HISTORY] 건으로 자른다. */
-    fun recordSwitchTrigger(keys: String) {
-        lastSwitchTriggers = (listOf(SwitchTrigger(System.currentTimeMillis(), keys)) + lastSwitchTriggers)
+    fun recordSwitchTrigger(keys: String, context: String = "") {
+        lastSwitchTriggers = (listOf(SwitchTrigger(System.currentTimeMillis(), keys, context)) + lastSwitchTriggers)
             .take(MAX_SWITCH_TRIGGER_HISTORY)
     }
 
@@ -528,12 +531,15 @@ class Prefs(context: Context) {
         const val MAX_SWITCH_TRIGGER_HISTORY = 10
 
         /**
-         * [SwitchTrigger] 목록 인코딩 — 한 줄에 하나, "epochMs\tkeys"(keys 는 비어도 됨). 순수 함수라
-         * JVM 테스트 대상([PrefsTest]). 키 조합 문자열은 [KeyTriggerDiagnostics.describe] 가 만드는
-         * "SHIFT_LEFT + SPACE" 형태(영문 대문자·밑줄·공백·플러스)뿐이라 탭/개행과 절대 충돌하지 않는다.
+         * [SwitchTrigger] 목록 인코딩 — 한 줄에 하나, "epochMs\tkeys\tcontext"(keys·context 는 비어도 됨,
+         * 예전 두 칸 형식도 읽는다). 순수 함수라 JVM 테스트 대상([PrefsTest]). 키 조합은
+         * [KeyTriggerDiagnostics.describe] 형태(영문 대문자·밑줄·공백·플러스)라 탭/개행이 없고, context 는
+         * 패키지 이름이 섞이므로 탭/개행을 공백으로 바꿔 저장한다.
          */
         fun encodeSwitchTriggers(list: List<SwitchTrigger>): String =
-            list.joinToString("\n") { "${it.atMillis}\t${it.keys}" }
+            list.joinToString("\n") {
+                "${it.atMillis}\t${it.keys}\t${it.context.replace('\t', ' ').replace('\n', ' ')}"
+            }
 
         fun decodeSwitchTriggers(raw: String?): List<SwitchTrigger> {
             if (raw.isNullOrBlank()) return emptyList()
@@ -541,7 +547,8 @@ class Prefs(context: Context) {
                 val tab = line.indexOf('\t')
                 if (tab < 0) return@mapNotNull null
                 val at = line.substring(0, tab).toLongOrNull() ?: return@mapNotNull null
-                SwitchTrigger(at, line.substring(tab + 1))
+                val rest = line.substring(tab + 1).split('\t', limit = 2)
+                SwitchTrigger(at, rest[0], rest.getOrElse(1) { "" })
             }
         }
         const val KEY_RADIAL_REDUCE_MOTION = "radial_reduce_motion"

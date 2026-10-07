@@ -1491,6 +1491,7 @@ class SettingsActivity : AppCompatActivity() {
                         if (t.keys.isEmpty()) getString(R.string.settings_diagnostic_result_unknown, relativeTime(t.atMillis))
                         else getString(R.string.settings_diagnostic_result_label, relativeTime(t.atMillis), t.keys)
                     )
+                    if (t.context.isNotEmpty()) append("\n    ").append(t.context)
                 }
                 if (history.any { it.keys.isEmpty() }) {
                     append("\n\n")

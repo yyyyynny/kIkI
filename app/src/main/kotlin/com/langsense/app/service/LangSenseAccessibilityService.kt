@@ -292,7 +292,8 @@ class LangSenseAccessibilityService : AccessibilityService(),
         val managed = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
             AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
         var flags = info.flags and managed.inv() // 시스템이 붙인 다른 비트는 보존
-        if (noFocus || excl) flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        // 진단: 전환 순간 터치 키보드가 떠 있었는지 보려면 창 목록이 필요하다(TYPE_WINDOWS_CHANGED 구독은 안 함)
+        if (noFocus || excl || diag) flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         if (noFocus || diag || prefs.typingSpeedEnabled) flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
 
         if (info.eventTypes == types && info.flags == flags &&
@@ -725,7 +726,23 @@ class LangSenseAccessibilityService : AccessibilityService(),
         val names = KeyTriggerDiagnostics.recentKeyNames(
             diagKeyCodes, diagKeyAtUptime, diagKeyWriteIndex, SystemClock.uptimeMillis()
         ) { code -> KeyEvent.keyCodeToString(code).removePrefix("KEYCODE_") }
-        prefs.recordSwitchTrigger(KeyTriggerDiagnostics.describe(names) ?: "")
+        prefs.recordSwitchTrigger(KeyTriggerDiagnostics.describe(names) ?: "", diagnosticContext())
+    }
+
+    /**
+     * 전환 순간의 상황(2026-10) — 키 없는 전환의 원인을 가르기 위함: 발동 근거(설정값 / 팝업 글자 / 입력기 조회),
+     * 터치 키보드 표시 여부(화면 키보드 키는 물리 키 이벤트가 아니라 키로는 안 잡힌다), 맨 앞 화면의 앱 패키지.
+     * 글자 내용은 남기지 않는다. 진단이 켜졌을 때만, 전환 1회당 창 조회 1회 + 루트 노드 조회 1회.
+     */
+    private fun diagnosticContext(): String {
+        val root = runCatching { rootInActiveWindow }.getOrNull()
+        val front = runCatching { root?.packageName?.toString() }.getOrNull()
+        runCatching { root?.recycle() }
+        return listOfNotNull(
+            imeDetector.lastEmitBasis.takeIf { it.isNotEmpty() }?.let { "근거: $it" },
+            "터치 키보드 표시 중".takeIf { computeSoftKeyboardVisible() },
+            front?.let { "앞 화면: $it" },
+        ).joinToString(" · ")
     }
 
     // ---------------------------------------------------------------------

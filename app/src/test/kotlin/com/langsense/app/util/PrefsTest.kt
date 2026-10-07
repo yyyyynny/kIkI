@@ -173,6 +173,17 @@ class PrefsTest {
         assertEquals(list, decoded)
     }
 
+    /** 상황 칸(2026-10)은 왕복되고, 탭·줄바꿈은 저장 형식을 깨지 않게 공백이 된다. 예전 두 칸 형식은 상황 "" 로 읽힌다. */
+    @Test
+    fun switchTriggers_context_roundTripAndSanitized() {
+        val list = listOf(Prefs.SwitchTrigger(5000L, "", "근거: 팝업 글자(com.samsung.x, 42자)\t앞\n화면"))
+        assertEquals(
+            listOf(Prefs.SwitchTrigger(5000L, "", "근거: 팝업 글자(com.samsung.x, 42자) 앞 화면")),
+            Prefs.decodeSwitchTriggers(Prefs.encodeSwitchTriggers(list)),
+        )
+        assertEquals(listOf(Prefs.SwitchTrigger(7L, "SPACE", "")), Prefs.decodeSwitchTriggers("7\tSPACE"))
+    }
+
     @Test
     fun decodeSwitchTriggers_nullOrBlank_returnsEmpty() {
         assertEquals(emptyList<Prefs.SwitchTrigger>(), Prefs.decodeSwitchTriggers(null))

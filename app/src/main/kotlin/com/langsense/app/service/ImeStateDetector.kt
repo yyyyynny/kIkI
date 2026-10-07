@@ -72,6 +72,16 @@ class ImeStateDetector(
     /** 합치는 구간 동안 들어온 윈도우 팝업 텍스트 힌트(삼성 내부 토글 대응). 매 [runRecheck] 후 비운다. */
     private var pendingPopupHint: String? = null
 
+    /** [pendingPopupHint] 를 낸 창(패키지·글자 수) — 전환 원인 진단용. 글자 내용은 남기지 않는다. */
+    private var pendingHintSource: String? = null
+
+    /**
+     * 마지막 발동의 근거(전환 원인 진단, 2026-10). 서비스가 [onLanguageChanged] 안에서 읽는다.
+     * 키 없는 전환이 "설정값이 실제로 바뀐 것"인지 "창 글자를 언어 팝업으로 읽은 것"인지 가르기 위함.
+     */
+    var lastEmitBasis: String = ""
+        private set
+
     /** 합쳐진 단 하나의 재확인 작업. 신호가 올 때마다 취소 후 재예약된다. */
     private val recheckRunnable = Runnable { runRecheck() }
 
@@ -206,6 +216,7 @@ class ImeStateDetector(
     fun stop() {
         handler.removeCallbacksAndMessages(null)
         pendingPopupHint = null
+        pendingHintSource = null
         pendingSince = 0L
         retriesLeft = 0
         pendingStrong = false
@@ -219,15 +230,17 @@ class ImeStateDetector(
 
     /** 접근성 윈도우 이벤트 경로(백스톱 + Samsung 팝업 텍스트 fallback). */
     fun onWindowStateChanged(event: AccessibilityEvent) {
-        val popupLang = if (isSystemPopupSource(event)) {
-            ImeLocaleParser.parseFromSystemPopupText(eventText(event))
-        } else null
+        val text = if (isSystemPopupSource(event)) eventText(event) else null
+        val popupLang = ImeLocaleParser.parseFromSystemPopupText(text)
         // 팝업 텍스트가 잡혔고 **그 내용이 새 정보일 때만** "강한 신호"(재시도 충전). 현재 언어를
         // 그대로 말하는 후행 팝업까지 강한 신호로 치면, 폴백 기기에서 재확인 체인이 메아리 가드
         // (ECHO_GUARD_MS) 너머까지 이어져 stale IMM 값이 재발동하는 연료가 된다. 일반 윈도우
         // 이벤트는 백스톱 재확인만 하고 재시도 예산은 건드리지 않는다(시스템 전체 윈도우 변화마다
         // 오기 때문).
-        requestRecheck(popupLang, strong = popupLang != null && popupLang != lastLang)
+        requestRecheck(
+            popupLang, strong = popupLang != null && popupLang != lastLang,
+            source = text?.let { "${event.packageName}, ${it.length}자" },
+        )
     }
 
     /**
@@ -241,8 +254,9 @@ class ImeStateDetector(
      * @param popupHint 윈도우 이벤트에서 파싱한 팝업 언어(있으면 서브타입보다 우선 — 삼성 내부 토글 대응).
      * @param strong 브로드캐스트/옵저버/팝업처럼 "전환이 실제로 있었다"고 볼 신호인지. 강한 신호만
      *   no-op 재시도 예산([retriesLeft])을 충전한다.
+     * @param source 힌트를 낸 창(패키지·글자 수) — 전환 원인 진단용.
      */
-    private fun requestRecheck(popupHint: String? = null, strong: Boolean = false) {
+    private fun requestRecheck(popupHint: String? = null, strong: Boolean = false, source: String? = null) {
         val now = SystemClock.uptimeMillis()
         if (popupHint != null && popupHint != ImeLocaleParser.UNKNOWN) {
             // 팝업 힌트는 비권위 소스: ① 현재 언어와 같으면 새 정보가 없고(폐기),
@@ -250,7 +264,10 @@ class ImeStateDetector(
             // 그 외에는 저장 — 서브타입이 안 바뀌는 삼성 내부 토글의 연속 전환도 놓치지 않는다.
             val noNews = popupHint == lastLang
             val echo = popupHint == prevLang && now - lastEmitAt < ECHO_GUARD_MS
-            if (!noNews && !echo) pendingPopupHint = popupHint
+            if (!noNews && !echo) {
+                pendingPopupHint = popupHint
+                pendingHintSource = source
+            }
         }
         if (strong) {
             retriesLeft = MAX_NOOP_RETRIES
@@ -289,7 +306,9 @@ class ImeStateDetector(
     private fun runRecheckInner() {
         pendingSince = 0L
         val hint = pendingPopupHint
+        val hintBasis = "팝업 글자(${pendingHintSource.orEmpty()})"
         pendingPopupHint = null
+        pendingHintSource = null
 
         val auth = readAuthoritative()
         if (auth != null) {
@@ -299,12 +318,12 @@ class ImeStateDetector(
             if (changed && deferSuspectRevert(auth)) return
             if (!changed) pendingRevertKey = null // 바운스가 원래 키로 되돌아와 소멸한 경우 등
             lastAuthKey = auth.key
-            if (changed && emitIfChanged(auth.lang, authoritative = true)) return
-            if (!changed && hint != null && emitIfChanged(hint, authoritative = false)) return
+            if (changed && emitIfChanged(auth.lang, authoritative = true, basis = "설정값")) return
+            if (!changed && hint != null && emitIfChanged(hint, authoritative = false, basis = hintBasis)) return
         } else {
-            if (hint != null && emitIfChanged(hint, authoritative = false)) return
+            if (hint != null && emitIfChanged(hint, authoritative = false, basis = hintBasis)) return
             // IMM 폴백은 stale 가능 → 강한 신호에서 비롯된 체인에서만 발동 근거로 인정.
-            if (pendingStrong && emitIfChanged(immFallbackLang(), authoritative = false)) return
+            if (pendingStrong && emitIfChanged(immFallbackLang(), authoritative = false, basis = "입력기 조회")) return
         }
         if (retriesLeft > 0) {
             val attempt = MAX_NOOP_RETRIES - retriesLeft
@@ -353,7 +372,7 @@ class ImeStateDetector(
      * [ECHO_GUARD_MS] 안에 되돌아가는 값은 stale 메아리로 무시. 권위 값(설정 직접 읽기)은 정의상
      * stale 이 없으므로 가드 없이 신뢰한다 → 1초 안의 정상 한→영→한 재전환도 그대로 발동(씹힘 해소).
      */
-    private fun emitIfChanged(lang: String, authoritative: Boolean): Boolean {
+    private fun emitIfChanged(lang: String, authoritative: Boolean, basis: String): Boolean {
         if (lang == ImeLocaleParser.UNKNOWN) return false
         val last = lastLang
         if (lang == last) return false
@@ -368,6 +387,7 @@ class ImeStateDetector(
         emitCount++
         // 한 전환당 정확히 1회만 찍혀야 한다(실기기 검증용 로그).
         Log.d(TAG, "language change emitted: $lang (emit #$emitCount, authoritative=$authoritative)")
+        lastEmitBasis = basis
         onLanguageChanged(lang)
         return true
     }
