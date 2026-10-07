@@ -230,7 +230,10 @@ class ImeStateDetector(
 
     /** 접근성 윈도우 이벤트 경로(백스톱 + Samsung 팝업 텍스트 fallback). */
     fun onWindowStateChanged(event: AccessibilityEvent) {
-        val text = if (isSystemPopupSource(event)) eventText(event) else null
+        val pkg = event.packageName?.toString()
+        val text = if (ImeLocaleParser.isPopupPackage(pkg)) {
+            eventText(event).takeIf { it.length <= ImeLocaleParser.POPUP_TEXT_MAX }
+        } else null
         val popupLang = ImeLocaleParser.parseFromSystemPopupText(text)
         // 팝업 텍스트가 잡혔고 **그 내용이 새 정보일 때만** "강한 신호"(재시도 충전). 현재 언어를
         // 그대로 말하는 후행 팝업까지 강한 신호로 치면, 폴백 기기에서 재확인 체인이 메아리 가드
@@ -239,7 +242,7 @@ class ImeStateDetector(
         // 오기 때문).
         requestRecheck(
             popupLang, strong = popupLang != null && popupLang != lastLang,
-            source = text?.let { "${event.packageName}, ${it.length}자" },
+            source = text?.let { "$pkg, ${it.length}자" },
         )
     }
 
@@ -442,13 +445,6 @@ class ImeStateDetector(
         }.getOrNull().orEmpty()
         cachedImeId = imeId
         lastUnresolvedHash = 0
-    }
-
-    /** Samsung/시스템 팝업으로 보이는 이벤트만 텍스트 fallback 대상으로. */
-    private fun isSystemPopupSource(event: AccessibilityEvent): Boolean {
-        val pkg = event.packageName?.toString() ?: return false
-        return pkg == "android" || pkg.contains("samsung", ignoreCase = true) ||
-            pkg.contains("inputmethod", ignoreCase = true) || pkg.contains("honeyboard", ignoreCase = true)
     }
 
     private fun eventText(event: AccessibilityEvent): String =

@@ -45,6 +45,22 @@ object ImeLocaleParser {
     }
 
     /**
+     * 언어 전환 팝업을 낼 수 있는 출처인지 — 시스템(`android`)과 입력기 패키지만(2026-10).
+     * 예전엔 패키지명에 `samsung` 만 있어도 받아, 삼성 패스·삼성 지문 창의 글자 속 "English"/"한국어" 가
+     * 가짜 전환(지문 인증 때 영→한 깜박임)을 일으켰다(S25+ 실사용 제보).
+     */
+    fun isPopupPackage(pkg: String?): Boolean = pkg != null && (
+        pkg == "android" || pkg.contains("inputmethod", ignoreCase = true) ||
+            pkg.contains("honeyboard", ignoreCase = true)
+        )
+
+    /**
+     * 언어 팝업으로 볼 글자 길이 상한 — 팝업은 "English (US)" 처럼 짧고, 화면 전체 글자는 길다.
+     * 한계: 입력기가 30자 넘는 안내문 안에 언어명을 넣으면 놓친다 — 확장: 실기기 팝업 문구를 모아 정확 일치로.
+     */
+    const val POPUP_TEXT_MAX = 30
+
+    /**
      * Samsung One UI IME 전환 시스템 팝업 텍스트에서 언어 추론 (fallback).
      * One UI 버전별 텍스트 패턴 차이를 흡수한다. 매칭 실패 시 null.
      *

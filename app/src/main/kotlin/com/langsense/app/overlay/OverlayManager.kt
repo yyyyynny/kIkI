@@ -391,10 +391,9 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     }
 
     /**
-     * 배지 중심의 **화면 절대 좌표**(px). 배지 창은 FLAG_LAYOUT_IN_SCREEN 없이 추가되어
-     * params.x/y 의 원점이 상태바 아래(콘텐츠 영역)인 반면, 퀵메뉴 창은 FLAG_LAYOUT_IN_SCREEN
-     * 이라 (0,0)=화면 최상단이다. params 좌표를 그대로 넘기면 이 차이만큼(상태바 높이) 팬이
-     * 배지보다 위에 붙으므로, 두 창 모두에서 유효한 화면 좌표로 읽는다.
+     * 배지 중심의 **화면 절대 좌표**(px). 배지 창(params.x/y 원점 = 상태바 아래)과 퀵메뉴 창의 원점이
+     * 서로 다르므로 화면 좌표로 넘기고, 메뉴 창 기준으로 바꾸는 건 [QuickMenuOverlayView] 가 한다
+     * (메뉴 창 원점도 기기마다 다르다 — 펀치홀 폰은 그 아래부터).
      */
     private fun badgeCenterOnScreen(view: BadgeOverlayView): Pair<Int, Int> {
         val loc = IntArray(2)

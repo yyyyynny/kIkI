@@ -13,6 +13,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import androidx.core.view.doOnLayout
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -140,10 +141,17 @@ class QuickMenuOverlayView(
      * 이 함수가 호출될 때마다 다시 읽으므로, 20초 유휴 캐시로 재사용된 창이라도 그 사이 설정에서
      * 바뀐 값이 다음 오픈에 자동으로 반영된다(별도 캐시 무효화/리스너 불필요).
      */
-    private fun initMenu() {
+    private fun initMenu() = doOnLayout { sendInit() } // 창 위치는 배치가 끝나야 안다(재사용 오픈은 다시 붙인 직후 호출됨)
+
+    private fun sendInit() {
         if (dismissed || destroyed) return
         val density = resources.displayMetrics.density.coerceAtLeast(0.1f)
-        val (ax, ay) = anchorProvider()
+        // 앵커는 이 창 기준 좌표로 넘긴다 — 창 원점이 화면 맨 위가 아닐 수 있다(폰은 펀치홀 아래부터 배치돼
+        // 팬이 그만큼 아래로 밀렸다, 2026-10 S25+ 제보). 화면 좌표에서 이 창의 화면 위치를 뺀다.
+        val origin = IntArray(2).also { getLocationOnScreen(it) }
+        val (sx, sy) = anchorProvider()
+        val ax = sx - origin[0]
+        val ay = sy - origin[1]
         val (accentHex, glowHex) = colorProvider()
         val cfg = JSONObject().apply {
             put("anchorX", ax / density)
