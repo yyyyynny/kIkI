@@ -63,6 +63,10 @@ object PermissionHelper {
         return pm.isIgnoringBatteryOptimizations(context.packageName)
     }
 
+    /** 앱이 동작하는 데 꼭 필요한 두 권한(오버레이·접근성)이 모두 켜졌는지 — 온보딩 관문과 설정 화면 가드가 함께 쓴다. */
+    fun essentialsGranted(context: Context): Boolean = canDrawOverlays(context) &&
+        (isAccessibilityServiceEnabled(context) || isAccessibilityEnabledViaSecure(context))
+
     fun batteryOptimizationSettingsIntent(): Intent =
         Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

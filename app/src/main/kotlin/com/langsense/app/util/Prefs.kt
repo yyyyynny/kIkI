@@ -228,6 +228,11 @@ class Prefs(context: Context) {
 
     fun clearLastSwitchTrigger() = sp.edit().remove(KEY_LAST_TRIGGER_HISTORY).apply()
 
+    /** 온보딩에서 배터리 최적화 단계를 "나중에"로 넘겼는지(2026-10 온보딩 관문). 회사 기기 정책 등으로 못 바꾸는 사람용. */
+    var batteryStepSkipped: Boolean
+        get() = sp.getBoolean(KEY_BATTERY_STEP_SKIPPED, false)
+        set(v) = sp.edit().putBoolean(KEY_BATTERY_STEP_SKIPPED, v).apply()
+
     // ---- 입력 통계(2026-10, [InputStats]) — 기기 안에만 저장 ----
 
     /** 입력 통계 기록(기본 ON). 끄면 새로 쌓지 않고, 자동 제안의 "그만 묻기"도 쓰지 않는다. 쌓인 기록은 [clearStats] 로 지운다. */
@@ -526,6 +531,7 @@ class Prefs(context: Context) {
         const val KEY_DIAGNOSTIC_PAUSED_BY_TOUCH_EXCLUDE = "diagnostic_paused_by_touch_exclude"
         const val KEY_DIAGNOSTIC_KEY_LOGGING = "diagnostic_key_logging"
         const val KEY_LAST_TRIGGER_HISTORY = "last_switch_trigger_history"
+        const val KEY_BATTERY_STEP_SKIPPED = "battery_step_skipped"
 
         /** [Prefs.lastSwitchTriggers] 가 기억하는 최대 건수. */
         const val MAX_SWITCH_TRIGGER_HISTORY = 10

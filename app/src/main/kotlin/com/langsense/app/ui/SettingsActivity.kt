@@ -1,5 +1,6 @@
 package com.langsense.app.ui
 
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -30,6 +31,7 @@ import com.langsense.app.R
 import com.langsense.app.util.ColorMath
 import com.langsense.app.util.ImeLocaleParser
 import com.langsense.app.util.InputStats
+import com.langsense.app.util.PermissionHelper
 import com.langsense.app.util.Prefs
 import com.langsense.app.util.SettingsSearch
 import com.langsense.app.util.ThemeManager
@@ -278,6 +280,15 @@ class SettingsActivity : AppCompatActivity() {
         column.addView(searchRow())
         column.addView(railList)
         column.addView(versionFooter())
+        column.addView(TextView(this).apply {
+            text = getString(R.string.settings_review_onboarding)
+            textSize = 12f
+            setTextColor(themeColor(R.attr.uiAccent))
+            setPadding(dp(11), dp(10), dp(11), dp(10))
+            setOnClickListener {
+                startActivity(Intent(this@SettingsActivity, MainActivity::class.java).putExtra(MainActivity.EXTRA_REVIEW, true))
+            }
+        })
         return ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
             addView(column)
@@ -1384,6 +1395,12 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 필수 권한이 풀렸으면(업데이트·오류로 접근성이 꺼지는 일이 실제로 있다) 온보딩으로 되돌린다.
+        if (!PermissionHelper.essentialsGranted(this)) {
+            startActivity(Intent(this, MainActivity::class.java))
+            finish()
+            return
+        }
         // 외부(래디얼 메뉴)에서 바뀐 토글 값을 현재 prefs 기준으로 다시 맞춘다(stale 표시 방지).
         // 배지 오버레이는 이 화면 위에도 떠 있어 보면서 메뉴로 토글할 수 있으므로 요약도 함께.
         syncToggles()

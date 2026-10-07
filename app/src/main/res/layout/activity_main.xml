@@ -304,6 +304,19 @@
                 android:textColor="?attr/uiOnAccentContainer"
                 android:textSize="14sp"
                 android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btnBatteryLater"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:minHeight="40dp"
+                android:gravity="center"
+                android:background="?attr/selectableItemBackground"
+                android:text="@string/btn_battery_later"
+                android:tag="fg=muted"
+                android:textColor="?attr/uiMuted"
+                android:textSize="12sp" />
         </LinearLayout>
 
         <!-- 앱 설정 -->

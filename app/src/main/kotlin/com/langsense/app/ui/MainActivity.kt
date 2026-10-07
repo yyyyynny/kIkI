@@ -3,6 +3,7 @@ package com.langsense.app.ui
 import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
+import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -17,6 +18,8 @@ import com.langsense.app.util.themeColor
 /**
  * 온보딩 화면.
  * 3단계 권한/활성화 흐름을 안내하고, onResume 마다 상태를 갱신한다.
+ * 관문(2026-10): 세 단계를 마치기 전엔 설정으로 넘어갈 수 없고(배터리는 "나중에"로 넘길 수 있음), 마쳤으면 앱을 열 때 바로
+ * 설정 화면으로 간다. 설정의 "설정 안내 다시 보기"로 열면([EXTRA_REVIEW]) 넘기지 않는다.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -61,9 +64,20 @@ class MainActivity : AppCompatActivity() {
             startActivitySafely(PermissionHelper.batteryOptimizationSettingsIntent())
         }
 
-        binding.btnSettings.setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java))
+        binding.btnBatteryLater.setOnClickListener {
+            Prefs(this).batteryStepSkipped = true
+            refreshStatus()
         }
+
+        binding.btnSettings.setOnClickListener { openSettings() }
+    }
+
+    private val reviewMode: Boolean get() = intent.getBooleanExtra(EXTRA_REVIEW, false)
+
+    /** 다시 보기로 왔으면 뒤에 있는 설정 화면으로 돌아가고, 아니면 설정을 열고 이 화면은 닫는다(뒤로가기로 다시 오지 않게). */
+    private fun openSettings() {
+        if (!reviewMode) startActivity(Intent(this, SettingsActivity::class.java))
+        finish()
     }
 
     override fun onResume() {
@@ -74,7 +88,7 @@ class MainActivity : AppCompatActivity() {
             recreate()
             return
         }
-        refreshStatus()
+        if (refreshStatus() && !reviewMode) openSettings()
     }
 
     /**
@@ -104,7 +118,8 @@ class MainActivity : AppCompatActivity() {
         binding.tvVersion.text = getString(R.string.settings_version_format, name ?: "?")
     }
 
-    private fun refreshStatus() {
+    /** 상태 표시를 갱신하고, 설정으로 넘어가도 되는지(관문 통과) 돌려준다. */
+    private fun refreshStatus(): Boolean {
         val overlayOk = PermissionHelper.canDrawOverlays(this)
         applyStatusPill(binding.tvOverlayStatus, overlayOk)
 
@@ -115,11 +130,17 @@ class MainActivity : AppCompatActivity() {
         val batteryOk = PermissionHelper.isIgnoringBatteryOptimizations(this)
         applyStatusPill(binding.tvBatteryStatus, batteryOk)
 
-        // 상단 요약 배너: 오버레이·접근성 두 필수 권한이 모두 켜지면 "완료". 배터리는 권장이라 제외.
-        val allSet = overlayOk && accOk
+        val skipped = Prefs(this).batteryStepSkipped
+        binding.btnBatteryLater.visibility = if (batteryOk || skipped) View.GONE else View.VISIBLE
+
+        val allSet = overlayOk && accOk && (batteryOk || skipped)
         binding.tvSummary.text =
             getString(if (allSet) R.string.summary_all_set else R.string.summary_incomplete)
         tintPill(binding.tvSummary, allSet)
+        binding.btnSettings.isEnabled = allSet
+        binding.btnSettings.alpha = if (allSet) 1f else 0.4f
+        binding.btnSettings.setText(if (allSet) R.string.btn_settings else R.string.btn_settings_locked)
+        return allSet
     }
 
     /** 상태 필: 텍스트("완료됨"/"필요함") + 상태색 글씨/컨테이너 배경. */
@@ -134,6 +155,11 @@ class MainActivity : AppCompatActivity() {
         tv.background = UiDrawables.pill(
             this, themeColor(if (ok) R.attr.statusOkContainer else R.attr.statusNeedContainer)
         )
+    }
+
+    companion object {
+        /** 설정의 "설정 안내 다시 보기"에서 열 때 — 관문을 통과해도 설정으로 자동으로 넘기지 않는다. */
+        const val EXTRA_REVIEW = "review"
     }
 
     private fun startActivitySafely(intent: Intent) {
