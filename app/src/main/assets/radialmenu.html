@@ -44,7 +44,7 @@ html, body {
   background: rgba(0, 0, 0, 0.25);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.32s ease;
+  transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
   z-index: 1;
 }
 .scrim.show {
@@ -69,19 +69,22 @@ html, body {
   /* 순수 컨테이너 — 개별 표시는 안의 요소(선/별)가 각자 담당(아래 참조). */
 }
 
-/* 선(스포크/호)은 각자 개별로 나타난다 — 오브(.orb-wrap)와 **완전히 같은** opacity 트랜지션
-   (0.30s ease) + 스태거(transitionDelay, i*STAGGER_MS)를 써서, 오브가 하나씩 피어날 때 그
+/* 선(스포크/호)은 각자 개별로 나타난다 — 오브(.orb-wrap)와 **완전히 같은** 박자(열기 240ms ·
+   닫기 160ms, 같은 곡선) + 스태거(transitionDelay, i*STAGGER_MS)를 써서, 오브가 하나씩 피어날 때 그
    오브로 향하는 선(과 앞 오브와의 호)이 오브와 똑같은 속도로 함께 페이드인된다(JS 의 addLine/
-   setOpen 참조).
+   setOpen 참조). 기본 상태의 트랜지션은 닫힐 때 쓰이고, 열릴 때는 .open 쪽 트랜지션이 쓰인다.
    ⚠️ 두 겹(glow=흐린 층, crisp=선명한 층) 모두에 이 트랜지션이 걸려야 한다. 과거엔 crisp 의
    `transition: stroke-opacity 0.25s` 가 opacity 트랜지션을 통째로 덮어써(전환 property 목록이
    교체됨) 정작 눈에 보이는 선명한 선이 트랜지션 없이 "띡" 즉시 나타났다. 그래서 crisp 의
    transition 에 opacity 를 명시적으로 함께 나열한다. */
 .line-glow, .line-crisp {
   opacity: 0;
-  transition: opacity 0.30s ease;
+  transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-.menu.open .line-glow, .menu.open .line-crisp { opacity: 1; }
+.menu.open .line-glow, .menu.open .line-crisp {
+  opacity: 1;
+  transition: opacity 240ms cubic-bezier(0.23, 1, 0.32, 1), stroke-opacity 0.25s;
+}
 
 .line-glow {
   stroke: rgb(var(--kiki-glow-rgb));
@@ -95,7 +98,7 @@ html, body {
   stroke-opacity: 0.55;
   stroke-width: 1.2;
   fill: none;
-  transition: opacity 0.30s ease, stroke-opacity 0.25s;
+  transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1), stroke-opacity 0.25s;
 }
 .line-crisp.lit { stroke-opacity: 0.95; stroke-width: 1.8; }
 
@@ -112,18 +115,32 @@ html, body {
   cursor: pointer;
   outline: none;
   opacity: 0;
-  /* collapsed: sit at badge, scaled to nothing */
-  transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(0);
-  transition:
-    transform 0.46s cubic-bezier(0.34, 1.56, 0.64, 1),
-    opacity 0.30s ease;
+  /* 접힘: 배지 쪽에 0.6 배로 숨어 있다. 예전엔 scale(0) 에서 튕기는 곡선(0.46s, 오버슈트)으로
+     "튀어나와" 싸 보였다 — 이제 0.6 배에서 240ms 강한 감속으로 미끄러져 자리 잡는다.
+     접힘 상태로 돌아올 땐 이미 투명하므로 트랜지션 없이 바로 옮긴다(닫기는 .closing 이 담당). */
+  transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(0.6);
+  transition: none;
   will-change: transform, opacity;
 }
 .menu.open .orb-wrap {
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
+  transition:
+    transform 240ms cubic-bezier(0.23, 1, 0.32, 1),
+    opacity 240ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-.menu.open .orb-wrap { animation: bob var(--bob-dur, 4.4s) ease-in-out var(--bob-del, 0s) infinite; }
+/* 닫기: 제자리에서 0.85 배로 줄며 160ms 안에 사라진다(튕김·스태거 없음, JS setOpen 참조). */
+.menu.closing .orb-wrap {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.85);
+  transition:
+    transform 160ms cubic-bezier(0.23, 1, 0.32, 1),
+    opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+/* 둥실(bob)은 등장 트랜지션(최대 240ms + 스태거)이 끝난 뒤 시작한다(+280ms). 닫는 동안에도 같은
+   선언을 유지해 애니메이션이 이어지게 한다 — 끊기면 떠 있던 오브가 사라지는 순간 제자리로 툭 떨어진다. */
+.menu.open .orb-wrap,
+.menu.closing .orb-wrap { animation: bob var(--bob-dur, 4.4s) ease-in-out calc(var(--bob-del, 0s) + 280ms) infinite; }
 
 @keyframes bob {
   0%, 100% { translate: 0 0; }
@@ -186,8 +203,9 @@ html, body {
   pointer-events: none;
   mix-blend-mode: screen;
 }
-.menu.open .orb-light {
-  animation: lightCounter var(--bob-dur, 4.4s) ease-in-out var(--bob-del, 0s) infinite;
+.menu.open .orb-light,
+.menu.closing .orb-light {
+  animation: lightCounter var(--bob-dur, 4.4s) ease-in-out calc(var(--bob-del, 0s) + 280ms) infinite;
 }
 @keyframes lightCounter {
   0%, 100% { translate: 0 0; }
@@ -271,13 +289,13 @@ html, body {
   100% { border-radius: 16px; }
 }
 
-/* spring bounce on tap */
-.orb.tapped { animation: orbTap 0.42s cubic-bezier(0.34, 1.56, 0.64, 1); }
+/* 탭 반응: 살짝 눌렸다 돌아온다(예전 0.9→1.1 튕김은 과했다 — 최대 1.04). */
+.orb.tapped { animation: orbTap 0.32s ease-out; }
 @keyframes orbTap {
-  0%   { scale: 1;   }
-  35%  { scale: 0.9; }
-  70%  { scale: 1.1; }
-  100% { scale: 1;   }
+  0%   { scale: 1;    }
+  35%  { scale: 0.95; }
+  70%  { scale: 1.04; }
+  100% { scale: 1;    }
 }
 
 /* ── Orb label ───────────────────────────────────────────── */
@@ -442,12 +460,17 @@ body.app-mode .menu .orb-wrap { pointer-events: auto; }
 /* 저사양 모드: 연속 애니메이션 정지(펼침/수납만 유지). travel dot 은 제거됐고,
    대신 추가된 선의 곡선 호흡(끝점 고정, 제어점만 출렁이는 <animate d>)도 reduce 시
    아예 생성하지 않는다(applyLineBreath 참조 — CSS 가 아니라 JS 단에서 결정). */
-body.reduce-motion .menu.open .orb-wrap { animation: none; }
+/* 움직임 줄이기: 위치 이동·크기 변화 없이 짧은 페이드만(열기·닫기 모두). */
+body.reduce-motion .menu .orb-wrap {
+  animation: none;
+  transform: translate(-50%, -50%);
+  transition: opacity 150ms ease-out;
+}
 body.reduce-motion .orb { animation: none; }
 body.reduce-motion .orb::after { animation: none; }
 /* 빛은 정지 상태로만 남긴다(모양은 같음). screen 합성도 끈다 — 합성 비용을 아끼고, 정지된
    흰 그라디언트는 일반 합성으로도 거의 같게 보인다. */
-body.reduce-motion .menu.open .orb-light,
+body.reduce-motion .menu .orb-light,
 body.reduce-motion .orb-light > * { animation: none; }
 body.reduce-motion .orb-light { mix-blend-mode: normal; }
 body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
@@ -510,7 +533,9 @@ body.reduce-motion .orb {
   let N = 5;
   /* 펼침 스태거 간격(ms) — 오브(orb-wrap)와 선(line-glow/crisp) 이 공유하는 단일 값.
      오브가 하나씩 피어나는 리듬에 선도 정확히 맞춰 함께 나타나게 한다. */
-  const STAGGER_MS = 60;
+  const STAGGER_MS = 30;
+  /* 닫기 트랜지션 길이(ms) — CSS .menu.closing 의 160ms 와 맞춘다. */
+  const CLOSE_MS = 160;
 
   /* 140° arc opening LEFT (centered on 180°): 110° … 250° */
   const ARC_START = 110, ARC_END = 250;
@@ -790,6 +815,7 @@ body.reduce-motion .orb {
   const badgeLang = document.getElementById('badgeLang');
   const scrim     = document.getElementById('scrim');
   let isOpen = false;
+  let closeTimer = null;
 
   function pulseBadge() {
     badge.classList.remove('pulse'); void badge.offsetWidth; badge.classList.add('pulse');
@@ -801,18 +827,24 @@ body.reduce-motion .orb {
     pulseBadge();
     badge.setAttribute('aria-expanded', String(open));
     if (open) {
-      // expand: 오브가 STAGGER_MS 간격으로 순서대로 튀어나오고, 그 오브로 향하는 선(과 앞
+      // expand: 오브가 STAGGER_MS 간격으로 순서대로 피어나고, 그 오브로 향하는 선(과 앞
       // 오브와의 호)도 같은 지연으로 함께 나타난다(자연스럽게 동기화 — addLine 참조).
+      clearTimeout(closeTimer);
       orbWraps.forEach((w, i) => w.style.transitionDelay = `${i * STAGGER_MS}ms`);
       lineElems.forEach(({ el, delayMs }) => el.style.transitionDelay = `${delayMs}ms`);
+      menu.classList.remove('closing');
       menu.classList.add('open');
       scrim.classList.add('show');
     } else {
-      // collapse: 오브와 선 모두 동시에(지연 없이) 일제히 사라진다.
+      // collapse: 오브와 선 모두 동시에(지연 없이) 제자리에서 줄며 사라진다(.closing). 다 사라진
+      // 뒤 .closing 을 떼어 접힘 상태(배지 쪽)로 보이지 않게 되돌려 둔다 — 다음 열기가 배지에서 시작.
       orbWraps.forEach(w => w.style.transitionDelay = '0ms');
       lineElems.forEach(({ el }) => el.style.transitionDelay = '0ms');
+      menu.classList.add('closing');
       menu.classList.remove('open');
       scrim.classList.remove('show');
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(() => { if (!isOpen) menu.classList.remove('closing'); }, CLOSE_MS + 40);
     }
   }
 
@@ -991,9 +1023,9 @@ body.reduce-motion .orb {
       }
       // 창 재사용(reopen)으로 KikiInit 이 다시 온 경우: 이전 펼침 상태를 먼저 접어 두어야
       // 아래 setOpen(true) 가 다시 동작한다(배지 숨김 등으로 KikiCollapse 없이 닫혔을 수 있음).
-      if (isOpen || menu.classList.contains('open')) {
+      if (isOpen || menu.classList.contains('open') || menu.classList.contains('closing')) {
         isOpen = false;
-        menu.classList.remove('open');
+        menu.classList.remove('open', 'closing');
         scrim.classList.remove('show');
       }
       // 네이티브 배지 중심(CSS px=dp)에 팬의 배지 지점(BX,BY)을 맞춘다.
@@ -1011,13 +1043,15 @@ body.reduce-motion .orb {
         // 화면이 좁아 하한>상한이 되면(어느 쪽에도 못 들어감) 중앙으로 축퇴.
         const clamp = (v, lo, hi) => hi < lo ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v));
 
-        // ⚠️ 배지가 화면 구석이면 팬(140°)이 들어갈 방향이 없어, 아래 클램프가 팬을 화면 안으로
-        // 밀면서 팬의 원점이 실제 배지에서 최대 ~220px 떨어졌다(실측) — "배지를 끝으로 옮기면
-        // 엉뚱한 자리에서 열린다"는 사용자 제보(2026-09). 요청("선이 길어져도 좋으니 과하지 않게
-        // 늘려서라도")대로, 반지름(선 길이)을 최대 RADIUS_SCALES 까지 늘리고 각도를 좁힌 후보도
-        // 함께 평가한다. 선을 늘리는 데엔 RADIUS_COST(px당) 비용을 매겨, 배지 이탈을 그만큼 이상
-        // 줄일 때만 늘어난다 — 배지에 여유가 있는 평소엔 반지름·틸트 모두 원본 그대로.
-        const RADIUS_SCALES = [1, 1.25, 1.5];
+        // 1순위(아래 anchored): 원점(선이 모이는 점)은 배지에 고정하고, 안 들어가면 반지름(선 길이)을
+        // 늘리고 인접 오브 거리(ORB_CHORD)를 유지한 채 각도를 좁힌다. 예전엔 원점을 화면 안쪽으로
+        // 밀어 맞췄는데, 폰(S25+ 세로) 왼쪽 아래 구석에서 원점이 배지보다 약 100dp 위에 생겨 "엉뚱한
+        // 곳에서 열린다"는 제보가 왔다(2026-10). 상한은 사용자 설정 배수(cfg.maxRadiusScale, 기본 3, 1~16).
+        // 2순위(폴백): 상한까지 늘려도 안 들어가면 아래 evaluate 로 원점을 미는 예전 방식.
+        const maxScale = (typeof cfg.maxRadiusScale === 'number' && isFinite(cfg.maxRadiusScale))
+          ? Math.min(16, Math.max(1, cfg.maxRadiusScale)) : 3;
+        // 폴백(예전 방식)의 반지름 후보 — 상한 배수를 넘는 것은 뺀다(상한 1이면 선을 늘리지 않음).
+        const RADIUS_SCALES = [1, 1.25, 1.5].filter(sc => sc <= maxScale);
         const RADIUS_COST = 0.6;
 
         // 후보(틸트, 반지름)의 배치 결과: 팬 실측 범위 → 미러 여부 → 클램프된 앵커 → 배지 이탈 거리.
@@ -1049,11 +1083,57 @@ body.reduce-motion .orb {
           return { tilt, radius, pts, mirror, ax, ay, score, overflow };
         }
 
-        let best = evaluate(0, R);
-        // 클램프가 발동했거나(=배지에서 밀림) 팬이 잘릴 때만 다른 배치를 시도한다.
-        // 배지가 화면 위쪽이면 음수 틸트(팬이 아래로), 아래쪽이면 양수 틸트(팬이 위로).
-        // 작은 반지름·작은 틸트부터 훑고 실질 개선(0.5 초과)일 때만 바꿔, 비기면 원본에 가까운 쪽이 남는다.
-        if (best.overflow > 0 || Math.abs(best.ax - cfg.anchorX) > 1 || Math.abs(best.ay - cfg.anchorY) > 1) {
+        const base = evaluate(0, R);
+        const ax0 = cfg.anchorX, ay0 = cfg.anchorY;
+        // 화면 기준 방향(도): 0=오른쪽, 90=아래, 180=왼쪽(배지 정면). 기존 선호 그대로 — 왼쪽이 기본,
+        // 배지가 화면 좌측이라 왼쪽 팬이 안 들어가면 오른쪽(미러).
+        const pref = base.mirror ? 0 : 180;
+        // 오른쪽을 향하는 팬은 미러로 표현해 위→아래 항목 순서를 지킨다(위아래로 똑바로면 선호 쪽).
+        const isMirrorDir = c => {
+          const cs = Math.cos(c * Math.PI / 180);
+          return cs > 1e-9 || (Math.abs(cs) <= 1e-9 && pref === 0);
+        };
+        // 오브 가로 반폭: 오브(80) 또는 라벨 중 넓은 쪽(라벨이 화면 밖으로 잘리지 않게).
+        const hws = orbLabels.map(l => Math.max(40, l.offsetWidth / 2));
+        // 배지 고정 원점에서 반지름 r, 팬 중심 방향 c 일 때 모든 오브+라벨+여백이 화면 안인가.
+        function fitsAt(r, c) {
+          const step = stepFor(r), mirror = isMirrorDir(c);
+          for (let i = 0; i < N; i++) {
+            const off = step * ((N - 1) / 2 - i);
+            const a = (mirror ? c - off : c + off) * Math.PI / 180;
+            const x = ax0 + r * Math.cos(a), y = ay0 + r * Math.sin(a);
+            if (x - hws[i] < PAD || x + hws[i] > vw - PAD ||
+                y - ORB_HALF_H < PAD || y + ORB_HALF_H + LABEL_H > vh - PAD) return false;
+          }
+          return true;
+        }
+        // 가장 작은 반지름부터(R×0.05 단위), 그 반지름에서 선호 방향에 가장 가까운 방향(0.5° 단위)을
+        // 찾는다. 동률이면 배지가 위쪽 절반일 때 아래로, 아래쪽 절반일 때 위로 도는 쪽을 먼저 본다.
+        // 한계: 각도를 0.5° 간격으로만 훑어 그보다 좁은 틈은 놓친다 — 확장: 필요해지면 구간 교집합을 해석적으로 계산.
+        let anchored = null;
+        const downFirst = ay0 < vh / 2;
+        const reach = Math.hypot(Math.max(ax0, vw - ax0), Math.max(ay0, vh - ay0));
+        for (let k = 0; !anchored; k++) {
+          const r = R + R * 0.05 * k;
+          if (r > R * maxScale + 1e-6 || r > reach) break; // 상한 초과, 또는 어느 오브도 화면에 못 닿음
+          for (let d = 0; d <= 180 && !anchored; d += 0.5) {
+            const down = pref === 180 ? pref - d : pref + d, up = pref === 180 ? pref + d : pref - d;
+            for (const c of (d === 0 ? [pref] : downFirst ? [down, up] : [up, down])) {
+              if (fitsAt(r, c)) { anchored = { r, c }; break; }
+            }
+          }
+        }
+
+        let best = base;
+        if (anchored) {
+          // 방향 c → 기존 틸트 표현(computePositions 의 tiltDeg, -180~180)으로 바꾼다. c=180 이면 틸트 0.
+          const mirror = isMirrorDir(anchored.c);
+          const tilt = (((mirror ? -anchored.c : anchored.c - 180) % 360) + 540) % 360 - 180;
+          best = { tilt, radius: anchored.r, pts: computePositions(tilt, N, anchored.r), mirror, ax: ax0, ay: ay0 };
+        } else if (best.overflow > 0 || Math.abs(best.ax - cfg.anchorX) > 1 || Math.abs(best.ay - cfg.anchorY) > 1) {
+          // 폴백: 클램프가 발동했거나(=배지에서 밀림) 팬이 잘릴 때만 다른 배치를 시도한다.
+          // 배지가 화면 위쪽이면 음수 틸트(팬이 아래로), 아래쪽이면 양수 틸트(팬이 위로).
+          // 작은 반지름·작은 틸트부터 훑고 실질 개선(0.5 초과)일 때만 바꿔, 비기면 원본에 가까운 쪽이 남는다.
           const sign = cfg.anchorY < vh / 2 ? -1 : 1;
           for (const s of RADIUS_SCALES) {
             for (let t = 0; t <= 90; t += 10) {
