@@ -15,8 +15,8 @@
     <string name="step_overlay_desc">언어 플래시·배지·교체 버튼을 화면 위에 띄우려면 필요합니다.</string>
     <string name="step_accessibility">접근성 서비스 활성화</string>
     <string name="step_accessibility_desc">언어 전환과 텍스트 선택을 감지하려면 접근성 서비스를 켜야 합니다.</string>
-    <string name="step_battery">배터리 최적화 예외 (권장)</string>
-    <string name="step_battery_desc">백그라운드에서 안정적으로 동작하도록 배터리 최적화에서 제외해 주세요.</string>
+    <string name="step_battery">배터리 최적화 예외</string>
+    <string name="step_battery_desc">백그라운드에서 꺼지지 않도록 배터리 최적화에서 제외해 주세요. 회사 기기처럼 바꿀 수 없으면 아래 "나중에"로 넘어갈 수 있어요.</string>
     <string name="btn_grant_overlay">권한 허용</string>
     <string name="btn_open_accessibility">접근성 설정 열기</string>
     <string name="btn_battery">배터리 설정 열기</string>
