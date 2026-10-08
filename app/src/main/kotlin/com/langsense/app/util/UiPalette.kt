@@ -64,6 +64,23 @@ data class UiPalette(
 
     companion object {
 
+        /**
+         * 사용자 지정 테마의 "랜덤" — 무작위 색이 아니라 사람이 고른 조화로운 4색(배경·카드·글자·강조) 10벌 중 하나를
+         * 고른다(Llove 저장소 커스텀 테마의 방식, 2026-10). 무작위 hex 는 대부분 탁하거나 어울리지 않는다.
+         */
+        val RANDOM_PRESETS: List<List<String>> = listOf(
+            listOf("#0E0E14", "#161620", "#E8E8F0", "#8080FF"),
+            listOf("#0A0F0A", "#121A12", "#D0E8D4", "#52A868"),
+            listOf("#1A0E0E", "#241616", "#F0DCD0", "#E07A5A"),
+            listOf("#0E1420", "#16203A", "#D8E8FF", "#5AA0F0"),
+            listOf("#140E1A", "#201628", "#E8D8F0", "#B070E0"),
+            listOf("#FAF6EF", "#FFFFFF", "#2A1E16", "#C0392B"),
+            listOf("#F0F4F8", "#FFFFFF", "#1A2430", "#2980B9"),
+            listOf("#101010", "#1C1C1C", "#F0F0F0", "#F1C40F"),
+            listOf("#0C1414", "#142020", "#D0EEE8", "#1ABC9C"),
+            listOf("#1A1410", "#241C14", "#EFE4CF", "#D4AF37"),
+        )
+
         /** 명암비 기준(WCAG AA, 본문 글자). 기본 테마들의 colors.xml 주석과 같은 기준이다. */
         const val TEXT_CONTRAST = 4.5
 

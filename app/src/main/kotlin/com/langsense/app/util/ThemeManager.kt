@@ -4,7 +4,10 @@ import android.content.Context
 import android.graphics.drawable.ColorDrawable
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import android.view.View
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import com.langsense.app.R
 
 /**
@@ -84,6 +87,23 @@ object ThemeManager {
         WindowCompat.getInsetsController(window, window.decorView).apply {
             isAppearanceLightStatusBars = !p.isDark
             isAppearanceLightNavigationBars = !p.isDark
+        }
+    }
+
+    /**
+     * 루트에 시스템 바·펀치홀·화면 키보드 높이만큼 여백을 더한다(원래 패딩 위에). Android 15 에서 targetSdk 35 앱은
+     * 화면 끝까지 그리기가 강제돼, 이게 없으면 제목이 상태바 아래에 깔린다(2026-10 S25+ 제보 — Android 14 이하
+     * 태블릿에선 강제가 아니라 안 보였다). 두 화면(온보딩·설정)이 여기 한 곳을 쓴다.
+     */
+    fun padForSystemBars(root: View) {
+        val l = root.paddingLeft; val t = root.paddingTop; val r = root.paddingRight; val b = root.paddingBottom
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val i = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout() or
+                    WindowInsetsCompat.Type.ime()
+            )
+            v.setPadding(l + i.left, t + i.top, r + i.right, b + i.bottom)
+            insets
         }
     }
 

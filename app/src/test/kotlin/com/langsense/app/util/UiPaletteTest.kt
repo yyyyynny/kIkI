@@ -67,4 +67,14 @@ class UiPaletteTest {
         assertEquals(null, ColorMath.parseHex("#12345"))
         assertEquals(null, ColorMath.parseHex("zzzzzz"))
     }
+
+    /** 랜덤 프리셋은 손대지 않아도 읽혀야 한다 — 글자가 배경·카드 위에서 모두 4.5:1 이상. */
+    @Test
+    fun randomPresets_readableAsIs() {
+        UiPalette.RANDOM_PRESETS.forEach { (bg, card, text, _) ->
+            val t = ColorMath.parseHex(text)!!
+            assertTrue(text, ColorMath.contrast(t, ColorMath.parseHex(bg)!!) >= UiPalette.TEXT_CONTRAST)
+            assertTrue(text, ColorMath.contrast(t, ColorMath.parseHex(card)!!) >= UiPalette.TEXT_CONTRAST)
+        }
+    }
 }

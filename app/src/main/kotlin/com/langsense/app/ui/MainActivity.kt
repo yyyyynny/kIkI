@@ -41,6 +41,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        ThemeManager.padForSystemBars(binding.root)
         // 레이아웃의 역할 태그(fg=/bg=)대로 색을 입힌다 — 사용자 지정 테마의 색은 스타일이 아니라
         // 런타임 팔레트에 있어 XML 의 ?attr 만으로는 닿지 않는다(UiDrawables 참조).
         UiDrawables.bindTags(binding.root)
@@ -78,6 +79,9 @@ class MainActivity : AppCompatActivity() {
     private fun openSettings() {
         if (!reviewMode) startActivity(Intent(this, SettingsActivity::class.java))
         finish()
+        // 앱 아이콘 → 곧장 설정으로 넘어갈 때 툭 바뀌지 않게 짧게 겹쳐 사라지게 한다.
+        @Suppress("DEPRECATION")
+        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
     }
 
     override fun onResume() {

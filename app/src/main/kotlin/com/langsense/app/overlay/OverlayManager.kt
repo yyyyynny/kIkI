@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Bundle
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -163,6 +164,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
                 // [7] 기본 윈도우 enter/exit 애니메이션 제거 → 색이 좌→우로 채워지지 않고 전체 화면이
                 // 한 프레임에 꽉 찬 상태로 나타난다. (페이드아웃은 뷰 알파 애니메이션이 따로 처리)
                 it.windowAnimations = 0
+                coverWholeScreen(it)
                 flashParams = it
             }
             if (runCatching { wm.addView(view, params) }.isFailure) return
@@ -351,7 +353,8 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
                 },
                 items = quickMenuItems,
                 reduceMotion = reduce, // 저사양 모드면 펼친 뒤 연속 애니메이션을 끈다
-                colorProvider = { prefs.radialAccentColorHex to prefs.radialGlowColorHex }
+                colorProvider = { prefs.radialAccentColorHex to prefs.radialGlowColorHex },
+                maxRadiusScaleProvider = { prefs.radialMaxRadiusScale }
             ) {
                 hideQuickMenu()
             }
@@ -372,6 +375,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
             PixelFormat.TRANSLUCENT
         ).also {
             it.windowAnimations = 0 // 등장 연출은 뷰 애니메이션으로 직접 처리
+            coverWholeScreen(it)
             quickMenuParams = it
         }
         if (runCatching { wm.addView(view, params) }.isFailure) {
@@ -399,6 +403,17 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         val loc = IntArray(2)
         view.getLocationOnScreen(loc)
         return (loc[0] + view.width / 2) to (loc[1] + view.height / 2)
+    }
+
+    /**
+     * 전체 화면 창(플래시·메뉴)이 펀치홀 줄·시스템 바까지 덮게 한다. 없으면 펀치홀 폰(S25+)에서 창이 상태바 아래부터
+     * 놓여, 메뉴 배경이 상태바만 빼고 깔렸다(2026-10 녹화 실측: 위 94px 는 안 어두워짐).
+     */
+    private fun coverWholeScreen(p: WindowManager.LayoutParams) {
+        p.layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        else WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) p.fitInsetsTypes = 0
     }
 
     fun hideQuickMenu() = onMain { hideQuickMenuInternal() }

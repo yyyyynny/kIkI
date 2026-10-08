@@ -1,5 +1,7 @@
 package com.langsense.app.ui
 
+import android.animation.ValueAnimator
+import android.view.animation.PathInterpolator
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
@@ -31,6 +33,7 @@ import com.langsense.app.R
 import com.langsense.app.util.ColorMath
 import com.langsense.app.util.ImeLocaleParser
 import com.langsense.app.util.InputStats
+import com.langsense.app.util.KeyTriggerDiagnostics
 import com.langsense.app.util.PermissionHelper
 import com.langsense.app.util.Prefs
 import com.langsense.app.util.SettingsSearch
@@ -189,6 +192,7 @@ class SettingsActivity : AppCompatActivity() {
             )
         }
         setContentView(screen)
+        ThemeManager.padForSystemBars(screen)
         screen.requestFocus()
         ThemeManager.applyWindow(this)
 
@@ -586,11 +590,27 @@ class SettingsActivity : AppCompatActivity() {
             detailScroll.visibility = View.VISIBLE
         }
         detailScroll.scrollTo(0, 0)
+        enterFrom(detailScroll, if (twoPane) 0 else 1)
     }
 
     private fun showList() {
         railRoot.visibility = View.VISIBLE
         detailScroll.visibility = View.GONE
+        enterFrom(railRoot, -1)
+    }
+
+    /**
+     * 화면이 바뀔 때 짧게 미끄러지며 나타나게 한다(2026-10, "모드 진입에 애니메이션이 없다" 제보). [direction] 1 = 오른쪽에서,
+     * -1 = 왼쪽에서, 0 = 제자리 페이드. 200ms·강한 감속 곡선(진입은 빠르게 시작해 부드럽게 멈춘다). 시스템 애니메이션을 끈
+     * 기기에선 생략한다.
+     */
+    private fun enterFrom(view: View, direction: Int) {
+        if (!ValueAnimator.areAnimatorsEnabled()) return
+        view.animate().cancel()
+        view.alpha = 0f
+        view.translationX = dp(24) * direction.toFloat()
+        view.animate().alpha(1f).translationX(0f).setDuration(200)
+            .setInterpolator(PathInterpolator(0.23f, 1f, 0.32f, 1f)).start()
     }
 
     private fun renderDetail() {
@@ -739,6 +759,10 @@ class SettingsActivity : AppCompatActivity() {
                     ) { prefs.flashOpacityPercent = it; markSaved(); refreshPreviews(); refreshRailSummaries() }
                 )
                 addView(descRow(getString(R.string.settings_flash_opacity_desc)))
+                addView(boundSwitchRow(getString(R.string.settings_flash_auto_switch), { prefs.flashAutoSwitch }) {
+                    prefs.flashAutoSwitch = it; markSaved()
+                })
+                addView(descRow(getString(R.string.settings_flash_auto_switch_desc)))
             })
             c.addView(sectionCard(getString(R.string.settings_languages)).apply {
                 addView(descRow(getString(R.string.settings_languages_desc)))
@@ -815,6 +839,13 @@ class SettingsActivity : AppCompatActivity() {
                 addView(colorPickerRow(getString(R.string.settings_radial_glow_color), prefs.radialGlowColorHex) {
                     prefs.radialGlowColorHex = it
                 })
+                addView(
+                    sliderRow(
+                        label = getString(R.string.settings_radial_max_radius),
+                        min = 1, max = 16, step = 1, value = prefs.radialMaxRadiusScale, suffix = "배"
+                    ) { prefs.radialMaxRadiusScale = it; markSaved() }
+                )
+                addView(descRow(getString(R.string.settings_radial_max_radius_desc)))
                 addView(descRow(getString(R.string.settings_radial_reduce_motion_desc)))
                 addView(switchRow(getString(R.string.settings_radial_reduce_motion), prefs.radialReduceMotion) {
                     prefs.radialReduceMotion = it; markSaved(); refreshRailSummaries()
@@ -1055,6 +1086,14 @@ class SettingsActivity : AppCompatActivity() {
         recreate()
     }
 
+    /** 큐레이션 프리셋([UiPalette.RANDOM_PRESETS]) 중 지금과 다른 하나를 사용자 지정 4색으로 넣는다. */
+    private fun applyRandomPreset() {
+        val current = prefs.customThemeSeed(Prefs.CUSTOM_BG)
+        val pick = UiPalette.RANDOM_PRESETS.filter { !it[0].equals(current, ignoreCase = true) }.random()
+        listOf(Prefs.CUSTOM_BG, Prefs.CUSTOM_SURFACE, Prefs.CUSTOM_TEXT, Prefs.CUSTOM_ACCENT)
+            .forEachIndexed { i, slot -> prefs.setCustomThemeSeed(slot, pick[i]) }
+    }
+
     /** [themeId] 테마의 배경·카드·글자·강조를 사용자 지정 4색으로 복사한다. */
     private fun copyThemeToCustom(themeId: String) {
         val p = UiPalette.forTheme(this, themeId)
@@ -1142,9 +1181,10 @@ class SettingsActivity : AppCompatActivity() {
             setPadding(0, dp(12), 0, dp(6))
         })
         val starts = GridLayout(this@SettingsActivity).apply { columnCount = themeColumns() + 1 }
-        Prefs.UI_THEME_IDS.filter { it != Prefs.THEME_SYSTEM && it != Prefs.THEME_CUSTOM }.forEach { id ->
+        val randomId = "random"
+        (listOf(randomId) + Prefs.UI_THEME_IDS.filter { it != Prefs.THEME_SYSTEM && it != Prefs.THEME_CUSTOM }).forEach { id ->
             starts.addView(TextView(this@SettingsActivity).apply {
-                text = getString(themeLabelRes(id))
+                text = if (id == randomId) getString(R.string.settings_theme_random) else getString(themeLabelRes(id))
                 textSize = 13f
                 gravity = Gravity.CENTER
                 minHeight = dp(40)
@@ -1153,7 +1193,7 @@ class SettingsActivity : AppCompatActivity() {
                 isClickable = true
                 isFocusable = true
                 setOnClickListener {
-                    copyThemeToCustom(id)
+                    if (id == randomId) applyRandomPreset() else copyThemeToCustom(id)
                     markSaved()
                     recreate()
                 }
@@ -1275,6 +1315,10 @@ class SettingsActivity : AppCompatActivity() {
                 "강조, 강조색, 색, 컬러, 하늘색, 메뉴 색, 오브, 물방울, accent"),
             item(s(R.string.settings_radial_glow_color), path(menu, R.string.settings_radial), GROUP_MENU,
                 "발광, 빛, 글로우, 후광, 선 색, 색, 컬러, 파랑, glow"),
+            item(s(R.string.settings_radial_max_radius), path(menu, R.string.settings_radial), GROUP_MENU,
+                "선 길이, 반지름, 구석, 모서리, 메뉴 위치, 엉뚱한 곳, 멀리, 길게, radius"),
+            item(s(R.string.settings_flash_auto_switch), path(flash, R.string.settings_flash), GROUP_FLASH,
+                "지문, 지문 인식, 생체 인증, 삼성 패스, 잠금 해제, 자동 전환, 저절로 바뀜, 깜박임, fingerprint"),
             item(s(R.string.settings_radial_reduce_motion), path(menu, R.string.settings_radial), GROUP_MENU,
                 "저사양, 움직임, 애니메이션, 버벅, 느림, 렉, 배터리, 가볍게, 모션, reduce motion"),
             // ── 한영타 교체 ──
@@ -1502,21 +1546,37 @@ class SettingsActivity : AppCompatActivity() {
             // 항목마다 반복하지 않고 끝에 한 번만 붙인다(예전엔 긴 문장이 건마다 반복돼 문단이 됐다).
             buildString {
                 append(getString(R.string.settings_diagnostic_result_header, Prefs.MAX_SWITCH_TRIGGER_HISTORY))
+                var anyUnknown = false
                 history.forEach { t ->
+                    val ctx = KeyTriggerDiagnostics.SwitchContext.decode(t.context)
+                    val time = relativeTime(t.atMillis)
+                    val cause = KeyTriggerDiagnostics.cause(t.keys, ctx)
+                    if (cause == KeyTriggerDiagnostics.Cause.UNKNOWN) anyUnknown = true
                     append('\n')
                     append(
-                        if (t.keys.isEmpty()) getString(R.string.settings_diagnostic_result_unknown, relativeTime(t.atMillis))
-                        else getString(R.string.settings_diagnostic_result_label, relativeTime(t.atMillis), t.keys)
+                        when (cause) {
+                            KeyTriggerDiagnostics.Cause.KEYS -> getString(R.string.settings_diagnostic_result_label, time, t.keys)
+                            KeyTriggerDiagnostics.Cause.SYSTEM_SCREEN -> getString(R.string.diag_cause_system, time)
+                            KeyTriggerDiagnostics.Cause.TOUCH_KEYBOARD -> getString(R.string.diag_cause_touch, time)
+                            KeyTriggerDiagnostics.Cause.KEYBOARD_POPUP -> getString(R.string.diag_cause_popup, time)
+                            KeyTriggerDiagnostics.Cause.UNKNOWN -> getString(R.string.settings_diagnostic_result_unknown, time)
+                        }
                     )
-                    if (t.context.isNotEmpty()) append("\n    ").append(t.context)
+                    // 앞 화면은 앱 이름으로(못 읽으면 패키지 이름). 예전 형식 기록은 저장된 문장 그대로.
+                    val where = ctx?.front?.let { appLabel(it) } ?: t.context.takeIf { ctx == null && it.isNotEmpty() }
+                    if (where != null) append("\n    ").append(getString(R.string.diag_front, where))
                 }
-                if (history.any { it.keys.isEmpty() }) {
+                if (anyUnknown) {
                     append("\n\n")
                     append(getString(R.string.settings_diagnostic_result_unknown_note))
                 }
             }
         }
     }
+
+    private fun appLabel(pkg: String): String = runCatching {
+        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+    }.getOrDefault(pkg)
 
     // ── 입력 통계(2026-10) ──
 
@@ -1583,7 +1643,7 @@ class SettingsActivity : AppCompatActivity() {
         ).also { it.topMargin = dp(12) }
         addView(TextView(this@SettingsActivity).apply {
             text = title
-            textSize = 15f
+            textSize = 16f
             setTextColor(themeColor(R.attr.uiAccent))
             letterSpacing = 0.01f
             setTypeface(typeface, Typeface.BOLD)
@@ -1591,13 +1651,19 @@ class SettingsActivity : AppCompatActivity() {
         })
     }
 
-    /** 항목 아래 붙는 짧은 회색 설명 문구(기능/수치 해설). */
+    /**
+     * 항목 아래 붙는 회색 설명 문구. 읽기 쉽게 13.5sp·행간 1.4배로 두고, 3줄을 넘으면 접어 두었다가 누르면 펼친다
+     * (2026-10 "가독성이 개판" 제보 — 카드마다 긴 회색 문단이 벽처럼 쌓여 있었다).
+     */
     private fun descRow(text: String): TextView = TextView(this).apply {
         this.text = text
-        textSize = 12.5f
+        textSize = 13.5f
         setTextColor(themeColor(R.attr.uiOnSurfaceMuted))
-        setLineSpacing(dp(2).toFloat(), 1f)
-        setPadding(0, dp(2), 0, dp(6))
+        setLineSpacing(0f, 1.4f)
+        setPadding(0, dp(2), 0, dp(8))
+        maxLines = DESC_MAX_LINES
+        ellipsize = android.text.TextUtils.TruncateAt.END
+        setOnClickListener { maxLines = if (maxLines == DESC_MAX_LINES) Int.MAX_VALUE else DESC_MAX_LINES }
     }
 
     private fun langSwitch(lang: String, labelRes: Int): SwitchCompat =
@@ -2310,6 +2376,9 @@ class SettingsActivity : AppCompatActivity() {
 
         /** 32색 팔레트. */
         /** 테마 배경·카드 견본 — 옅은 무채/종이/파스텔 + 어두운 바탕(오버레이용 [PALETTE] 는 너무 선명하다). */
+        /** 설명 문구를 접어 둘 줄 수. */
+        private const val DESC_MAX_LINES = 3
+
         private val THEME_BG_SWATCHES = listOf(
             "#FFFFFF", "#F4F6FA", "#F3EDE0", "#FBF8F1", "#EEF3EC", "#F1ECF7", "#FDF1F3", "#EAF4F8",
             "#E9E9E9", "#D9DEE7", "#1A1D23", "#0F1115", "#111827", "#110E1E", "#10231C", "#2A1E17",

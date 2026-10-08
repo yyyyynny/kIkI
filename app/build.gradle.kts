@@ -99,11 +99,14 @@ android {
             // proguard-rules.pro 의 keep 규칙으로 보호한다(래디얼 메뉴는 JS 가 문자열 이름으로
             // KikiNative.onItemTap/onDismiss/onReady 를 부르므로 난독화되면 조용히 먹통이 된다).
             isMinifyEnabled = true
+            // 쓰지 않는 리소스(AppCompat 의 안 쓰는 레이아웃·이미지 등)도 뺀다(2026-10 크기 줄이기: 디버그 9.5MB → 릴리스 약 1.6MB).
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            if (useSharedSigning) signingConfig = signingConfigs.getByName("shared")
+            // 공유 키가 없으면(CI 등) 디버그 키로 서명해 바로 설치할 수 있게 한다 — 배포를 디버그 APK 대신 이 빌드로 한다.
+            signingConfig = signingConfigs.getByName(if (useSharedSigning) "shared" else "debug")
         }
         debug {
             isMinifyEnabled = false

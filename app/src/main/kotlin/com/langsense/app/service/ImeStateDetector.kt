@@ -77,7 +77,7 @@ class ImeStateDetector(
 
     /**
      * 마지막 발동의 근거(전환 원인 진단, 2026-10). 서비스가 [onLanguageChanged] 안에서 읽는다.
-     * 키 없는 전환이 "설정값이 실제로 바뀐 것"인지 "창 글자를 언어 팝업으로 읽은 것"인지 가르기 위함.
+     * 값: `setting`(설정값이 실제로 바뀜) / `popup:패키지/글자수`(창 글자를 언어 팝업으로 읽음) / `imm`(입력기 조회 폴백).
      */
     var lastEmitBasis: String = ""
         private set
@@ -242,7 +242,7 @@ class ImeStateDetector(
         // 오기 때문).
         requestRecheck(
             popupLang, strong = popupLang != null && popupLang != lastLang,
-            source = text?.let { "$pkg, ${it.length}자" },
+            source = text?.let { "$pkg/${it.length}" },
         )
     }
 
@@ -309,7 +309,7 @@ class ImeStateDetector(
     private fun runRecheckInner() {
         pendingSince = 0L
         val hint = pendingPopupHint
-        val hintBasis = "팝업 글자(${pendingHintSource.orEmpty()})"
+        val hintBasis = "popup:${pendingHintSource.orEmpty()}"
         pendingPopupHint = null
         pendingHintSource = null
 
@@ -321,12 +321,12 @@ class ImeStateDetector(
             if (changed && deferSuspectRevert(auth)) return
             if (!changed) pendingRevertKey = null // 바운스가 원래 키로 되돌아와 소멸한 경우 등
             lastAuthKey = auth.key
-            if (changed && emitIfChanged(auth.lang, authoritative = true, basis = "설정값")) return
+            if (changed && emitIfChanged(auth.lang, authoritative = true, basis = "setting")) return
             if (!changed && hint != null && emitIfChanged(hint, authoritative = false, basis = hintBasis)) return
         } else {
             if (hint != null && emitIfChanged(hint, authoritative = false, basis = hintBasis)) return
             // IMM 폴백은 stale 가능 → 강한 신호에서 비롯된 체인에서만 발동 근거로 인정.
-            if (pendingStrong && emitIfChanged(immFallbackLang(), authoritative = false, basis = "입력기 조회")) return
+            if (pendingStrong && emitIfChanged(immFallbackLang(), authoritative = false, basis = "imm")) return
         }
         if (retriesLeft > 0) {
             val attempt = MAX_NOOP_RETRIES - retriesLeft

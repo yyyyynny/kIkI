@@ -68,6 +68,8 @@ class QuickMenuOverlayView(
      * 유휴 캐시의 재사용 판정([OverlayManager] 의 reduceMotion 비교)에 영향을 주지 않는다.
      */
     private val colorProvider: () -> Pair<String, String>,
+    /** 구석에서 선을 늘리는 한도(배수) — 열 때마다 최신 설정을 읽는다. */
+    private val maxRadiusScaleProvider: () -> Int,
     private val onDismiss: () -> Unit
 ) : FrameLayout(context) {
 
@@ -160,6 +162,7 @@ class QuickMenuOverlayView(
             put("labels", JSONArray(items.map { it.label }))
             put("accentColor", accentHex)
             put("glowColor", glowHex)
+            put("maxRadiusScale", maxRadiusScaleProvider())
             put("activeFlags", JSONArray(items.map { it.isActive?.invoke() ?: false }))
         }
         evalJs("window.KikiInit && window.KikiInit($cfg);")

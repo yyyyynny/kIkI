@@ -375,15 +375,13 @@ class LangSenseAccessibilityService : AccessibilityService(),
         !prefs.excludeTouchKeyboard || !softKeyboardVisible
 
     /**
-     * 전환 원인 진단(추가 기능 3)이 지금 캡처를 해야 하는지. "터치 키보드 제외" 하위 옵션
-     * ([Prefs.diagnosticPausedByTouchKeyboardExclude], 기본 OFF)이 꺼져 있으면 [featuresEnabled]
-     * 와 무관하게 항상 캡처한다(기존 동작) — "왜 전환됐는가"는 오버레이 표시 여부와 별개의
-     * 관심사라는 게 기본 입장이다. 그 하위 옵션을 켠 사용자만 터치 키보드가 떠 있는 동안엔
-     * ([featuresEnabled] 가 false 인 동안엔) 진단도 함께 멈춘다.
+     * 전환 원인 진단(추가 기능 3)을 지금 기록해야 하는지. 하위 옵션([Prefs.diagnosticPausedByTouchKeyboardExclude],
+     * 기본 OFF)을 켜면 터치 키보드가 떠 있는 동안의 전환은 기록하지 않는다. ⚠️ 예전엔 이 옵션이 "터치 키보드 제외"
+     * 기능이 켜져 있을 때만 먹혀서, 진단 화면에서 켜도 아무 효과가 없었다(2026-10 S25+ 제보). 전환 1회당 창 목록 조회 1회.
      */
     private fun diagnosticActive(): Boolean =
         prefs.diagnosticKeyLoggingEnabled &&
-            (featuresEnabled() || !prefs.diagnosticPausedByTouchKeyboardExclude)
+            !(prefs.diagnosticPausedByTouchKeyboardExclude && computeSoftKeyboardVisible())
 
     /** IME 창 높이 측정 재사용 버퍼(메인 스레드 전용 — windows 콜백/이벤트가 모두 메인). */
     private val imeBoundsBuf = android.graphics.Rect()
@@ -627,19 +625,49 @@ class LangSenseAccessibilityService : AccessibilityService(),
         runCatching { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
     }
 
+    /** 시스템 화면(지문 창 등)이 바꾼 마지막 자동 전환 시각과 그 직전 언어 — 되돌림까지 자동 전환으로 묶는다. */
+    private var autoSwitchAt = 0L
+    private var langBeforeAuto: String? = null
+
     private fun onLanguageChanged(lang: String) {
+        val prev = currentLang
         currentLang = lang
+        // 시스템 화면이 바꾼 전환인지(2026-10, S25+: 지문 창이 뜨면 삼성 키보드가 영어로 바꿨다가 닫히면 되돌린다 —
+        // 사용자가 한 전환이 아닌데 파랑·빨강이 번쩍였다). 전환 1회당 루트 노드 조회 1회.
+        val front = frontPackage()
+        val now = SystemClock.uptimeMillis()
+        val auto = KeyTriggerDiagnostics.isAutoSwitch(front, lang, now, autoSwitchAt, langBeforeAuto)
+        if (KeyTriggerDiagnostics.isSystemAuthScreen(front)) {
+            if (langBeforeAuto == null) langBeforeAuto = prev
+            autoSwitchAt = now
+        } else {
+            langBeforeAuto = null // 되돌림을 썼거나 사용자가 다른 전환을 했다
+        }
         // 전환 원인 진단(추가 기능 3): 기본은 featuresEnabled() 게이트와 무관하게 항상 캡처한다
         // ("왜 전환됐는지"는 오버레이 표시 여부와 별개의 관심사) — 단, 하위 옵션을 켠 사용자는
         // 터치 키보드가 떠 있는 동안 진단도 함께 멈춘다([diagnosticActive] 참조).
-        if (diagnosticActive()) captureDiagnosticTrigger()
-        prefs.recordSwitch() // 입력 통계(꺼져 있으면 아무것도 안 함)
+        if (diagnosticActive()) captureDiagnosticTrigger(front, auto)
+        if (!auto) prefs.recordSwitch() // 입력 통계(꺼져 있으면 아무것도 안 함) — 시스템이 한 전환은 세지 않는다
         // 터치 키보드 제외 ON + 소프트 키보드 표시 중 → 플래시/배지 모두 비활성(추가 기능 2).
         if (!featuresEnabled()) return
-        overlay.showFlash(lang)
         overlay.updateBadge(lang)
+        if (auto) {
+            if (prefs.flashAutoSwitch) overlay.showFlash(lang) // 기본은 조용히(배지만 실제 언어로)
+            return
+        }
+        overlay.showFlash(lang)
         if (lang == ImeLocaleParser.KO && prefs.replaceEnabled && prefs.switchSuggestEnabled) {
             guarded("switchSuggestion") { trySwitchSuggestion() }
+        }
+    }
+
+    /** 맨 앞 화면의 앱 패키지(노드 조회 1회). 못 읽으면 null. */
+    private fun frontPackage(): String? {
+        val root = runCatching { rootInActiveWindow }.getOrNull() ?: return null
+        return try {
+            runCatching { root.packageName?.toString() }.getOrNull()
+        } finally {
+            runCatching { root.recycle() }
         }
     }
 
@@ -722,28 +750,19 @@ class LangSenseAccessibilityService : AccessibilityService(),
      * 박아 넣으면 "값이 없다"와 "값이 이 특정 문장이다"를 구분할 수 없어, 나중에 문구를 다듬거나
      * 다른 화면에서 다르게 보여주고 싶을 때 저장된 과거 값까지 꼬인다.
      */
-    private fun captureDiagnosticTrigger() {
+    private fun captureDiagnosticTrigger(front: String?, auto: Boolean) {
         val names = KeyTriggerDiagnostics.recentKeyNames(
             diagKeyCodes, diagKeyAtUptime, diagKeyWriteIndex, SystemClock.uptimeMillis()
         ) { code -> KeyEvent.keyCodeToString(code).removePrefix("KEYCODE_") }
-        prefs.recordSwitchTrigger(KeyTriggerDiagnostics.describe(names) ?: "", diagnosticContext())
+        val ctx = KeyTriggerDiagnostics.SwitchContext(
+            basis = imeDetector.lastEmitBasis,
+            touchKeyboard = computeSoftKeyboardVisible(),
+            front = front,
+            auto = auto,
+        )
+        prefs.recordSwitchTrigger(KeyTriggerDiagnostics.describe(names) ?: "", ctx.encode())
     }
 
-    /**
-     * 전환 순간의 상황(2026-10) — 키 없는 전환의 원인을 가르기 위함: 발동 근거(설정값 / 팝업 글자 / 입력기 조회),
-     * 터치 키보드 표시 여부(화면 키보드 키는 물리 키 이벤트가 아니라 키로는 안 잡힌다), 맨 앞 화면의 앱 패키지.
-     * 글자 내용은 남기지 않는다. 진단이 켜졌을 때만, 전환 1회당 창 조회 1회 + 루트 노드 조회 1회.
-     */
-    private fun diagnosticContext(): String {
-        val root = runCatching { rootInActiveWindow }.getOrNull()
-        val front = runCatching { root?.packageName?.toString() }.getOrNull()
-        runCatching { root?.recycle() }
-        return listOfNotNull(
-            imeDetector.lastEmitBasis.takeIf { it.isNotEmpty() }?.let { "근거: $it" },
-            "터치 키보드 표시 중".takeIf { computeSoftKeyboardVisible() },
-            front?.let { "앞 화면: $it" },
-        ).joinToString(" · ")
-    }
 
     // ---------------------------------------------------------------------
     // 접근성 이벤트
@@ -831,7 +850,8 @@ class LangSenseAccessibilityService : AccessibilityService(),
             // repeatCount > 0(키를 누르고 있어 반복 발생)은 기록하지 않는다 — 안 그러면 아무 키나
             // 길게 누르고 있는 것만으로 짧은 링 버퍼가 반복 이벤트로 가득 차, 그 직후 실제 전환을
             // 일으킨 키가 밀려나 사라진다(2026-09 발견).
-            if (e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0 && diagnosticActive()) {
+            // 하위 옵션(터치 키보드 중 진단 끄기)은 기록 시점(onLanguageChanged)에서만 본다 — 키마다 창 목록 IPC 를 하지 않게.
+            if (e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0 && prefs.diagnosticKeyLoggingEnabled) {
                 recordDiagnosticKeyPress(e.keyCode)
             }
             // (Bug 1) 메인(디스패치) 스레드에서는 키 이벤트 속성만 보는 저비용 판정만 동기로 하고 즉시

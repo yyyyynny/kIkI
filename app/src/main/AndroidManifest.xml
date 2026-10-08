@@ -11,6 +11,14 @@
          띄우므로(PermissionHelper) 선언하지 않는다. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+    <!-- 전환 원인 진단에 앞 화면을 앱 이름으로 보여 주기 위함(실행 가능한 앱만 보임 — 전체 앱 목록 권한 아님). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"

@@ -62,4 +62,60 @@ object KeyTriggerDiagnostics {
 
     /** [recentKeyNames] 결과를 "A + B" 형태로 합친다. 빈 리스트면 null(호출부가 안내 문구로 대체). */
     fun describe(names: List<String>): String? = names.takeIf { it.isNotEmpty() }?.joinToString(" + ")
+
+    // ── 키 없는 전환의 원인 분류(2026-10, S25+ 실사용 제보) ──
+
+    /**
+     * 시스템 화면이 키보드 언어를 바꿨다가 되돌린 뒤, 그 "되돌림"까지 자동 전환으로 보는 시간. 지문 창은 사용자가
+     * 손가락을 올릴 때까지 떠 있으므로 넉넉히 잡는다.
+     */
+    const val AUTO_REVERT_MS = 30_000L
+
+    /**
+     * 키보드 언어를 스스로 바꾸는 시스템 화면인지 — 실기기 진단 기록에서 확인한 것: 삼성 지문 창(토스·네이버페이·갤러리
+     * 잠금 해제), 삼성 패스. 이 화면이 앞에 뜨면 삼성 키보드가 영어로 바꾸고, 닫히면 되돌린다.
+     * 한계: 다른 제조사·앱의 인증 화면은 목록에 없다 — 확장: 진단 기록의 "앞 화면"을 보고 패키지를 추가.
+     */
+    fun isSystemAuthScreen(pkg: String?): Boolean = pkg != null && (
+        pkg.contains("biometrics", ignoreCase = true) || pkg.contains("samsungpass", ignoreCase = true)
+        )
+
+    /** 이 전환이 시스템이 한 자동 전환인지 — 시스템 화면이 앞일 때, 또는 직후 그 전 언어로 되돌아갈 때. */
+    fun isAutoSwitch(front: String?, lang: String, now: Long, autoAt: Long, langBeforeAuto: String?): Boolean =
+        isSystemAuthScreen(front) || (langBeforeAuto == lang && now - autoAt in 0..AUTO_REVERT_MS)
+
+    /** 전환 순간의 상황. 진단 기록에 "키=값;…" 으로 저장하고, 사람이 읽을 문구는 화면이 만든다. */
+    data class SwitchContext(
+        val basis: String = "",
+        val touchKeyboard: Boolean = false,
+        val front: String? = null,
+        val auto: Boolean = false,
+    ) {
+        fun encode(): String = listOfNotNull(
+            basis.takeIf { it.isNotEmpty() }?.let { "basis=$it" },
+            "touch=1".takeIf { touchKeyboard },
+            front?.let { "front=$it" },
+            "auto=1".takeIf { auto },
+        ).joinToString(";")
+
+        companion object {
+            /** 예전 기록(사람이 읽는 문장, '=' 없음)이면 null — 화면이 그 문장을 그대로 보여 준다. */
+            fun decode(s: String): SwitchContext? {
+                if ('=' !in s) return null
+                val m = s.split(';').mapNotNull { p -> p.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } }.toMap()
+                return SwitchContext(m["basis"].orEmpty(), m["touch"] == "1", m["front"], m["auto"] == "1")
+            }
+        }
+    }
+
+    enum class Cause { KEYS, SYSTEM_SCREEN, TOUCH_KEYBOARD, KEYBOARD_POPUP, UNKNOWN }
+
+    /** 기록 한 건의 원인 — 시스템 화면 > 물리 키 > 터치 키보드 > 키보드 팝업 > 알 수 없음 순. */
+    fun cause(keys: String, ctx: SwitchContext?): Cause = when {
+        ctx?.auto == true -> Cause.SYSTEM_SCREEN
+        keys.isNotEmpty() -> Cause.KEYS
+        ctx?.touchKeyboard == true -> Cause.TOUCH_KEYBOARD
+        ctx?.basis?.startsWith("popup") == true -> Cause.KEYBOARD_POPUP
+        else -> Cause.UNKNOWN
+    }
 }

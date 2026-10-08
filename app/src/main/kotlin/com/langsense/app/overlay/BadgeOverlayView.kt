@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
@@ -12,8 +11,8 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
-import android.view.WindowInsets
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
 import androidx.appcompat.widget.AppCompatTextView
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -92,8 +91,9 @@ class BadgeOverlayView(
         animate()
             .scaleX(PULSE_SCALE).scaleY(PULSE_SCALE)
             .setDuration(PULSE_HALF_MS)
+            .setInterpolator(DecelerateInterpolator())
             .withEndAction {
-                animate().scaleX(1f).scaleY(1f).setDuration(PULSE_HALF_MS).start()
+                animate().scaleX(1f).scaleY(1f).setDuration(PULSE_HALF_MS).setInterpolator(DecelerateInterpolator()).start()
             }
             .start()
     }
@@ -166,7 +166,9 @@ class BadgeOverlayView(
         setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    refreshArea() // 드래그 중 이동마다 다시 읽지 않게(창 영역 조회는 IPC)
+                    // 이동 입력을 화면 갱신 주기(vsync)로 묶지 않고 바로 받는다 — 드래그 때 배지가 손가락보다
+                    // 한 프레임 늦던 잔랙(2026-10 S25+ 녹화 실측)을 줄인다.
+                    requestUnbufferedDispatch(event)
                     downRawX = event.rawX
                     downRawY = event.rawY
                     startX = params.x
@@ -226,7 +228,6 @@ class BadgeOverlayView(
      * 매번 저장 원본에서 출발해야 "회전 왕복 시 원위치 복귀"가 성립한다.
      */
     fun moveWithinScreen(x: Int, y: Int) {
-        refreshArea()
         val cx = clampX(x)
         val cy = clampY(y)
         if (cx == params.x && cy == params.y) return
@@ -239,41 +240,17 @@ class BadgeOverlayView(
         get() = dp(6f)
 
     private fun clampX(x: Int): Int {
-        val max = (areaW - width).coerceAtLeast(0)
+        val max = (screenWidth() - width).coerceAtLeast(0)
         return x.coerceIn(0, max)
     }
 
     private fun clampY(y: Int): Int {
-        val max = (areaH - height).coerceAtLeast(0)
+        val max = (screenHeight() - height).coerceAtLeast(0)
         return y.coerceIn(0, max)
     }
 
-    /** 배지를 놓을 수 있는 영역 크기(px) — [refreshArea] 가 드래그 시작·보정 때 갱신. */
-    private var areaW = 0
-    private var areaH = 0
-
-    private fun refreshArea() {
-        val u = usableSize()
-        areaW = u?.first ?: resources.displayMetrics.widthPixels
-        areaH = u?.second ?: resources.displayMetrics.heightPixels
-    }
-
-    /**
-     * 배지가 놓일 수 있는 영역 크기(px) — 화면에서 시스템 바·펀치홀을 뺀 것(2026-10, S25+ 제보 "안전 영역 없음").
-     * 배지 창 원점은 이 영역의 왼쪽 위라 params 좌표 상한이 곧 이 크기다. displayMetrics 는 기기·문맥에 따라 이 띠들을
-     * 포함해 배지가 제스처 바·모서리 쪽으로 밀려날 수 있었다. 읽기 실패·API 29 면 null(예전 방식).
-     * 한계: 둥근 모서리는 빼지 않는다 — 확장: API 31+ `WindowInsets.getRoundedCorner` 반지름만큼 모서리 여백.
-     */
-    private fun usableSize(): Pair<Int, Int>? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
-        return runCatching {
-            val m = windowManager.currentWindowMetrics
-            val i = m.windowInsets.getInsetsIgnoringVisibility(
-                WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
-            )
-            (m.bounds.width() - i.left - i.right) to (m.bounds.height() - i.top - i.bottom)
-        }.getOrNull()
-    }
+    private fun screenWidth(): Int = resources.displayMetrics.widthPixels
+    private fun screenHeight(): Int = resources.displayMetrics.heightPixels
 
     private fun dp(value: Float): Int = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP, value, resources.displayMetrics
@@ -284,9 +261,12 @@ class BadgeOverlayView(
         const val SIZE_MEDIUM = 1
         const val SIZE_LARGE = 2
 
-        /** 탭 펄스: 최대 배율과 반(half) 지속 시간(ms). */
-        private const val PULSE_SCALE = 1.12f
-        private const val PULSE_HALF_MS = 130L
+        /**
+         * 탭 펄스: 최대 배율과 반(half) 지속 시간(ms). 배지 창은 내용 크기만 해서 1.12배로 커지면 발광 테두리가 창
+         * 가장자리에서 잘려 뚝 끊겨 보였다 — 발광 여백(4dp) 안에 머무는 1.06배로 줄였다.
+         */
+        private const val PULSE_SCALE = 1.06f
+        private const val PULSE_HALF_MS = 90L
 
         /** 발광 halo 두께(dp)와 각 레이어 알파(글씨색 기반 — 목업 box-shadow/inset ring 근사). */
         private const val HALO_THICKNESS_DP = 4f

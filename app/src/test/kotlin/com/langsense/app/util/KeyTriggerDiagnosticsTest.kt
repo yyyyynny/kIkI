@@ -93,4 +93,31 @@ class KeyTriggerDiagnosticsTest {
     fun describe_empty_returnsNull() {
         assertEquals(null, KeyTriggerDiagnostics.describe(emptyList()))
     }
+
+    // ── 키 없는 전환의 원인 분류(2026-10) ──
+
+    /** 실기기 기록 그대로: 지문 창에서 영어로, 앱으로 돌아오며 한국어로 — 둘 다 시스템이 한 전환. 30초 지나면 사용자 전환. */
+    @Test
+    fun autoSwitch_systemScreenAndItsRevert() {
+        val bio = "com.samsung.android.biometrics.app.setting"
+        assertTrue(KeyTriggerDiagnostics.isAutoSwitch(bio, "en", 1000, 0, null))
+        assertTrue(KeyTriggerDiagnostics.isAutoSwitch("viva.republica.toss", "ko", 5000, 1000, "ko"))
+        assertEquals(false, KeyTriggerDiagnostics.isAutoSwitch("viva.republica.toss", "ko", 1000 + KeyTriggerDiagnostics.AUTO_REVERT_MS + 1, 1000, "ko"))
+        assertEquals(false, KeyTriggerDiagnostics.isAutoSwitch("com.sec.android.app.launcher", "en", 5000, 1000, "ko"))
+        assertTrue(KeyTriggerDiagnostics.isSystemAuthScreen("com.samsung.android.samsungpass"))
+    }
+
+    /** 원인 우선순위와 저장 형식 왕복. 예전 문장 형식 기록은 해석하지 않는다(null). */
+    @Test
+    fun cause_classificationAndRoundTrip() {
+        val ctx = KeyTriggerDiagnostics.SwitchContext("setting", touchKeyboard = true, front = "com.sec.android.app.launcher")
+        val back = KeyTriggerDiagnostics.SwitchContext.decode(ctx.encode())
+        assertEquals(ctx, back)
+        assertEquals(KeyTriggerDiagnostics.Cause.TOUCH_KEYBOARD, KeyTriggerDiagnostics.cause("", back))
+        assertEquals(KeyTriggerDiagnostics.Cause.KEYS, KeyTriggerDiagnostics.cause("SHIFT_LEFT + SPACE", back))
+        assertEquals(KeyTriggerDiagnostics.Cause.SYSTEM_SCREEN, KeyTriggerDiagnostics.cause("SPACE", back!!.copy(auto = true)))
+        assertEquals(KeyTriggerDiagnostics.Cause.KEYBOARD_POPUP, KeyTriggerDiagnostics.cause("", KeyTriggerDiagnostics.SwitchContext("popup:android/7")))
+        assertEquals(KeyTriggerDiagnostics.Cause.UNKNOWN, KeyTriggerDiagnostics.cause("", KeyTriggerDiagnostics.SwitchContext("setting")))
+        assertEquals(null, KeyTriggerDiagnostics.SwitchContext.decode("근거: 설정값 · 앞 화면: x"))
+    }
 }

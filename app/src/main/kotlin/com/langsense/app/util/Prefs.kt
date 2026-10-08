@@ -324,6 +324,19 @@ class Prefs(context: Context) {
         set(v) = sp.edit().putString(KEY_RADIAL_ACCENT_COLOR, normalizeHex(v)).apply()
 
     /** 래디얼 메뉴 글로우색(#RRGGBB). 선/오브의 확산 발광. 기본은 기존 짙은 파랑. */
+    /**
+     * 메뉴를 화면 구석에서 열 때 선(반지름)을 몇 배까지 늘려도 되는지(2026-10, 기본 3, 1~16). 메뉴는 늘 배지에서
+     * 펼쳐지고, 이 배수로도 안 들어갈 때만 펼쳐지는 점을 화면 안쪽으로 민다.
+     */
+    var radialMaxRadiusScale: Int
+        get() = sp.getInt(KEY_RADIAL_MAX_RADIUS, 3).coerceIn(1, 16)
+        set(v) = sp.edit().putInt(KEY_RADIAL_MAX_RADIUS, v.coerceIn(1, 16)).apply()
+
+    /** 지문 창·삼성 패스처럼 시스템 화면이 바꾼 한/영 전환도 플래시로 알릴지(2026-10, 기본 OFF = 조용히). */
+    var flashAutoSwitch: Boolean
+        get() = sp.getBoolean(KEY_FLASH_AUTO_SWITCH, false)
+        set(v) = sp.edit().putBoolean(KEY_FLASH_AUTO_SWITCH, v).apply()
+
     var radialGlowColorHex: String
         get() = sp.getString(KEY_RADIAL_GLOW_COLOR, DEFAULT_RADIAL_GLOW) ?: DEFAULT_RADIAL_GLOW
         set(v) = sp.edit().putString(KEY_RADIAL_GLOW_COLOR, normalizeHex(v)).apply()
@@ -562,6 +575,8 @@ class Prefs(context: Context) {
         const val KEY_BADGE_TAP_ACTION = "badge_tap_action"
         const val KEY_RADIAL_ACCENT_COLOR = "radial_accent_color"
         const val KEY_RADIAL_GLOW_COLOR = "radial_glow_color"
+        const val KEY_RADIAL_MAX_RADIUS = "radial_max_radius_scale"
+        const val KEY_FLASH_AUTO_SWITCH = "flash_auto_switch"
         const val KEY_UI_THEME = "ui_theme"
         const val KEY_CUSTOM_THEME_PREFIX = "custom_theme_"
         const val KEY_SEEN_MARKERS = "seen_markers"

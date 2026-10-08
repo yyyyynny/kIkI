@@ -69,17 +69,18 @@ jobs:
           ./gradlew lintDebug --stacktrace
           echo "::endgroup::"
 
-      - name: 디버그 APK 빌드 (assembleDebug)
+      # 배포용은 코드·리소스를 줄인 릴리스 빌드(디버그 9.5MB → 약 1.6MB). 공유 키가 없으면 디버그 키로 서명된다.
+      - name: 릴리스 APK 빌드 (assembleRelease)
         run: |
-          echo "::group::디버그 APK 빌드"
-          ./gradlew assembleDebug --stacktrace
+          echo "::group::릴리스 APK 빌드"
+          ./gradlew assembleRelease --stacktrace
           echo "::endgroup::"
 
       - name: APK 업로드(아티팩트)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: kiki-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: kiki-apk
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
 

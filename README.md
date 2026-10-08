@@ -34,9 +34,9 @@
 # SDK 경로 지정 (예시)
 echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-# 디버그 APK 빌드
-./gradlew assembleDebug
-# 결과물: app/build/outputs/apk/debug/app-debug.apk
+# 배포용 APK 빌드(코드·리소스 축소, 약 1.6MB)
+./gradlew assembleRelease
+# 결과물: app/build/outputs/apk/release/app-release.apk
 
 # HangulConverter 단위 테스트
 ./gradlew testDebugUnitTest

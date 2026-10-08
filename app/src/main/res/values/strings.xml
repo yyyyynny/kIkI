@@ -24,6 +24,10 @@
     <string name="btn_settings_locked">위 설정을 마치면 열립니다</string>
     <string name="btn_battery_later">나중에 할게요 (권장하지 않음)</string>
     <string name="settings_review_onboarding">설정 안내 다시 보기</string>
+    <string name="settings_flash_auto_switch">지문·인증 화면이 바꾼 전환도 알리기</string>
+    <string name="settings_flash_auto_switch_desc">지문 인증 창이 뜨면 삼성 키보드가 잠깐 영어로 바꿨다가 되돌려요. 기본은 깜박이지 않고 넘어갑니다.</string>
+    <string name="settings_radial_max_radius">구석에서 선을 늘리는 한도</string>
+    <string name="settings_radial_max_radius_desc">배지가 화면 구석에 있으면 메뉴 선을 이만큼까지 늘려 배지에서 펼쳐요. 1배면 늘리지 않고 메뉴를 화면 안쪽으로 옮깁니다.</string>
     <string name="status_granted">완료됨</string>
     <string name="status_needed">필요함</string>
     <string name="summary_all_set">✓ 모든 설정이 완료되었습니다</string>
@@ -96,17 +100,21 @@
     <string name="keyboard_connected_toast">외장 키보드가 연결됐어요</string>
     <string name="keyboard_disconnected_toast">외장 키보드 연결이 끊겼어요</string>
     <string name="settings_diagnostic_pause_with_touch_kb">터치 키보드 사용 중엔 전환 원인 진단도 끄기</string>
-    <string name="settings_diagnostic_pause_with_touch_kb_desc">아래 "전환 원인 진단"을 켜둔 경우에만 의미가 있어요. 기본은 꺼져 있어 터치 키보드를 쓰는 동안에도 진단 기록이 계속됩니다 — 켜면 터치 키보드가 떠 있는 동안엔 진단도 함께 멈춰요.</string>
+    <string name="settings_diagnostic_pause_with_touch_kb_desc">켜면 터치 키보드가 떠 있는 동안의 전환은 기록하지 않아요.</string>
 
     <!-- 전환 원인 진단 (추가 기능 3) -->
     <string name="settings_diagnostic">전환 원인 진단</string>
-    <string name="settings_diagnostic_desc">원인 모를 한/영 자동 전환이 반복될 때 켜보세요. 실제 전환이 감지된 순간 직전에 눌려 있던 물리 키를 기록해 아래에 보여줍니다(예: 삼성 태블릿의 "물리적 키보드 → 언어 전환 바로가기" 설정처럼, 키보드가 아니라 One UI 자체 단축키가 범인인 경우가 많아요). 여러 키가 함께 뜨면 그 순간 타이핑 중이던 다른 키가 섞인 것일 수 있어요 — 그중 의심 가는 키를 하나씩 눌러보며 범인을 좁혀보세요. 다만 시스템이 그 키를 이 앱보다 먼저 가로채면 잡히지 않을 수도 있고, 평소 켜두면 배터리를 조금 더 씁니다 — 원인을 찾았으면 다시 꺼주세요.</string>
+    <string name="settings_diagnostic_desc">원인 모를 한/영 전환이 반복될 때만 켜 두세요. 전환될 때마다 원인(눌린 키, 터치 키보드, 지문 화면 등)을 아래에 남깁니다. 켜 두면 배터리를 조금 더 쓰니, 찾았으면 다시 꺼 주세요.</string>
     <string name="settings_diagnostic_enabled">전환 키 기록 켜기</string>
     <string name="settings_diagnostic_result_header">최근 전환 기록 (최신순, 최대 %1$d건)</string>
-    <string name="settings_diagnostic_result_label">• %1$s — %2$s</string>
+    <string name="settings_diagnostic_result_label">• %1$s — 키: %2$s</string>
     <string name="settings_diagnostic_result_empty">아직 기록된 전환이 없어요</string>
-    <string name="settings_diagnostic_result_unknown">• %1$s — 원인 키를 찾지 못함</string>
-    <string name="settings_diagnostic_result_unknown_note">원인 키를 찾지 못함: 물리 키가 아닌 전환(터치 키보드, 앱·시스템 화면)이거나, 시스템이 이 앱보다 먼저 키를 가로챘을 수 있어요. 아래 줄의 근거·앞 화면이 단서예요.</string>
+    <string name="settings_diagnostic_result_unknown">• %1$s — 원인을 알 수 없음</string>
+    <string name="settings_diagnostic_result_unknown_note">원인을 알 수 없음: 키 없이 바뀌었거나, 시스템이 이 앱보다 먼저 키를 가로챘을 수 있어요. 앞 화면이 단서예요.</string>
+    <string name="diag_cause_system">• %1$s — 지문·인증 화면이 바꿈</string>
+    <string name="diag_cause_touch">• %1$s — 터치 키보드의 한/영 키</string>
+    <string name="diag_cause_popup">• %1$s — 키보드가 스스로 바꿈</string>
+    <string name="diag_front">앞 화면: %1$s</string>
     <string name="settings_diagnostic_clear">지우기</string>
 
     <!-- 플로팅 메뉴(배지 탭 래디얼 메뉴) -->
@@ -235,6 +243,7 @@
     <string name="settings_theme_custom_accent">강조</string>
     <string name="settings_theme_custom_adjusted">가독성 보정: %1$s %2$s → %3$s</string>
     <string name="settings_theme_custom_start_from">다른 테마의 색에서 시작하기</string>
+    <string name="settings_theme_random">랜덤</string>
     <string name="settings_theme_scope_title">어디까지 바뀌나요</string>
     <string name="settings_theme_scope_desc">테마는 앱 화면에만 적용됩니다. 플래시·배지·빠른 메뉴는 화면 위에 따로 뜨는 오버레이라 각자의 색 설정을 그대로 씁니다 — 테마를 바꿔도 그 색은 변하지 않아요.</string>
 </resources>
