@@ -29,8 +29,10 @@ class HardwareKeyboardDetector(
     private val handler = Handler(Looper.getMainLooper())
 
     /** 현재 외장 키보드 연결 여부(메인 스레드에서만 접근). */
-    var connected: Boolean = false
-        private set
+    private var connected: Boolean = false
+
+    /** [onChanged] 콜백 시점에 "연결/해제 어느 쪽으로 바뀌었는지" 읽기 위한 공개 게터. */
+    val isConnected: Boolean get() = connected
 
     private var registered = false
 
@@ -40,18 +42,20 @@ class HardwareKeyboardDetector(
         override fun onInputDeviceChanged(deviceId: Int) = recheck()
     }
 
-    /** 리스너 등록 + 현재 상태 캐시. 현재 연결 여부 반환. */
-    fun start(): Boolean {
+    /** 리스너 등록 + 현재 상태 캐시. */
+    fun start() {
         connected = detect()
         if (!registered) {
-            runCatching { inputManager.registerInputDeviceListener(listener, handler) }
-            registered = true
+            // 등록 실패를 성공으로 기록하면 재시도 없이 감지가 조용히 죽는다(ImeStateDetector 와
+            // 같은 이유로 실제 결과를 반영 — 다음 start() 에서 재시도된다).
+            registered = runCatching {
+                inputManager.registerInputDeviceListener(listener, handler)
+            }.isSuccess
         }
-        return connected
     }
 
     fun stop() {
-        if (!registered) return
+        // 등록 플래그와 무관하게 무조건 해제 시도(부분 실패 상태에서 리스너가 살아남는 누수 방지).
         runCatching { inputManager.unregisterInputDeviceListener(listener) }
         registered = false
     }

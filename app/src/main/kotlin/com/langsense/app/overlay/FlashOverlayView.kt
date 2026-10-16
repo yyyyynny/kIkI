@@ -92,12 +92,18 @@ class FlashOverlayView(context: Context) : FrameLayout(context) {
             .setStartDelay(durationMs / 2) // 잠깐 보이게 유지 후 페이드아웃
             .setDuration(durationMs)
             .withEndAction {
-                // cancel() 에 의한 호출(재진입)이거나 이미 윈도우에서 떨어졌다면(다른 플래시로 교체됨)
-                // 콜백을 무시한다 — 그렇지 않으면 cancel() 호출 도중 이 콜백이 다시 removeFlash() 를
-                // 유발해 재귀 호출된다.
-                if (cancelled || !isAttachedToWindow) return@withEndAction
+                // cancel() 에 의한 호출(재진입)이면 무시한다 — 그렇지 않으면 cancel() 호출 도중
+                // 이 콜백이 다시 removeFlash() 를 유발해 재귀 호출된다.
+                // 과거엔 `|| !isAttachedToWindow` 도 함께 걸었는데, 그 경로로 빠지면 onEnd() 가
+                // 영영 호출되지 않아 투명해진 전체화면 창이 무기한 잔류했다(창 누수). 윈도우에서
+                // 떨어지는 경로(onDetachedFromWindow)는 항상 cancelled 를 먼저 세우므로 이 조건만으로
+                // 재진입 보호는 충분하다.
+                if (cancelled) return@withEndAction
                 if (remaining > 1) {
-                    val next = Runnable { playCycle(remaining - 1, durationMs, onEnd) }
+                    val next = Runnable {
+                        pendingCycle = null
+                        playCycle(remaining - 1, durationMs, onEnd)
+                    }
                     pendingCycle = next
                     postDelayed(next, INTER_BLINK_MS)
                 } else {
@@ -110,5 +116,19 @@ class FlashOverlayView(context: Context) : FrameLayout(context) {
     companion object {
         /** 깜박임 사이클 사이의 짧은 간격(ms). */
         private const val INTER_BLINK_MS = 60L
+
+        /**
+         * [play] 가 실제로 화면을 점유하는 총 시간(ms).
+         *
+         * 1사이클 = 유지([playCycle] 의 startDelay = dur/2) + 페이드아웃(dur) = 1.5×dur 이고,
+         * 사이클 사이에 [INTER_BLINK_MS] 가 끼므로 총 길이는 설정값(dur)보다 항상 길다.
+         * OverlayManager 의 동일 색 중복 억제 창이 이 실제 재생 길이에 연동되도록 여기(사이클
+         * 구조가 정의된 파일)에 진실 수식을 둔다.
+         */
+        fun totalDurationMs(durationMs: Int, count: Int): Long {
+            val n = count.coerceAtLeast(1)
+            val dur = durationMs.toLong()
+            return n * (dur + dur / 2) + (n - 1) * INTER_BLINK_MS
+        }
     }
 }

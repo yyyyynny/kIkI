@@ -26,10 +26,14 @@ class ReplaceChipView(context: Context) : AppCompatTextView(context) {
         elevation = dp(4f).toFloat()
     }
 
-    /** @param preview 변환 미리보기, @param onTap 탭 시 실행할 교체 액션 */
-    fun bind(preview: String, onTap: () -> Unit) {
+    /**
+     * @param preview 변환 미리보기, @param onTap 탭 시 실행할 교체 액션,
+     * @param onLongPress 길게 누르면 실행(선택한 단어를 한영타 예외로 등록 — 칩이 틀렸을 때 다시 안 뜨게).
+     */
+    fun bind(preview: String, onTap: () -> Unit, onLongPress: () -> Unit) {
         text = context.getString(R.string.chip_replace_format, preview)
         setOnClickListener { onTap() }
+        setOnLongClickListener { onLongPress(); true }
     }
 
     private fun dp(value: Float): Int = TypedValue.applyDimension(

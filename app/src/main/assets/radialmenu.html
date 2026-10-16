@@ -8,6 +8,23 @@
 /* ── Reset ───────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* 커스터마이즈 가능한 2색(설정 화면의 색 선택 UI, Kotlin 이 KikiInit(cfg.accentColor/glowColor) 로
+   주입). 기본값은 원본의 은은한 하늘색(#cdeeff)/짙은 파랑(#4da8ff). "R,G,B" 형태로 저장해
+   rgb(var(--x))/rgba(var(--x),a) 양쪽에 쓴다. 오브 배경(rgba(20,60,180,..))은 이 두 계열과
+   색상이 달라 커스터마이즈 대상에서 제외했다(저사양 모드 기본 외형 회귀 방지, 아래 .orb 참조). */
+:root {
+  --kiki-accent-rgb: 205, 238, 255; /* #CDEEFF */
+  --kiki-glow-rgb: 77, 168, 255;    /* #4DA8FF */
+  /* 원본의 중간 톤 4종. 원본은 층마다 서로 다른 파랑(림/은은한 빛/후광/깊은 후광)을 써서 빛이
+     겹겹이 번지는 깊이감을 냈다 — 한때 이걸 위의 두 색으로 뭉뚱그렸다가 후광이 탁하고 짙은
+     파랑으로 평평해졌다(2026-09 되돌림). 기본값은 원본 리터럴 그대로(픽셀 동일)이고, 사용자가
+     두 색을 바꾸면 JS(deriveTones)가 그 두 색 사이를 원본과 같은 비율로 섞어 다시 만든다. */
+  --kiki-rim-rgb: 180, 240, 255;
+  --kiki-soft-rgb: 127, 210, 255;
+  --kiki-halo-rgb: 120, 200, 255;
+  --kiki-deep-rgb: 80, 150, 255;
+}
+
 html, body {
   width: 100%; height: 100%;
   overflow: hidden;
@@ -27,7 +44,7 @@ html, body {
   background: rgba(0, 0, 0, 0.25);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.32s ease;
+  transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
   z-index: 1;
 }
 .scrim.show {
@@ -52,33 +69,36 @@ html, body {
   /* 순수 컨테이너 — 개별 표시는 안의 요소(선/별)가 각자 담당(아래 참조). */
 }
 
-/* 선(스포크/호)은 각자 개별로 나타난다 — 오브(.orb-wrap)와 **완전히 같은** opacity 트랜지션
-   (0.30s ease) + 스태거(transitionDelay, i*STAGGER_MS)를 써서, 오브가 하나씩 피어날 때 그
+/* 선(스포크/호)은 각자 개별로 나타난다 — 오브(.orb-wrap)와 **완전히 같은** 박자(열기 240ms ·
+   닫기 160ms, 같은 곡선) + 스태거(transitionDelay, i*STAGGER_MS)를 써서, 오브가 하나씩 피어날 때 그
    오브로 향하는 선(과 앞 오브와의 호)이 오브와 똑같은 속도로 함께 페이드인된다(JS 의 addLine/
-   setOpen 참조).
+   setOpen 참조). 기본 상태의 트랜지션은 닫힐 때 쓰이고, 열릴 때는 .open 쪽 트랜지션이 쓰인다.
    ⚠️ 두 겹(glow=흐린 층, crisp=선명한 층) 모두에 이 트랜지션이 걸려야 한다. 과거엔 crisp 의
    `transition: stroke-opacity 0.25s` 가 opacity 트랜지션을 통째로 덮어써(전환 property 목록이
    교체됨) 정작 눈에 보이는 선명한 선이 트랜지션 없이 "띡" 즉시 나타났다. 그래서 crisp 의
    transition 에 opacity 를 명시적으로 함께 나열한다. */
 .line-glow, .line-crisp {
   opacity: 0;
-  transition: opacity 0.30s ease;
+  transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-.menu.open .line-glow, .menu.open .line-crisp { opacity: 1; }
+.menu.open .line-glow, .menu.open .line-crisp {
+  opacity: 1;
+  transition: opacity 240ms cubic-bezier(0.23, 1, 0.32, 1), stroke-opacity 0.25s;
+}
 
 .line-glow {
-  stroke: #4da8ff;
+  stroke: rgb(var(--kiki-glow-rgb));
   stroke-opacity: 0.30;
   stroke-width: 4;
   fill: none;
   filter: url(#lineBlur);
 }
 .line-crisp {
-  stroke: #cdeeff;
+  stroke: rgb(var(--kiki-accent-rgb));
   stroke-opacity: 0.55;
   stroke-width: 1.2;
   fill: none;
-  transition: opacity 0.30s ease, stroke-opacity 0.25s;
+  transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1), stroke-opacity 0.25s;
 }
 .line-crisp.lit { stroke-opacity: 0.95; stroke-width: 1.8; }
 
@@ -95,18 +115,32 @@ html, body {
   cursor: pointer;
   outline: none;
   opacity: 0;
-  /* collapsed: sit at badge, scaled to nothing */
-  transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(0);
-  transition:
-    transform 0.46s cubic-bezier(0.34, 1.56, 0.64, 1),
-    opacity 0.30s ease;
+  /* 접힘: 배지 쪽에 0.6 배로 숨어 있다. 예전엔 scale(0) 에서 튕기는 곡선(0.46s, 오버슈트)으로
+     "튀어나와" 싸 보였다 — 이제 0.6 배에서 240ms 강한 감속으로 미끄러져 자리 잡는다.
+     접힘 상태로 돌아올 땐 이미 투명하므로 트랜지션 없이 바로 옮긴다(닫기는 .closing 이 담당). */
+  transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(0.6);
+  transition: none;
   will-change: transform, opacity;
 }
 .menu.open .orb-wrap {
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
+  transition:
+    transform 240ms cubic-bezier(0.23, 1, 0.32, 1),
+    opacity 240ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-.menu.open .orb-wrap { animation: bob var(--bob-dur, 4.4s) ease-in-out var(--bob-del, 0s) infinite; }
+/* 닫기: 제자리에서 0.85 배로 줄며 160ms 안에 사라진다(튕김·스태거 없음, JS setOpen 참조). */
+.menu.closing .orb-wrap {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.85);
+  transition:
+    transform 160ms cubic-bezier(0.23, 1, 0.32, 1),
+    opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+/* 둥실(bob)은 등장 트랜지션(최대 240ms + 스태거)이 끝난 뒤 시작한다(+280ms). 닫는 동안에도 같은
+   선언을 유지해 애니메이션이 이어지게 한다 — 끊기면 떠 있던 오브가 사라지는 순간 제자리로 툭 떨어진다. */
+.menu.open .orb-wrap,
+.menu.closing .orb-wrap { animation: bob var(--bob-dur, 4.4s) ease-in-out calc(var(--bob-del, 0s) + 280ms) infinite; }
 
 @keyframes bob {
   0%, 100% { translate: 0 0; }
@@ -119,17 +153,23 @@ html, body {
   border-radius: 20px;
   position: relative;
 
+  /* 오브 배경(네이비)은 강조색 2종과 색상 계열이 달라 커스터마이즈 대상에서 제외한다 —
+     backdrop-filter 가 없는 저사양 모드에서 이 배경이 사실상 오브의 표면색이 되므로(아래
+     body.reduce-motion .orb 참조), 통일하면 그 기본 외형이 하늘색으로 바뀌는 회귀가 된다. */
   background: rgba(20, 60, 180, 0.12);
   backdrop-filter: blur(10px) saturate(1.3);
   -webkit-backdrop-filter: blur(10px) saturate(1.3);
 
   /* same glass + cyan rim treatment as the badge */
-  border: 1.5px solid rgba(180,240,255,0.55);
+  border: 1.5px solid rgba(var(--kiki-rim-rgb),0.55);
   box-shadow:
-    0 0 0 1.5px rgba(180,240,255,0.55),
-    0 0 20px  6px rgba(120,200,255,0.70),
-    0 0 50px 14px rgba(80,150,255,0.40),
-    inset 0 0 22px  6px rgba(127,210,255,0.12);
+    0 0 0 1.5px rgba(var(--kiki-rim-rgb),0.55),
+    0 0 20px  6px rgba(var(--kiki-halo-rgb),0.70),
+    0 0 50px 14px rgba(var(--kiki-deep-rgb),0.40),
+    inset 0 0 22px  6px rgba(var(--kiki-soft-rgb),0.12);
+  /* 빛 레이어(.orb-light)를 오브 모양 안으로 잘라, 모서리가 숨쉬듯 변할 때 빛도 함께 휘게 한다.
+     (box-shadow/outline 은 요소 자신의 것이라 overflow 로 잘리지 않는다.) */
+  overflow: hidden;
 
   transition: box-shadow 0.28s ease, filter 0.28s ease;
   /* organic breathing morph — offset per orb via inline --morph-del */
@@ -145,37 +185,117 @@ html, body {
   100% { border-radius: 20px; }
 }
 
-/* specular gloss — bright white top-left highlight */
-.orb::before {
+/* ── 물방울 빛(2026-09 재설계) ─────────────────────────────
+   예전 하이라이트는 모서리에 찍힌 흰 타원 하나였다 — 자기 border-radius(50%)로 고정돼 있고
+   오브 모양에 잘리지도 않아서, 오브가 숨쉬고(모서리 변형) 떠다녀도 그 자리에 그대로 박혀
+   "붙여 넣은" 느낌이었다. 이제 실제 유리 물방울이 빛을 받는 방식대로 네 겹으로 나눈다:
+   - gloss   : 윗면에 비친 창(광원) — 윗변 곡률을 따라 감기는 넓고 부드러운 띠
+   - glint   : 가장 밝은 한 점 — 윗면 곡선을 따라 천천히 미끄러진다
+   - caustic : 물방울을 통과한 빛이 반대편 아래에 모이는 은은한 빛 — glint 와 반대로 움직인다
+   - ::before: 윗 가장자리의 가는 반사선(프레넬)
+   모두 오브 안으로 잘려 모양 변형을 그대로 따라가고(overflow), 레이어 전체는 떠다니는(bob)
+   움직임과 반대로 살짝 밀려 "광원은 제자리, 물방울만 움직이는" 착시를 만든다(lightCounter).
+   screen 합성이라 흰색을 덮어 칠하는 게 아니라 유리 위에 빛을 더하는 방식으로 섞인다. */
+.orb-light {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+.menu.open .orb-light,
+.menu.closing .orb-light {
+  animation: lightCounter var(--bob-dur, 4.4s) ease-in-out calc(var(--bob-del, 0s) + 280ms) infinite;
+}
+@keyframes lightCounter {
+  0%, 100% { translate: 0 0; }
+  50%      { translate: 0 calc(var(--bob-amp, -7px) * -0.3); }
+}
+.orb-light::before {
   content: '';
   position: absolute;
-  top: 8%; left: 12%;
-  width: 52%; height: 36%;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 1.5px 0.5px rgba(255,255,255,0.30),
+    inset 0 -1px 1px rgba(var(--kiki-soft-rgb),0.16);
+}
+.orb-light .gloss,
+.orb-light .caustic {
+  position: absolute;
+  inset: -12% -16%;
+}
+.orb-light .gloss {
+  background: radial-gradient(ellipse 62% 44% at 40% 9%,
+    rgba(255,255,255,0.64) 0%,
+    rgba(232,247,255,0.30) 42%,
+    rgba(255,255,255,0) 72%);
+  transform-origin: 40% 9%;
+  animation: glossDrift var(--flow-dur, 9s) ease-in-out var(--flow-del, 0s) infinite alternate;
+}
+@keyframes glossDrift {
+  0%   { transform: translateX(-6%) scaleX(0.94); opacity: 0.86; }
+  50%  { transform: translateX(2%)  scaleX(1.06); opacity: 1;    }
+  100% { transform: translateX(8%)  scaleX(0.97); opacity: 0.84; }
+}
+.orb-light .glint {
+  position: absolute;
+  left: 15%; top: 10%;
+  width: 30%; height: 16%;
   border-radius: 50%;
-  background: radial-gradient(ellipse at 38% 32%,
-    rgba(255,255,255,0.72) 0%,
-    rgba(220,245,255,0.32) 45%,
-    transparent 100%);
-  pointer-events: none;
+  background: radial-gradient(closest-side,
+    rgba(255,255,255,0.98) 0%,
+    rgba(255,255,255,0.55) 48%,
+    rgba(255,255,255,0) 100%);
+  filter: blur(0.5px);
+  transform: rotate(-10deg);
+  animation: glintFlow var(--flow-dur, 9s) ease-in-out var(--flow-del, 0s) infinite alternate;
+}
+/* 윗변은 가운데가 평평하고 양 끝이 둥글게 내려가므로, 가운데서 살짝 올라갔다 끝에서 내려온다. */
+@keyframes glintFlow {
+  0%   { transform: translate(-12%, 14%) rotate(-18deg) scale(0.86, 0.8); opacity: 0.7;  }
+  45%  { transform: translate(38%, -6%)  rotate(-6deg)  scale(1.06, 1);   opacity: 1;    }
+  100% { transform: translate(88%, 10%)  rotate(8deg)   scale(0.9, 0.82); opacity: 0.72; }
+}
+.orb-light .caustic {
+  background: radial-gradient(ellipse 50% 34% at 60% 96%,
+    rgba(var(--kiki-soft-rgb),0.44) 0%,
+    rgba(var(--kiki-soft-rgb),0.16) 48%,
+    rgba(var(--kiki-soft-rgb),0) 76%);
+  animation: causticBreath var(--flow-dur, 9s) ease-in-out var(--flow-del, 0s) infinite alternate;
+}
+@keyframes causticBreath {
+  0%   { transform: translateX(7%);  opacity: 1;    }
+  50%  { transform: translateX(-1%); opacity: 0.68; }
+  100% { transform: translateX(-9%); opacity: 0.92; }
 }
 
-/* thin inner ring */
+/* thin inner ring — 바깥 모서리와 같은 간격(4px)을 유지하도록 반지름도 함께 숨쉰다
+   (고정 10px 이면 바깥이 28px 로 부풀 때 안쪽 고리만 각진 채 남는다). */
 .orb::after {
   content: '';
   position: absolute;
   inset: 4px;
-  border-radius: 10px;
-  border: 1px solid rgba(127,210,255,0.20);
+  border-radius: 16px;
+  border: 1px solid rgba(var(--kiki-soft-rgb),0.20);
   pointer-events: none;
+  animation: innerMorph var(--morph-dur, 4s) ease-in-out var(--morph-del, 0s) infinite;
+}
+@keyframes innerMorph {
+  0%   { border-radius: 16px; }
+  25%  { border-radius: 24px; }
+  50%  { border-radius: 16px; }
+  75%  { border-radius: 12px; }
+  100% { border-radius: 16px; }
 }
 
-/* spring bounce on tap */
-.orb.tapped { animation: orbTap 0.42s cubic-bezier(0.34, 1.56, 0.64, 1); }
+/* 탭 반응: 살짝 눌렸다 돌아온다(예전 0.9→1.1 튕김은 과했다 — 최대 1.04). */
+.orb.tapped { animation: orbTap 0.32s ease-out; }
 @keyframes orbTap {
-  0%   { scale: 1;   }
-  35%  { scale: 0.9; }
-  70%  { scale: 1.1; }
-  100% { scale: 1;   }
+  0%   { scale: 1;    }
+  35%  { scale: 0.95; }
+  70%  { scale: 1.04; }
+  100% { scale: 1;    }
 }
 
 /* ── Orb label ───────────────────────────────────────────── */
@@ -186,11 +306,11 @@ html, body {
   white-space: nowrap;
   font-size: 12px; font-weight: 700;
   letter-spacing: 0.04em;
-  color: #cdeeff;
+  color: rgb(var(--kiki-accent-rgb));
   text-shadow:
-    0 0  6px rgba(127,210,255,0.95),
-    0 0 14px rgba(77,168,255,0.65),
-    0 0 26px rgba(77,168,255,0.30);
+    0 0  6px rgba(var(--kiki-soft-rgb),0.95),
+    0 0 14px rgba(var(--kiki-glow-rgb),0.65),
+    0 0 26px rgba(var(--kiki-glow-rgb),0.30);
   pointer-events: none;
   user-select: none;
 }
@@ -199,11 +319,20 @@ html, body {
 .orb-wrap:hover .orb,
 .orb-wrap:focus-visible .orb {
   box-shadow:
-    0 0 0 2px   rgba(180,240,255,1.00),
-    0 0 28px  9px rgba(120,200,255,0.90),
-    0 0 70px 22px rgba(80,150,255,0.55),
-    inset 0 0 30px  8px rgba(127,210,255,0.22);
+    0 0 0 2px   rgba(var(--kiki-rim-rgb),1.00),
+    0 0 28px  9px rgba(var(--kiki-halo-rgb),0.90),
+    0 0 70px 22px rgba(var(--kiki-deep-rgb),0.55),
+    inset 0 0 30px  8px rgba(var(--kiki-soft-rgb),0.22);
   filter: brightness(1.18);
+}
+
+/* ── 활성 항목 강조(설정에서 켜진 토글 액션) ─────────────────
+   box-shadow 가 아니라 outline 을 쓰는 이유: hover/tap/저사양 상태가 이미 box-shadow/filter/
+   scale 을 각자 쓰고 있어 같은 속성을 얹으면 우선순위가 꼬인다. outline 은 별도 레이어라
+   backdrop-filter 가 없는 저사양 모드에서도 항상 정상 렌더된다(activeFlags — KikiInit 참조). */
+.orb-wrap.active .orb {
+  outline: 2px solid rgba(var(--kiki-accent-rgb), 0.85);
+  outline-offset: 2px;
 }
 
 /* ── Burst particles ─────────────────────────────────────── */
@@ -211,8 +340,8 @@ html, body {
   position: absolute;
   width: 6px; height: 6px;
   border-radius: 50%;
-  background: #7fd2ff;
-  box-shadow: 0 0 7px 2px rgba(127,210,255,0.9);
+  background: rgb(var(--kiki-soft-rgb));
+  box-shadow: 0 0 7px 2px rgba(var(--kiki-soft-rgb),0.9);
   pointer-events: none;
   opacity: 0;
 }
@@ -293,13 +422,16 @@ html, body {
 
 /* ── Sparkle stars ───────────────────────────────────────── */
 .star { position: absolute; pointer-events: none; }
+/* buildStars() 가 JS 로 rect 를 innerHTML 주입하는데, fill 속성 문자열보다 CSS 선택자 쪽이
+   var() 치환 경로가 더 확실히 검증돼 있어 이쪽으로 옮긴다(JS 쪽 fill 속성은 제거). */
+#sparkleGroup rect { fill: rgb(var(--kiki-accent-rgb)); }
 
 /* ── Dust particles ──────────────────────────────────────── */
 .dust {
   position: absolute;
   border-radius: 50%;
   pointer-events: none;
-  background: radial-gradient(circle, #cdeeff 0%, transparent 70%);
+  background: radial-gradient(circle, rgb(var(--kiki-accent-rgb)) 0%, transparent 70%);
   animation: dustFloat var(--d-dur, 4s) ease-in-out var(--d-del, 0s) infinite;
 }
 @keyframes dustFloat {
@@ -313,12 +445,48 @@ html, body {
 body.app-mode { background: transparent; }
 body.app-mode .badge { display: none; }
 
+/* 앱 모드: 스테이지(.menu)는 배지 위치까지 덮는 460×420 사각형이라, 그 배경이 탭을 삼키면
+   네이티브 배지를 다시 눌러도 메뉴가 닫히지 않는다(배지는 이 창 아래에 있다). 오브에만
+   터치를 받게 하고 나머지는 통과시켜, 배지 재탭·빈 곳 탭이 모두 스크림의 닫기로 이어지게 한다. */
+body.app-mode .menu { pointer-events: none; }
+body.app-mode .menu .orb-wrap { pointer-events: auto; }
+
+/* 앱 모드: 배지가 화면 좌측이라 좌향 팬이 화면 안에 안 들어가면 팬 전체를 좌우 반전해 오른쪽으로
+   연다(KikiInit 참조). 라벨 텍스트만 한 번 더 반전해 읽기 방향을 되돌린다 — app-mode 에선 HTML
+   자체 배지가 숨겨져 있으므로(위) 라벨 외에 텍스트를 되돌릴 요소가 없다. */
+.menu.mirror { transform: scaleX(-1); }
+.menu.mirror .orb-label { transform: translateX(-50%) scaleX(-1); }
+
 /* 저사양 모드: 연속 애니메이션 정지(펼침/수납만 유지). travel dot 은 제거됐고,
    대신 추가된 선의 곡선 호흡(끝점 고정, 제어점만 출렁이는 <animate d>)도 reduce 시
    아예 생성하지 않는다(applyLineBreath 참조 — CSS 가 아니라 JS 단에서 결정). */
-body.reduce-motion .menu.open .orb-wrap { animation: none; }
+/* 움직임 줄이기: 위치 이동·크기 변화 없이 짧은 페이드만(열기·닫기 모두). */
+body.reduce-motion .menu .orb-wrap {
+  animation: none;
+  transform: translate(-50%, -50%);
+  transition: opacity 150ms ease-out;
+}
 body.reduce-motion .orb { animation: none; }
+body.reduce-motion .orb::after { animation: none; }
+/* 빛은 정지 상태로만 남긴다(모양은 같음). screen 합성도 끈다 — 합성 비용을 아끼고, 정지된
+   흰 그라디언트는 일반 합성으로도 거의 같게 보인다. */
+body.reduce-motion .menu .orb-light,
+body.reduce-motion .orb-light > * { animation: none; }
+body.reduce-motion .orb-light { mix-blend-mode: normal; }
 body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
+/* 저사양 모드의 최대 단일 이득: backdrop-filter(매 프레임 배경 readback + 블러) 와 50px 스프레드
+   글로우를 뺀다. 유리 질감은 약해지지만 정적인 림+글로우로 같은 인상을 유지한다.
+   풀모션 기기(reduce-motion 클래스 없음)는 원본 그대로. */
+body.reduce-motion .orb {
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+  /* 이 네이비 배경은 커스터마이즈 대상에서 제외(위 .orb 참조) — backdrop-filter 가 없어 이
+     배경이 곧 오브의 실제 표면색이 되므로, 강조색과 통일하면 저사양 모드(Tab S6 Lite 기본
+     ON)의 기본 외형이 하늘색으로 바뀌는 회귀가 된다. */
+  background: rgba(20, 60, 180, 0.30);
+  box-shadow:
+    0 0 0 1.5px rgba(var(--kiki-rim-rgb),0.55),
+    0 0 20px  6px rgba(var(--kiki-halo-rgb),0.70);
+}
 </style>
 </head>
 <body>
@@ -358,10 +526,16 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
   /* ── Fan geometry ─────────────────────────────────────── */
   const BX = 400, BY = 210;   // badge center within 460x420 menu
   const R  = 180;             // fan radius
-  const N  = 5;
+  const MAX_N = 5;
+  /* 현재 오브 개수(가변, 1~MAX_N). 원본은 5 고정이었으나, 앱에서 퀵메뉴 항목을 1~5개로 골라
+     넣을 수 있게 되어 KikiInit(cfg.labels) 이 개수를 바꿀 수 있다. 반경/호 각도/사이즈 티어
+     공식 자체는 그대로 두고 분모만 이 값으로 일반화한다("지오메트리 재해석"이 아니라 일반화). */
+  let N = 5;
   /* 펼침 스태거 간격(ms) — 오브(orb-wrap)와 선(line-glow/crisp) 이 공유하는 단일 값.
      오브가 하나씩 피어나는 리듬에 선도 정확히 맞춰 함께 나타나게 한다. */
-  const STAGGER_MS = 60;
+  const STAGGER_MS = 30;
+  /* 닫기 트랜지션 길이(ms) — CSS .menu.closing 의 160ms 와 맞춘다. */
+  const CLOSE_MS = 160;
 
   /* 140° arc opening LEFT (centered on 180°): 110° … 250° */
   const ARC_START = 110, ARC_END = 250;
@@ -372,16 +546,43 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
   /* ── App(WebView) 브리지 감지 — 있으면 메뉴 전용 모드로 동작 ── */
   const BRIDGE = window.KikiNative || null;
 
-  /* build positions: index 0 = top, index 4 = bottom */
-  const positions = LABELS.map((_, i) => {
-    const deg = ARC_END - (ARC_END - ARC_START) * (i / (N - 1)); // 250 -> 110
-    const rad = deg * Math.PI / 180;
-    return {
-      x: BX + R * Math.cos(rad),
-      y: BY + R * Math.sin(rad),
-      size: (i === 0 || i === N - 1) ? 88 : 96   // ends 88px, middle 96px
-    };
-  });
+  /* build positions: index 0 = top, index (count-1) = bottom
+     [앱 모드 추가] tiltDeg 는 팬 전체를 배지 기준으로 회전시킨다(원본 각도식 + 상수).
+     배지가 화면 최상/최하단이거나 가로 모드라 세로로 팬이 안 들어갈 때만 KikiInit 이
+     0 이 아닌 값을 쓴다 — tilt=0 이면 원본 지오메트리 그대로다.
+     count 는 생략 시 현재 N(오브 개수)을 쓴다 — 1개일 때 분모가 0 이 되는 것만 방지한다. */
+  /* 오브 사이 각도는 항목 수와 무관하게 원본 5개 팬의 간격(35°)으로 고정하고, 팬을 배지 정면
+     (180°)에 가운데 맞춘다. 예전엔 몇 개든 140° 호 전체에 흩뿌려서 2개면 맨 위·맨 아래에 떨어져
+     긴 호 하나로만 이어지고, 1개면 정면이 아니라 왼쪽 위(250°)를 가리켰다. 5개일 때는
+     250→110 그대로라 원본 지오메트리와 동일하다. */
+  const ARC_STEP = (ARC_END - ARC_START) / (MAX_N - 1);
+  /* 인접 오브 중심 거리(원본 R=180·35° 기준 ≈108px, 오브 96px 사이 틈 ≈12px).
+     [앱 모드 추가] 배지가 화면 구석이면 팬이 쓸 수 있는 방향이 90° 남짓뿐인데 5개 팬은 140° 라
+     어떤 기울기로도 안 들어간다. 그때 선을 늘려(반지름↑) 이 거리를 유지한 채 각도를 좁힌다 —
+     오브끼리 겹치지 않으면서 팬 전체 각도가 줄어 배지 바로 옆에서 열 수 있다. */
+  const ORB_CHORD = 2 * R * Math.sin(ARC_STEP * Math.PI / 360);
+  function stepFor(radius) {
+    return radius === R ? ARC_STEP : 2 * Math.asin(ORB_CHORD / (2 * radius)) * 180 / Math.PI;
+  }
+  function computePositions(tiltDeg, count, radius) {
+    const n = count || N;
+    const r = radius || R;
+    const step = stepFor(r);
+    const top = 180 + step * (n - 1) / 2;
+    return LABELS.slice(0, n).map((_, i) => {
+      const deg = top - step * i + tiltDeg; // n=5, r=R: 250 -> 110 (+tilt)
+      const rad = deg * Math.PI / 180;
+      return {
+        x: BX + r * Math.cos(rad),
+        y: BY + r * Math.sin(rad),
+        size: (i === 0 || i === n - 1) ? 88 : 96   // ends 88px, middle 96px
+      };
+    });
+  }
+  let positions = computePositions(0, N);
+  /* 현재 적용된 틸트/반지름. KikiInit 이 여러 번 와도(창 재사용) 값이 달라질 때만 재배치한다. */
+  let currentTilt = 0;
+  let currentRadius = R;
 
   /* ── SVG lines: spokes (badge->orb) + arc (orb->orb) ──── */
   const linesGlow  = document.getElementById('linesGlow');
@@ -440,10 +641,24 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
     lineBreathers.push({ glow, crisp, d0, d1, d2, idx: lineAnimIndex++ });
   }
 
-  /* spokes: trim from badge edge (~36px) to orb edge (~44px) */
-  positions.forEach((p, i) => addLine({x:BX,y:BY}, p, 'b', i, 36, 44));
-  /* arc between adjacent orbs: trim ~46px each side to reach orb edges */
-  for (let i = 0; i < N - 1; i++) addLine(positions[i], positions[i+1], i, i+1, 46, 46);
+  /* 선 전체를 현재 positions 로 다시 만든다(틸트 재배치 시 재호출).
+     crispPaths/lineBreathers/lineElems 는 const 배열이라 in-place 로 비우고(외부에서 참조를
+     붙잡고 있는 highlightLines 등이 계속 유효), lineAnimIndex 도 0 으로 되돌려 호흡 스태거가
+     재빌드마다 밀리지 않게 한다. */
+  function buildLines() {
+    linesGlow.innerHTML = '';
+    linesCrisp.innerHTML = '';
+    crispPaths.length = 0;
+    lineBreathers.length = 0;
+    lineElems.length = 0;
+    lineAnimIndex = 0;
+    /* spokes: trim from badge edge (~36px) to orb edge (~44px) */
+    positions.forEach((p, i) => addLine({x:BX,y:BY}, p, 'b', i, 36, 44));
+    /* arc between adjacent orbs: trim ~46px each side to reach orb edges.
+       positions.length 기준(과거엔 N-1 상수) — 오브가 1개뿐이면 인접 호가 없다. */
+    for (let i = 0; i < positions.length - 1; i++) addLine(positions[i], positions[i+1], i, i+1, 46, 46);
+  }
+  buildLines();
 
   /* ── 선의 곡선 호흡(travel dot 대체) ────────────────────
      각 선(glow+crisp)의 path 'd' 를 d0→d1→d0→d2→d0 로 천천히 보간한다. 끝점은 d0/d1/d2 모두
@@ -477,7 +692,13 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
   const orbWraps = [];
   const orbLabels = [];
 
-  positions.forEach((pos, i) => {
+  /* 오브 DOM 을 (재)생성한다. 항목 개수가 바뀔 때만 KikiInit 이 호출한다(개수가 같으면 라벨
+     텍스트만 갱신해 리스너/bob 파라미터를 그대로 유지 — applyOrbPositions 와 같은 원칙). */
+  function buildOrbs() {
+    orbContainer.innerHTML = '';
+    orbWraps.length = 0;
+    orbLabels.length = 0;
+    positions.forEach((pos, i) => {
     const bobAmp = 5 + Math.random() * 5;
     const bobDur = 3.8 + Math.random() * 1.5;
 
@@ -500,6 +721,14 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
     // each orb morphs on its own offset cycle (3-5s) for a living, breathing feel
     orb.style.setProperty('--morph-dur', (3 + Math.random() * 2).toFixed(2) + 's');
     orb.style.setProperty('--morph-del', (-i * 0.7 - Math.random() * 0.6).toFixed(2) + 's');
+    // 물방울 빛의 흐름 주기 — 오브마다 다르게(8~11s) 하고 음수 지연으로 위상을 흩어, 다섯 개가
+    // 같은 박자로 번쩍이지 않게 한다(.orb-light 참조).
+    orb.style.setProperty('--flow-dur', (8 + Math.random() * 3).toFixed(2) + 's');
+    orb.style.setProperty('--flow-del', (-Math.random() * 9).toFixed(2) + 's');
+    const light = document.createElement('div');
+    light.className = 'orb-light';
+    light.innerHTML = '<i class="gloss"></i><i class="caustic"></i><i class="glint"></i>';
+    orb.appendChild(light);
 
     const label = document.createElement('span');
     label.className = 'orb-label';
@@ -520,8 +749,12 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
       let px, py;
       if (ev.clientX !== undefined && ev.clientX !== 0) {
         px = ev.clientX - rect.left; py = ev.clientY - rect.top;
+        // 미러 모드(scaleX(-1))에선 자식의 레이아웃 x 가 시각적으로 반전되므로, 화면 좌표에서
+        // 얻은 시각적 오프셋을 레이아웃 좌표로 되돌린다(폴백은 이미 레이아웃 좌표라 무보정).
+        if (menu.classList.contains('mirror')) px = rect.width - px;
       } else {
-        px = pos.x; py = pos.y;
+        // 생성 시점의 pos 를 캡처하면 틸트 재배치 후 stale 이므로 현재 좌표를 읽는다.
+        px = positions[i].x; py = positions[i].y;
       }
       rippleBurst(px, py);
       orb.classList.remove('tapped'); void orb.offsetWidth; orb.classList.add('tapped');
@@ -536,7 +769,21 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
     wrap.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(e); }
     });
-  });
+    });
+  }
+  buildOrbs();
+
+  /* 틸트 재배치: 오브를 다시 만들지 않고(리스너·bob 파라미터 유지) 좌표만 갱신한다.
+     오브 개수가 바뀔 때는 buildOrbs() 로 통째로 재생성한다(이 함수는 순수 좌표 갱신만). */
+  function applyOrbPositions() {
+    orbWraps.forEach((w, i) => {
+      const p = positions[i];
+      w.style.left = p.x + 'px';
+      w.style.top  = p.y + 'px';
+      w.style.setProperty('--dx', (BX - p.x).toFixed(1) + 'px');
+      w.style.setProperty('--dy', (BY - p.y).toFixed(1) + 'px');
+    });
+  }
 
   function highlightLines(idx, on) {
     crispPaths.forEach(p => {
@@ -568,6 +815,7 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
   const badgeLang = document.getElementById('badgeLang');
   const scrim     = document.getElementById('scrim');
   let isOpen = false;
+  let closeTimer = null;
 
   function pulseBadge() {
     badge.classList.remove('pulse'); void badge.offsetWidth; badge.classList.add('pulse');
@@ -579,18 +827,24 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
     pulseBadge();
     badge.setAttribute('aria-expanded', String(open));
     if (open) {
-      // expand: 오브가 STAGGER_MS 간격으로 순서대로 튀어나오고, 그 오브로 향하는 선(과 앞
+      // expand: 오브가 STAGGER_MS 간격으로 순서대로 피어나고, 그 오브로 향하는 선(과 앞
       // 오브와의 호)도 같은 지연으로 함께 나타난다(자연스럽게 동기화 — addLine 참조).
+      clearTimeout(closeTimer);
       orbWraps.forEach((w, i) => w.style.transitionDelay = `${i * STAGGER_MS}ms`);
       lineElems.forEach(({ el, delayMs }) => el.style.transitionDelay = `${delayMs}ms`);
+      menu.classList.remove('closing');
       menu.classList.add('open');
       scrim.classList.add('show');
     } else {
-      // collapse: 오브와 선 모두 동시에(지연 없이) 일제히 사라진다.
+      // collapse: 오브와 선 모두 동시에(지연 없이) 제자리에서 줄며 사라진다(.closing). 다 사라진
+      // 뒤 .closing 을 떼어 접힘 상태(배지 쪽)로 보이지 않게 되돌려 둔다 — 다음 열기가 배지에서 시작.
       orbWraps.forEach(w => w.style.transitionDelay = '0ms');
       lineElems.forEach(({ el }) => el.style.transitionDelay = '0ms');
+      menu.classList.add('closing');
       menu.classList.remove('open');
       scrim.classList.remove('show');
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(() => { if (!isOpen) menu.classList.remove('closing'); }, CLOSE_MS + 40);
     }
   }
 
@@ -656,14 +910,16 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
          <animateTransform attributeName="transform" type="rotate" values="0 ${x} ${y};15 ${x} ${y};0 ${x} ${y}" dur="${2.2+i*0.32}s" begin="${i*0.48}s" repeatCount="indefinite"/>`;
       const op = reduce ? '0.35' : '0';
       g.innerHTML = `
-        <rect x="${x-w}" y="${y-h}" width="${w*2}" height="${h*2}" rx="${w*0.6}" fill="#cdeeff" opacity="${op}">${anim}</rect>
-        <rect x="${x-h}" y="${y-w}" width="${h*2}" height="${w*2}" rx="${w*0.6}" fill="#cdeeff" opacity="${op}">${anim}</rect>`;
+        <rect x="${x-w}" y="${y-h}" width="${w*2}" height="${h*2}" rx="${w*0.6}" opacity="${op}">${anim}</rect>
+        <rect x="${x-h}" y="${y-w}" width="${h*2}" height="${w*2}" rx="${w*0.6}" opacity="${op}">${anim}</rect>`;
       sparkleGroup.appendChild(g);
     });
   }
 
   /* ── Dust ─────────────────────────────────────────────── */
   const dustContainer = document.getElementById('dustContainer');
+  /* 22개 장식 요소. 저사양(reduce)이면 애니메이션만 끄는 게 아니라 아예 만들지 않는다(레이아웃/페인트 대상 제거). */
+  function buildDust() {
   for (let i = 0; i < 22; i++) {
     const el = document.createElement('div');
     el.className = 'dust';
@@ -677,48 +933,249 @@ body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
       --d-dur:${(3.5+Math.random()*4).toFixed(1)}s; --d-del:${(Math.random()*5).toFixed(1)}s;`;
     dustContainer.appendChild(el);
   }
+  }
 
-  /* ── 초기화: 선 곡선 호흡/별 구성 + 모드별 시작 ──────────── */
+  /* ── 초기화: 선 곡선 호흡/별/먼지 구성 + 모드별 시작 ──────── */
+  let started = false;
+  let startedReduce = false;
+  /* 시스템 "애니메이션 제거/줄이기" 설정도 저사양 모드로 취급한다(접근성 앱이므로 특히 타당). */
+  const prefersReduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   function start(reduce) {
+    if (started) return; // 폴백 타이머와 KikiInit 이 겹쳐도 별/호흡이 이중 생성되지 않게
+    started = true;
+    startedReduce = reduce;
     applyLineBreath(reduce);
-    buildStars(reduce);
-    if (reduce) document.body.classList.add('reduce-motion');
+    if (reduce) {
+      document.body.classList.add('reduce-motion');
+    } else {
+      buildStars(false);
+      buildDust();
+    }
   }
 
   /* 앱(WebView): KikiInit 로 배지 위치/저사양/라벨을 받아 메뉴 전용 모드로 자동 오픈.
      standalone(브라우저): 기존 데모 그대로 — 배지 탭으로 열고 별/선 sway 는 바로 동작. */
+  /* hex("#RRGGBB") -> "R,G,B" 문자열, CSS 커스텀 프로퍼티에 그대로 대입 가능(rgb(var(--x))).
+     Kotlin(Prefs.normalizeHex) 이 이미 검증한 값을 보내지만, 외형의 진실은 이 HTML 이므로
+     자체적으로도 방어한다 — 잘못된 값이면 조용히 무시(기존 색 유지). */
+  function hexToRgbTriplet(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+  }
+  function applyColorVar(name, hex) {
+    const triplet = hexToRgbTriplet(hex);
+    if (triplet) document.documentElement.style.setProperty(name, triplet);
+  }
+  /* 두 강조색 사이의 중간 톤 4종(:root 의 --kiki-rim/soft/halo/deep 참조)을 다시 만든다.
+     기본 두 색 그대로면 원본 리터럴(:root 기본값)을 쓰도록 덮어쓴 값을 지운다 — 원본과 픽셀
+     동일해야 하므로 근사 공식으로 대신하지 않는다. 섞는 비율은 원본 톤이 두 색 사이 어디쯤
+     있는지에서 잰 값(림 0.2 · 은은한 빛 0.6 · 후광 0.66 · 깊은 후광 0.98). */
+  const DEFAULT_ACCENT = '205,238,255', DEFAULT_GLOW = '77,168,255';
+  function deriveTones() {
+    const root = document.documentElement.style;
+    const read = n => (root.getPropertyValue(n) || getComputedStyle(document.documentElement).getPropertyValue(n))
+      .split(',').map(v => parseInt(v, 10));
+    const a = read('--kiki-accent-rgb'), g = read('--kiki-glow-rgb');
+    const names = ['--kiki-rim-rgb', '--kiki-soft-rgb', '--kiki-halo-rgb', '--kiki-deep-rgb'];
+    if (a.join(',') === DEFAULT_ACCENT && g.join(',') === DEFAULT_GLOW) {
+      names.forEach(n => root.removeProperty(n));
+      return;
+    }
+    const mix = t => a.map((v, i) => Math.round(v + (g[i] - v) * t)).join(',');
+    [0.2, 0.6, 0.66, 0.98].forEach((t, k) => root.setProperty(names[k], mix(t)));
+  }
+
   if (BRIDGE) {
     document.body.classList.add('app-mode');
     document.documentElement.style.background = 'transparent';
     // KikiInit 이 오기 전에도 안전하도록 기본값으로 별/선 구성은 미룬다.
     window.KikiInit = function (cfg) {
       cfg = cfg || {};
-      if (Array.isArray(cfg.labels) && cfg.labels.length === orbLabels.length) {
-        LABELS = cfg.labels.slice();
-        orbLabels.forEach((el, i) => { el.textContent = LABELS[i]; });
-        orbWraps.forEach((w, i) => w.setAttribute('aria-label', LABELS[i]));
+      // 항목 개수가 1~5 로 가변(퀵메뉴 선택 UI) — 개수가 실제로 달라질 때만 오브를 통째로
+      // 재생성한다(buildOrbs+buildLines). 개수가 같으면(라벨 문구만 바뀜) 텍스트만 갱신해
+      // 리스너/bob 파라미터를 그대로 유지한다(기존 동작).
+      let countChanged = false;
+      if (Array.isArray(cfg.labels) && cfg.labels.length > 0) {
+        const newCount = Math.min(cfg.labels.length, MAX_N);
+        countChanged = newCount !== N;
+        LABELS = cfg.labels.slice(0, newCount);
+        N = newCount;
+        if (countChanged) {
+          positions = computePositions(currentTilt, N, currentRadius);
+          buildOrbs();
+          buildLines();
+          if (started && !startedReduce) applyLineBreath(false);
+        } else {
+          orbLabels.forEach((el, i) => { el.textContent = LABELS[i]; });
+          orbWraps.forEach((w, i) => w.setAttribute('aria-label', LABELS[i]));
+        }
       }
-      // 네이티브 배지 중심(CSS px=dp)에 팬의 배지 지점(BX,BY)을 맞춘다. 화면 밖으로 안 나가게 clamp.
+      // 강조색 2종(설정에서 커스터마이즈) — 값이 안 오면(구버전 캐시 등) 기존 색 유지.
+      if (typeof cfg.accentColor === 'string') applyColorVar('--kiki-accent-rgb', cfg.accentColor);
+      if (typeof cfg.glowColor === 'string') applyColorVar('--kiki-glow-rgb', cfg.glowColor);
+      deriveTones();
+      // 현재 켜져 있는(ON) 토글 항목에 테두리 강조. buildOrbs 로 오브가 재생성됐어도(위)
+      // orbWraps 는 최신 배열이라 인덱스가 항상 맞는다.
+      if (Array.isArray(cfg.activeFlags)) {
+        orbWraps.forEach((w, i) => w.classList.toggle('active', !!cfg.activeFlags[i]));
+      }
+      // 창 재사용(reopen)으로 KikiInit 이 다시 온 경우: 이전 펼침 상태를 먼저 접어 두어야
+      // 아래 setOpen(true) 가 다시 동작한다(배지 숨김 등으로 KikiCollapse 없이 닫혔을 수 있음).
+      if (isOpen || menu.classList.contains('open') || menu.classList.contains('closing')) {
+        isOpen = false;
+        menu.classList.remove('open', 'closing');
+        scrim.classList.remove('show');
+      }
+      // 네이티브 배지 중심(CSS px=dp)에 팬의 배지 지점(BX,BY)을 맞춘다.
+      // 스테이지(460×420)는 뷰포트보다 넓을 수 있으므로, 화면 안 유지는 스테이지 사각형이 아니라
+      // **팬 실측 범위**(오브+라벨+여백) 기준으로 앵커를 최소 보정한다 — 과거의 스테이지 기준
+      // 클램프는 left 를 [vw-460, 0] 좁은 밴드로 뭉개, 배지를 어디로 옮겨도 메뉴가 화면 우측
+      // 고정 위치에서 열리는 버그였다. 배지가 화면 좌측이라 좌향 팬이 안 들어가면 팬을 좌우
+      // 반전(.mirror)해 오른쪽으로 연다(원본 지오메트리는 그대로, CSS scaleX(-1)만 사용).
+      // 세로로 안 들어가면(배지가 최상/최하단, 또는 가로 모드) 팬을 기울여(computePositions)
+      // 아래/위로 열리게 한다 — 클램프로 배지에서 떨어뜨리는 대신 방향을 바꾸는 쪽이 자연스럽다.
       if (typeof cfg.anchorX === 'number' && typeof cfg.anchorY === 'number') {
         menu.style.position = 'absolute';
-        let left = cfg.anchorX - BX;
-        let top  = cfg.anchorY - BY;
         const vw = window.innerWidth, vh = window.innerHeight;
-        left = Math.max(vw - 460, Math.min(left, 0)) === left ? left : Math.min(0, Math.max(left, vw - 460));
-        top  = Math.min(Math.max(top, vh - 420), Math.max(0, top));
-        menu.style.left = left + 'px';
-        menu.style.top  = top + 'px';
+        const PAD = 16, LABEL_H = 26, ORB_HALF_H = 28;
+        // 화면이 좁아 하한>상한이 되면(어느 쪽에도 못 들어감) 중앙으로 축퇴.
+        const clamp = (v, lo, hi) => hi < lo ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v));
+
+        // 1순위(아래 anchored): 원점(선이 모이는 점)은 배지에 고정하고, 안 들어가면 반지름(선 길이)을
+        // 늘리고 인접 오브 거리(ORB_CHORD)를 유지한 채 각도를 좁힌다. 예전엔 원점을 화면 안쪽으로
+        // 밀어 맞췄는데, 폰(S25+ 세로) 왼쪽 아래 구석에서 원점이 배지보다 약 100dp 위에 생겨 "엉뚱한
+        // 곳에서 열린다"는 제보가 왔다(2026-10). 상한은 사용자 설정 배수(cfg.maxRadiusScale, 기본 3, 1~16).
+        // 2순위(폴백): 상한까지 늘려도 안 들어가면 아래 evaluate 로 원점을 미는 예전 방식.
+        const maxScale = (typeof cfg.maxRadiusScale === 'number' && isFinite(cfg.maxRadiusScale))
+          ? Math.min(16, Math.max(1, cfg.maxRadiusScale)) : 3;
+        // 폴백(예전 방식)의 반지름 후보 — 상한 배수를 넘는 것은 뺀다(상한 1이면 선을 늘리지 않음).
+        const RADIUS_SCALES = [1, 1.25, 1.5].filter(sc => sc <= maxScale);
+        const RADIUS_COST = 0.6;
+
+        // 후보(틸트, 반지름)의 배치 결과: 팬 실측 범위 → 미러 여부 → 클램프된 앵커 → 배지 이탈 거리.
+        function evaluate(tilt, radius) {
+          const pts = computePositions(tilt, N, radius);
+          let minX = BX, maxX = BX, minY = BY, maxY = BY;
+          pts.forEach(p => {
+            const hw = p.size / 2;
+            minX = Math.min(minX, p.x - hw); maxX = Math.max(maxX, p.x + hw);
+            minY = Math.min(minY, p.y - ORB_HALF_H);
+            maxY = Math.max(maxY, p.y + ORB_HALF_H + LABEL_H);
+          });
+          // 배지 지점(BX,BY) 기준 팬이 뻗는 거리(좌/우/상/하).
+          const extLeft = BX - minX + PAD, extRight = maxX - BX + PAD;
+          const extUp = BY - minY + PAD, extDown = maxY - BY + PAD;
+          const mirror = cfg.anchorX < extLeft && vw - cfg.anchorX > cfg.anchorX;
+          const axLo = mirror ? extRight : extLeft, axHi = mirror ? vw - extLeft : vw - extRight;
+          const ayLo = extUp, ayHi = vh - extDown;
+          const ax = clamp(cfg.anchorX, axLo, axHi);
+          const ay = clamp(cfg.anchorY, ayLo, ayHi);
+          // 팬이 화면보다 커서 어떻게 놓아도 잘리는 양(가로 모드에서 세로가 특히 문제).
+          const overflow = Math.max(0, (extUp + extDown) - vh) +
+                           Math.max(0, (extLeft + extRight) - vw);
+          // 점수(작을수록 좋음) = 배지 이탈 거리 + 잘림량×4 + 선 연장 비용. 잘림은 항목을 아예 못
+          // 누르게 하므로 이탈보다 무겁게 친다 — 축퇴 클램프가 "이탈 0"으로 보여 잘린 배치를 고르는
+          // 걸 막는다.
+          const score = Math.abs(ax - cfg.anchorX) + Math.abs(ay - cfg.anchorY) + overflow * 4 +
+                        (radius - R) * RADIUS_COST;
+          return { tilt, radius, pts, mirror, ax, ay, score, overflow };
+        }
+
+        const base = evaluate(0, R);
+        const ax0 = cfg.anchorX, ay0 = cfg.anchorY;
+        // 화면 기준 방향(도): 0=오른쪽, 90=아래, 180=왼쪽(배지 정면). 기존 선호 그대로 — 왼쪽이 기본,
+        // 배지가 화면 좌측이라 왼쪽 팬이 안 들어가면 오른쪽(미러).
+        const pref = base.mirror ? 0 : 180;
+        // 오른쪽을 향하는 팬은 미러로 표현해 위→아래 항목 순서를 지킨다(위아래로 똑바로면 선호 쪽).
+        const isMirrorDir = c => {
+          const cs = Math.cos(c * Math.PI / 180);
+          return cs > 1e-9 || (Math.abs(cs) <= 1e-9 && pref === 0);
+        };
+        // 오브 가로 반폭: 오브(80) 또는 라벨 중 넓은 쪽(라벨이 화면 밖으로 잘리지 않게).
+        const hws = orbLabels.map(l => Math.max(40, l.offsetWidth / 2));
+        // 배지 고정 원점에서 반지름 r, 팬 중심 방향 c 일 때 모든 오브+라벨+여백이 화면 안인가.
+        function fitsAt(r, c) {
+          const step = stepFor(r), mirror = isMirrorDir(c);
+          for (let i = 0; i < N; i++) {
+            const off = step * ((N - 1) / 2 - i);
+            const a = (mirror ? c - off : c + off) * Math.PI / 180;
+            const x = ax0 + r * Math.cos(a), y = ay0 + r * Math.sin(a);
+            if (x - hws[i] < PAD || x + hws[i] > vw - PAD ||
+                y - ORB_HALF_H < PAD || y + ORB_HALF_H + LABEL_H > vh - PAD) return false;
+          }
+          return true;
+        }
+        // 가장 작은 반지름부터(R×0.05 단위), 그 반지름에서 선호 방향에 가장 가까운 방향(0.5° 단위)을
+        // 찾는다. 동률이면 배지가 위쪽 절반일 때 아래로, 아래쪽 절반일 때 위로 도는 쪽을 먼저 본다.
+        // 한계: 각도를 0.5° 간격으로만 훑어 그보다 좁은 틈은 놓친다 — 확장: 필요해지면 구간 교집합을 해석적으로 계산.
+        let anchored = null;
+        const downFirst = ay0 < vh / 2;
+        const reach = Math.hypot(Math.max(ax0, vw - ax0), Math.max(ay0, vh - ay0));
+        for (let k = 0; !anchored; k++) {
+          const r = R + R * 0.05 * k;
+          if (r > R * maxScale + 1e-6 || r > reach) break; // 상한 초과, 또는 어느 오브도 화면에 못 닿음
+          for (let d = 0; d <= 180 && !anchored; d += 0.5) {
+            const down = pref === 180 ? pref - d : pref + d, up = pref === 180 ? pref + d : pref - d;
+            for (const c of (d === 0 ? [pref] : downFirst ? [down, up] : [up, down])) {
+              if (fitsAt(r, c)) { anchored = { r, c }; break; }
+            }
+          }
+        }
+
+        let best = base;
+        if (anchored) {
+          // 방향 c → 기존 틸트 표현(computePositions 의 tiltDeg, -180~180)으로 바꾼다. c=180 이면 틸트 0.
+          const mirror = isMirrorDir(anchored.c);
+          const tilt = (((mirror ? -anchored.c : anchored.c - 180) % 360) + 540) % 360 - 180;
+          best = { tilt, radius: anchored.r, pts: computePositions(tilt, N, anchored.r), mirror, ax: ax0, ay: ay0 };
+        } else if (best.overflow > 0 || Math.abs(best.ax - cfg.anchorX) > 1 || Math.abs(best.ay - cfg.anchorY) > 1) {
+          // 폴백: 클램프가 발동했거나(=배지에서 밀림) 팬이 잘릴 때만 다른 배치를 시도한다.
+          // 배지가 화면 위쪽이면 음수 틸트(팬이 아래로), 아래쪽이면 양수 틸트(팬이 위로).
+          // 작은 반지름·작은 틸트부터 훑고 실질 개선(0.5 초과)일 때만 바꿔, 비기면 원본에 가까운 쪽이 남는다.
+          const sign = cfg.anchorY < vh / 2 ? -1 : 1;
+          for (const s of RADIUS_SCALES) {
+            for (let t = 0; t <= 90; t += 10) {
+              const cand = evaluate(sign * t, R * s);
+              if (cand.score < best.score - 0.5) best = cand;
+            }
+          }
+        }
+        // countChanged 면 위(라벨 처리)에서 이미 새 개수로 한 번 재빌드했지만, 후보 평가는
+        // 그 개수로 다시 계산된 최신 좌표(best.pts)이므로 한 번 더 반영해도 안전(순수 재구성).
+        if (best.tilt !== currentTilt || best.radius !== currentRadius || countChanged) {
+          positions = best.pts;
+          currentTilt = best.tilt;
+          currentRadius = best.radius;
+          buildLines();
+          applyOrbPositions();
+          // 이미 시작된 뒤의 재배치(재오픈)면 새 선에도 호흡을 다시 붙인다(buildLines 가 비웠으므로).
+          if (started && !startedReduce) applyLineBreath(false);
+        }
+        menu.classList.toggle('mirror', best.mirror);
+        // scaleX(-1) 은 박스 중심 기준 반전이라, 미러 시 배지 지점의 시각적 x 는 (스테이지폭-BX).
+        menu.style.left = (best.ax - (best.mirror ? 460 - BX : BX)) + 'px';
+        menu.style.top  = (best.ay - BY) + 'px';
       }
-      start(!!cfg.reduceMotion);
+      start(!!cfg.reduceMotion || prefersReduced);
       // 다음 프레임에 펼침(트랜지션이 걸리도록).
       requestAnimationFrame(() => requestAnimationFrame(() => setOpen(true)));
+      // 초기화 완료 ack — 네이티브 워치독은 이 신호를 기준으로 "열리지도 닫히지도 않는" 창을 닫는다.
+      if (BRIDGE.onReady) { try { BRIDGE.onReady(); } catch (e) {} }
     };
     // 네이티브가 배지 재탭 등으로 우아한 수납을 요청할 때(수납 애니메이션만; 창 제거는 네이티브).
     window.KikiCollapse = function () { setOpen(false); };
-    // KikiInit 이 끝내 호출되지 않아도(폴백) 기본값으로 열리게 한다.
-    setTimeout(() => { if (!isOpen && !menu.classList.contains('open')) { start(false); setOpen(true); } }, 400);
+    // KikiInit 이 끝내 오지 않으면(로드 지연/실패) 기본 라벨로 열지 않는다 — HTML 기본 라벨
+    // 순서와 네이티브 항목 순서가 달라 "숨기기를 눌렀는데 앱이 열리는" 오동작이 되기 때문.
+    // 대신 창을 닫아 사용자가 화면을 되찾게 한다(네이티브 워치독과 이중 안전망).
+    setTimeout(() => {
+      if (!isOpen && !menu.classList.contains('open')) {
+        if (BRIDGE.onDismiss) { try { BRIDGE.onDismiss(); } catch (e) {} }
+      }
+    }, 1500);
   } else {
-    start(false);
+    start(prefersReduced);
   }
 })();
 </script>

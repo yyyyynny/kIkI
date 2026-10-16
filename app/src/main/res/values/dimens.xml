@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        읽기 좋은 한 줄 최대 폭. 태블릿 가로(1338dp)처럼 넓은 화면에서 카드가 화면 끝까지
+        늘어나면 시선 이동이 커져 오히려 읽기 불편해진다. 이보다 좁은 화면에서는 적용되지
+        않으므로(코드에서 비교) 폰·폴드 접힘에는 아무 영향이 없다.
+    -->
+    <dimen name="content_max_width">640dp</dimen>
+</resources>

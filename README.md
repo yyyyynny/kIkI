@@ -34,9 +34,9 @@
 # SDK 경로 지정 (예시)
 echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-# 디버그 APK 빌드
-./gradlew assembleDebug
-# 결과물: app/build/outputs/apk/debug/app-debug.apk
+# 배포용 APK 빌드(코드·리소스 축소, 약 1.6MB)
+./gradlew assembleRelease
+# 결과물: app/build/outputs/apk/release/app-release.apk
 
 # HangulConverter 단위 테스트
 ./gradlew testDebugUnitTest
@@ -60,7 +60,7 @@ Gradle Wrapper(8.11.1)가 포함되어 있어 별도 Gradle 설치는 필요 없
 ## 지원 범위
 
 - minSdk 29 (Android 10) ~ targetSdk 35 (Android 15)
-- Samsung One UI 3.x ~ 8.x (One UI 9.x 및 API 36+ 는 미지원)
+- 실행 OS: Android 10 ~ 17, Samsung One UI 3.x ~ 9.x
 
 ## 개인정보 / 보안
 

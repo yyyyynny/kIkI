@@ -1,6 +1,56 @@
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.concurrent.TimeUnit
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+}
+
+/** git 명령을 실행해 표준출력을 돌려준다. 실패하면 예외 — 호출부가 runCatching 으로 감싼다. */
+fun runGit(vararg args: String): String {
+    val proc = ProcessBuilder("git", *args)
+        .directory(rootDir)
+        .redirectErrorStream(true)
+        .start()
+    val output = proc.inputStream.bufferedReader().readText().trim()
+    val exited = proc.waitFor(10, TimeUnit.SECONDS)
+    check(exited && proc.exitValue() == 0)
+    return output
+}
+
+/**
+ * versionName 을 마지막 커밋 날짜에서 "yy.M.d.nn" 형식(예: 2026-09-19 의 4번째 커밋 →
+ * "26.9.19.04")으로 자동 계산한다. ⚠️ **여기서 리터럴 문자열로 되돌리지 말 것** — CLAUDE.md
+ * "버전 관리" 절 참조.
+ *
+ * - **날짜는 wall-clock 이 아니라 커밋 날짜**: 이 값은 "이 코드가 언제 것인가"를 나타내야
+ *   한다. 빌드 시각 기준이면 몇 달 뒤 같은 커밋을 다시 빌드했을 때(예: 오래된 브랜치를 다시
+ *   빌드) 그 코드와 무관한 "오늘" 날짜가 찍혀 버전이 실제 코드 시점과 어긋난다.
+ * - **`n` = 그날 안에서 HEAD 가 몇 번째 커밋인지**: 하루에 커밋을 여러 번 하는 이 저장소의
+ *   실제 워크플로에서, 날짜만으로는 같은 날 나온 서로 다른 빌드를 구분할 수 없다(오늘
+ *   하루에만 10개 넘는 커밋이 있었다). `git log --since/--until HEAD` 로 그 날짜 범위 안에서
+ *   HEAD 까지 도달 가능한 커밋 수를 세면, 별도 상태 저장 없이 커밋 이력만으로 결정된다 —
+ *   커밋할 때마다 자동으로 다음 번호가 매겨지고 사람이 셀 필요가 없다.
+ * - **`n` 은 2자리로 0 채움한다**(`04`, `10`, `99`…): 채우지 않으면 이 문자열을 나중에 글자
+ *   순으로 정렬할 때 한 자리(`9`)가 두 자리(`10`)보다 뒤로 가는 문제가 생긴다(`'9' > '1'`).
+ *   하루 99번(`n=99`)을 넘어가면 자릿수가 늘어나 그 특정 날짜만 다시 어긋날 수 있지만, 이
+ *   워크플로에서 하루 100커밋은 사실상 없는 수치라 감수한다 — `padStart` 는 넘치면 그냥 원래
+ *   길이로 반환할 뿐 예외를 던지지 않으므로 빌드가 깨지진 않는다.
+ * - git 이 없거나(소스만 배포된 경우) 커밋이 없는 새 저장소면 조용히 오늘 날짜 + `.01` 로
+ *   폴백한다 — 버전 표시가 부정확해질지언정 빌드 자체가 깨지면 안 된다.
+ */
+fun gitCommitDateVersionName(): String {
+    val fmt = DateTimeFormatter.ofPattern("yy.M.d")
+    return runCatching {
+        val dateStr = runGit("log", "-1", "--format=%cd", "--date=short") // "YYYY-MM-DD"
+        check(dateStr.isNotEmpty())
+        val sameDayCommits = runGit(
+            "log", "--since=$dateStr 00:00:00", "--until=$dateStr 23:59:59", "--format=%H", "HEAD"
+        )
+        val n = sameDayCommits.lineSequence().count { it.isNotBlank() }.coerceAtLeast(1)
+        "${LocalDate.parse(dateStr).format(fmt)}.${n.toString().padStart(2, '0')}"
+    }.getOrElse { "${LocalDate.now().format(fmt)}.01" }
 }
 
 android {
@@ -11,10 +61,13 @@ android {
         applicationId = "com.langsense.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // ⚠️ versionCode 는 날짜와 무관한, 릴리스마다 수동으로 정확히 1씩 올리는 평범한 정수다.
+        // (a) Play 스토어가 업로드마다 반드시 증가하는 정수를 요구하고, (b) Prefs.MARKER_SINCE /
+        // isMarkerFresh 의 NEW·이사 안내 자동 만료 계산("도입 후 3버전 지나면 사라짐")이 이 값이
+        // 매번 +1 이라는 전제에 의존한다. 날짜 기반(예: 20260919)으로 바꾸면 하루에 여러 번
+        // 빌드/릴리스할 때 값이 그날 안에서 올라가지 않아 위 계산이 깨진다.
+        versionCode = 2
+        versionName = gitCommitDateVersionName()
     }
 
     // ── 고정 공유 서명키 (요청 사항: 삭제 없이 덮어쓰기 설치) ─────────────────────────
@@ -42,12 +95,18 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // 저사양 타겟: R8 로 미사용 코드 제거·최적화. 접근성 서비스/액티비티/JS 브리지는
+            // proguard-rules.pro 의 keep 규칙으로 보호한다(래디얼 메뉴는 JS 가 문자열 이름으로
+            // KikiNative.onItemTap/onDismiss/onReady 를 부르므로 난독화되면 조용히 먹통이 된다).
+            isMinifyEnabled = true
+            // 쓰지 않는 리소스(AppCompat 의 안 쓰는 레이아웃·이미지 등)도 뺀다(2026-10 크기 줄이기: 디버그 9.5MB → 릴리스 약 1.6MB).
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            if (useSharedSigning) signingConfig = signingConfigs.getByName("shared")
+            // 공유 키가 없으면(CI 등) 디버그 키로 서명해 바로 설치할 수 있게 한다 — 배포를 디버그 APK 대신 이 빌드로 한다.
+            signingConfig = signingConfigs.getByName(if (useSharedSigning) "shared" else "debug")
         }
         debug {
             isMinifyEnabled = false
@@ -82,7 +141,16 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
 
     testImplementation(libs.junit)
+}
+
+/**
+ * 버전 문자열을 콘솔에 찍기만 하는 태스크. CI(`ci.yml`)가 매 실행마다 이 값을 Job Summary 에
+ * 남겨, 저장소를 열어보지 않아도 "이 실행이 어떤 버전을 빌드했는지" Actions 탭에서 바로 보인다.
+ */
+tasks.register("printVersion") {
+    doLast {
+        println("${android.defaultConfig.versionName} (code ${android.defaultConfig.versionCode})")
+    }
 }

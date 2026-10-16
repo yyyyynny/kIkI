@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 상태 필(pill) 배경. 실제 색은 backgroundTint 로 상태(완료/필요)에 맞게 입힌다. -->
+<!--
+    상태 필(pill) 배경 — 레이아웃 미리보기/초기 상태용. 실행 중에는 MainActivity 가 상태(완료/필요)에
+    맞는 채움색으로 같은 모양을 코드에서 다시 만든다(UiDrawables.pill).
+
+    ⚠️ backgroundTint 로 칠하지 않는 이유: GradientDrawable 의 tint 는 채움뿐 아니라 테두리까지
+    같은 색으로 덮는다. 고대비 테마는 컨테이너가 순흑이라 테두리가 유일한 윤곽인데, tint 가 그걸
+    검정으로 지워 필이 통째로 사라졌다(2026-09 실측).
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="@color/ui_accent_container" />
+    <solid android:color="?attr/uiAccentContainer" />
     <corners android:radius="999dp" />
+    <stroke android:width="?attr/uiStrokeWidth" android:color="?attr/uiOutline" />
 </shape>

@@ -15,17 +15,26 @@
     <string name="step_overlay_desc">언어 플래시·배지·교체 버튼을 화면 위에 띄우려면 필요합니다.</string>
     <string name="step_accessibility">접근성 서비스 활성화</string>
     <string name="step_accessibility_desc">언어 전환과 텍스트 선택을 감지하려면 접근성 서비스를 켜야 합니다.</string>
-    <string name="step_battery">배터리 최적화 예외 (권장)</string>
-    <string name="step_battery_desc">백그라운드에서 안정적으로 동작하도록 배터리 최적화에서 제외해 주세요.</string>
+    <string name="step_battery">배터리 최적화 예외</string>
+    <string name="step_battery_desc">백그라운드에서 꺼지지 않도록 배터리 최적화에서 제외해 주세요. 회사 기기처럼 바꿀 수 없으면 아래 "나중에"로 넘어갈 수 있어요.</string>
     <string name="btn_grant_overlay">권한 허용</string>
     <string name="btn_open_accessibility">접근성 설정 열기</string>
     <string name="btn_battery">배터리 설정 열기</string>
     <string name="btn_settings">앱 설정</string>
+    <string name="btn_settings_locked">위 설정을 마치면 열립니다</string>
+    <string name="btn_battery_later">나중에 할게요 (권장하지 않음)</string>
+    <string name="settings_review_onboarding">설정 안내 다시 보기</string>
+    <string name="settings_flash_auto_switch">지문·인증 화면이 바꾼 전환도 알리기</string>
+    <string name="settings_flash_auto_switch_desc">지문 인증 창이 뜨면 삼성 키보드가 잠깐 영어로 바꿨다가 되돌려요. 기본은 깜박이지 않고 넘어갑니다.</string>
+    <string name="settings_radial_max_radius">구석에서 선을 늘리는 한도</string>
+    <string name="settings_radial_max_radius_desc">배지가 화면 구석에 있으면 메뉴 선을 이만큼까지 늘려 배지에서 펼쳐요. 1배면 늘리지 않고 메뉴를 화면 안쪽으로 옮깁니다.</string>
     <string name="status_granted">완료됨</string>
     <string name="status_needed">필요함</string>
     <string name="summary_all_set">✓ 모든 설정이 완료되었습니다</string>
     <string name="summary_incomplete">아래에서 남은 설정을 마쳐 주세요</string>
-    <string name="privacy_note">이 앱은 키 입력 내용이나 화면 내용을 수집·저장·전송하지 않습니다. 모든 처리는 온디바이스(로컬)에서만 수행됩니다.</string>
+    <string name="privacy_note">모든 처리는 이 기기 안에서만 합니다. 이 앱에는 인터넷 권한이 없어 어떤 내용도 밖으로 보내지 않습니다.</string>
+    <string name="disclosure_title">kIkI 가 읽는 것과 남기는 것</string>
+    <string name="disclosure_body">• 읽는 것: 지금 입력 언어(한/영), 입력칸에서 드래그로 고른 글자, 영어→한글로 바꾼 순간 입력칸의 커서 바로 앞 글자\n• 읽지 않는 것: 비밀번호 칸, 다른 앱의 화면 내용, 어떤 키를 눌렀는지(타수 측정을 켜도 개수만 셉니다)\n• 남기는 것: 설정과 입력 통계(「교체?」 버튼이 뜬 영문과 바꿀 글자 포함), 전환 원인 진단을 켰다면 전환 순간의 키 이름과 앞 화면 앱 이름 — 이 기기에만 저장하고, 설정 › 입력 통계에서 끄거나 지울 수 있습니다\n• 보내는 것: 없음</string>
 
     <!-- SettingsActivity -->
     <string name="settings_title">kIkI 설정</string>
@@ -41,6 +50,9 @@
     <string name="settings_flash_colors">언어별 플래시 색상</string>
     <string name="settings_flash_duration">깜박임 속도</string>
     <string name="settings_flash_count">깜박임 횟수</string>
+    <string name="settings_flash_opacity">불투명도</string>
+    <string name="settings_flash_opacity_desc">낮출수록 플래시가 옅어져 아래 화면이 비쳐 보입니다. 왼쪽 색 동그라미로 지금 정도를 확인할 수 있어요. 포커스 없는 입력 경고도 같은 값을 따릅니다.</string>
+    <string name="settings_badge_bg_opacity">배경 불투명도</string>
     <string name="settings_badge">상시 언어 배지</string>
     <string name="settings_badge_enabled">상시 배지 표시</string>
     <string name="settings_badge_size">배지 크기</string>
@@ -49,6 +61,8 @@
     <string name="settings_badge_size_large">대</string>
     <string name="settings_badge_bg_color">배지 배경색</string>
     <string name="settings_badge_text_color">배지 글씨색</string>
+    <string name="settings_badge_long_press_desc">배지를 길게 누르면 입력기 선택 창이 바로 열려요. 거기서 원하는 언어(서브타입)를 골라 전환할 수 있어요.</string>
+    <string name="badge_long_press_switch_failed">지금은 입력기 선택 창을 열 수 없어요</string>
     <string name="settings_nofocus">포커스 없는 키 입력 경고</string>
     <string name="settings_nofocus_enabled">경고 켜기</string>
     <string name="settings_nofocus_threshold">경고 임계 횟수</string>
@@ -56,21 +70,76 @@
     <string name="settings_replace">한영타 교체</string>
     <string name="settings_replace_enabled">한영타 교체 켜기</string>
     <string name="settings_replace_confidence">신뢰도 임계값(%)</string>
-    <string name="settings_replace_confidence_desc">영문을 한글 자판 배열로 바꿨을 때 올바른 한글 음절로 조합되는 비율이에요. 값이 높을수록 더 확실한 한영타에만 교체 버튼을 띄웁니다. 예를 들어 dkssud 는 안녕 으로 잘 조합돼 높게, 실제 영어 단어는 조합이 깨져 낮게 나옵니다.</string>
+    <string name="settings_replace_confidence_desc">선택한 영문이 "한글 자판으로 쳐야 할 걸 영문으로 친 것"일 확신도예요. 한국어로 읽었을 때와 영어 단어·약어로 읽었을 때 어느 쪽이 더 자연스러운지 비교해 정합니다. 값이 높을수록 더 확실한 한영타에만 교체 버튼을 띄웁니다. 예를 들어 dkssud(안녕)는 높게, work(재가)·sns(눈)처럼 실제 영어나 약어인 것은 낮게 나옵니다. CapsLock 을 켠 채 친 것(DKSSUD)도 알아보고, 주변 글이 한국어면 짧은 단어(wha → 좀)도 더 잘 잡습니다.</string>
+    <string name="settings_switch_suggest">한/영 전환 직후 바로 제안</string>
+    <string name="settings_switch_suggest_desc">영문으로 치다가 한/영 키로 한글로 바꾸는 순간, 바로 앞에 친 영문이 한영타처럼 보이면 "교체?" 버튼을 띄워요. 글자를 선택하거나 바꾸지 않으니 그대로 이어서 쳐도 돼요. 버튼을 늦게 눌러도 그 글자가 그 자리에 그대로 있을 때만 바꿔요. zz(ㅋㅋ)·bb(ㅠㅠ)·sj(너)처럼 짧은 것도 잡아요. 이때 커서 앞 글자만 기기 안에서 잠깐 읽고 저장하지 않아요.</string>
+    <string name="settings_replace_exceptions">예외 단어</string>
+    <string name="settings_replace_exceptions_desc">여기 적은 영문 단어는 한영타로 보지 않고 교체 버튼도 띄우지 않아요. 한국어 글에 소문자로 자주 쓰는 약어(예: aos)나 아이디처럼 한글로 바꾸면 안 되는 단어를 넣으세요. 대소문자와 기호는 무시해요. 한 단어를 선택했을 때 뜨는 "교체?" 버튼을 길게 눌러도 바로 추가돼요.</string>
+    <string name="settings_replace_exceptions_hint">영문 단어 (예: aos)</string>
+    <string name="settings_replace_exceptions_add">예외 단어 추가</string>
+    <string name="settings_replace_exceptions_remove">예외 단어 빼기: %1$s</string>
+    <string name="settings_replace_exceptions_empty">아직 없어요</string>
+    <string name="settings_replace_exceptions_invalid">영문 글자 2~40자로 입력해 주세요</string>
+    <string name="settings_replace_exceptions_full">예외 단어는 최대 %1$d개까지예요</string>
+    <string name="chip_exception_added">「%1$s」를 한영타 예외로 추가했어요 — 설정에서 뺄 수 있어요</string>
+    <string name="chip_exception_single_word">한 단어만 선택했을 때 예외로 추가할 수 있어요</string>
+    <string name="settings_color_palette_open">팔레트</string>
+    <string name="settings_color_palette_close">팔레트 닫기</string>
     <string name="settings_color_hex">색상코드(#RRGGBB)</string>
     <string name="settings_apply">설정이 즉시 적용됩니다</string>
     <string name="settings_back">뒤로</string>
+    <string name="settings_version_format">버전 %1$s</string>
     <string name="settings_saved">저장됨 · 즉시 적용</string>
 
     <!-- 터치 키보드 제외 (추가 기능 2) -->
     <string name="settings_exclude_touch_kb">터치 키보드 제외</string>
     <string name="settings_exclude_touch_kb_enabled">터치 키보드 제외 켜기</string>
     <string name="settings_exclude_touch_kb_desc">켜면 화면 터치 키보드를 쓰는 동안에는 플래시·배지·경고·교체 기능을 모두 끄고, 블루투스 등 외장 키보드로 입력할 때만 동작합니다. 외장 키보드의 클립보드/추천 툴바만 떠 있는 경우는 터치 키보드로 보지 않아 그대로 동작합니다.</string>
+    <string name="settings_keyboard_connect_notify">외장 키보드 연결 알림</string>
+    <string name="settings_keyboard_connect_notify_desc">블루투스 등 외장 키보드가 연결되거나 끊길 때 짧게 알려줍니다. 배터리가 나가서 연결이 끊긴 걸 모르고 계속 입력하는 걸 막는 데 도움이 돼요.</string>
+    <string name="keyboard_connected_toast">외장 키보드가 연결됐어요</string>
+    <string name="keyboard_disconnected_toast">외장 키보드 연결이 끊겼어요</string>
+    <string name="settings_diagnostic_pause_with_touch_kb">터치 키보드 사용 중엔 전환 원인 진단도 끄기</string>
+    <string name="settings_diagnostic_pause_with_touch_kb_desc">켜면 터치 키보드가 떠 있는 동안의 전환은 기록하지 않아요.</string>
+
+    <!-- 전환 원인 진단 (추가 기능 3) -->
+    <string name="settings_diagnostic">전환 원인 진단</string>
+    <string name="settings_diagnostic_desc">원인 모를 한/영 전환이 반복될 때만 켜 두세요. 전환될 때마다 원인(눌린 키, 터치 키보드, 지문 화면 등)을 아래에 남깁니다. 켜 두면 배터리를 조금 더 쓰니, 찾았으면 다시 꺼 주세요.</string>
+    <string name="settings_diagnostic_enabled">전환 키 기록 켜기</string>
+    <string name="settings_diagnostic_result_header">최근 전환 기록 (최신순, 최대 %1$d건)</string>
+    <string name="settings_diagnostic_result_label">• %1$s — 키: %2$s</string>
+    <string name="settings_diagnostic_result_empty">아직 기록된 전환이 없어요</string>
+    <string name="settings_diagnostic_result_unknown">• %1$s — 원인을 알 수 없음</string>
+    <string name="settings_diagnostic_result_unknown_note">원인을 알 수 없음: 키 없이 바뀌었거나, 시스템이 이 앱보다 먼저 키를 가로챘을 수 있어요. 앞 화면이 단서예요.</string>
+    <string name="diag_cause_system">• %1$s — 지문·인증 화면이 바꿈</string>
+    <string name="diag_cause_touch">• %1$s — 터치 키보드의 한/영 키</string>
+    <string name="diag_cause_popup">• %1$s — 키보드가 스스로 바꿈</string>
+    <string name="diag_front">앞 화면: %1$s</string>
+    <string name="settings_diagnostic_clear">지우기</string>
 
     <!-- 플로팅 메뉴(배지 탭 래디얼 메뉴) -->
     <string name="settings_radial">플로팅 메뉴(배지 탭)</string>
     <string name="settings_radial_reduce_motion">저사양 모드 (움직임 줄이기)</string>
-    <string name="settings_radial_reduce_motion_desc">켜면 메뉴를 펼친 뒤 오브가 떠다니는 움직임과 선을 따라 흐르는 빛 효과를 꺼서 펼친 메뉴가 가만히 멈춰 있습니다. 펼치고 접는 동작은 그대로예요. 저사양 기기에서 발열·전력을 줄이고 싶을 때 켜세요.</string>
+    <string name="settings_radial_reduce_motion_desc">켜면 메뉴를 펼친 뒤 오브가 떠다니는 움직임·별·먼지·선의 흔들림과 유리 블러를 꺼서 펼친 메뉴가 가만히 멈춰 있습니다. 펼치고 접는 동작은 그대로예요. 직접 정하지 않으면 기기 사양(메모리 4GB 이하, 시스템 애니메이션 끔)에 맞춰 자동으로 켜집니다.</string>
+    <string name="settings_radial_colors_desc">메뉴의 은은한 색과 발광 색을 원하는 색으로 바꿀 수 있어요.</string>
+    <string name="settings_radial_accent_color">메뉴 강조색</string>
+    <string name="settings_radial_glow_color">메뉴 발광색</string>
+
+    <!-- 배지 탭 동작 -->
+    <string name="settings_badge_tap">배지 탭 동작</string>
+    <string name="settings_badge_tap_desc">배지를 탭했을 때 할 일을 고르세요. "메뉴 열기"가 기본이며, 다른 항목을 고르면 탭 한 번에 그 동작이 바로 실행됩니다.</string>
+    <string name="settings_badge_tap_menu">메뉴 열기(기본값)</string>
+    <string name="settings_badge_tap_hide_warning">"숨기기"를 고르면 탭 한 번에 배지가 사라집니다. 다시 켜려면 홈 화면의 kIkI 아이콘을 눌러 설정에서 "상시 배지 표시"를 다시 켜세요.</string>
+
+    <!-- 퀵메뉴 항목 선택/순서 -->
+    <string name="settings_quick_menu_order">퀵메뉴 항목</string>
+    <string name="settings_quick_menu_order_desc">배지를 탭해 여는 메뉴에 넣을 항목을 최대 5개까지 고르세요. 오른쪽 손잡이(≡)를 잡고 위아래로 움직이면 순서를 바꿀 수 있어요.</string>
+    <string name="settings_quick_menu_selected_title">선택됨</string>
+    <string name="settings_quick_menu_addable_title">추가 가능한 항목</string>
+    <string name="settings_quick_menu_remove">목록에서 빼기</string>
+    <string name="settings_quick_menu_add">목록에 추가</string>
+    <string name="settings_quick_menu_drag_handle">잡고 위아래로 움직여 순서 바꾸기</string>
+    <string name="settings_quick_menu_limit_reached">최대 5개까지 선택할 수 있어요</string>
 
     <!-- 간편 메뉴(비눗방울 래디얼) -->
     <string name="quick_app">앱</string>
@@ -78,6 +147,10 @@
     <string name="quick_flash">플래시</string>
     <string name="quick_replace">한영타</string>
     <string name="quick_badge">숨기기</string>
+    <string name="quick_nofocus">포커스 경고</string>
+    <string name="quick_touchkb">터치 키보드 제외</string>
+    <string name="quick_lowspec">저사양 모드</string>
+    <string name="quick_badge_size">배지 크기</string>
     <string name="quick_state_on">켜짐</string>
     <string name="quick_state_off">꺼짐</string>
     <string name="quick_badge_hidden">배지를 숨겼어요. 설정에서 다시 켤 수 있어요.</string>
@@ -86,7 +159,91 @@
     <string name="overlay_no_focus">선택되지 않음</string>
     <string name="chip_replace_format">「%1$s」 교체?</string>
     <string name="replace_copied_fallback">교체 결과를 클립보드에 복사했습니다. 붙여넣기 해주세요.</string>
+    <string name="quick_menu_unavailable">지금은 메뉴를 열 수 없습니다. 시스템 WebView 업데이트 후 다시 시도해 주세요.</string>
+    <string name="quick_launch_failed">화면을 열 수 없습니다. 앱에서 직접 실행해 주세요.</string>
 
     <!-- 설정 슬라이더 현재 값(우측 정렬 표시): "값접미사" (예: "200ms") -->
     <string name="slider_value_short_format">%1$d%2$s</string>
+    <!-- ── 설정 화면 구조(그룹 / 검색 / 이사 안내 / NEW) ───────────────────── -->
+    <string name="settings_search_hint">설정 검색 (색, 투명도, ㅂㅈ, 여러 단어…)</string>
+    <string name="settings_search_result">검색 결과 %1$d개</string>
+    <string name="settings_search_empty">“%1$s”에 해당하는 설정이 없어요. 다른 말로 찾아보세요.</string>
+    <string name="settings_search_fixed">“%1$s”를 한/영을 바꿔 “%2$s”(으)로 찾았어요</string>
+    <string name="settings_search_typo">정확히 맞는 설정이 없어 비슷한 설정을 보여드려요</string>
+    <string name="settings_search_tag">태그: %1$s</string>
+    <string name="settings_search_item_long_press">배지 길게 누르기 (입력기 선택)</string>
+    <string name="settings_search_item_diag_history">최근 전환 기록 지우기</string>
+    <string name="settings_new_badge">NEW</string>
+    <string name="settings_moved_format">「%1$s」은 %2$s로 이사 갔어요</string>
+    <string name="settings_moved_hint">눌러서 바로 가기</string>
+    <string name="settings_languages_desc">여기서 끈 언어는 플래시도 배지도 뜨지 않습니다.</string>
+    <string name="settings_diagnostic_sub_title">하위 옵션</string>
+
+    <string name="settings_group_flash">언어 전환 플래시</string>
+    <string name="settings_group_flash_desc">한/영이 바뀌는 순간 화면 전체를 언어 색으로 한 번 번쩍여, 지금 어느 자판인지 바로 알아차리게 합니다.</string>
+    <string name="settings_group_badge">상시 배지</string>
+    <string name="settings_group_badge_desc">화면 모서리에 지금 입력 언어를 늘 띄워 둡니다. 드래그해 위치를 옮길 수 있어요.</string>
+    <string name="settings_group_menu">빠른 메뉴</string>
+    <string name="settings_group_menu_desc">배지를 탭하면 펼쳐지는 메뉴입니다. 넣을 항목과 순서, 색을 고를 수 있어요.</string>
+    <string name="settings_group_menu_summary">항목 %1$d개</string>
+    <string name="settings_group_replace">한영타 교체</string>
+    <string name="settings_group_replace_desc">영타로 잘못 친 한국어(dkssud → 안녕)를 드래그해 고르면 교체 버튼이 뜹니다.</string>
+    <string name="settings_group_nofocus">입력 경고</string>
+    <string name="settings_group_nofocus_desc">입력칸을 고르지 않은 채 키보드를 치면 글자가 어디에도 안 들어갑니다. 그때 화면에 경고를 띄웁니다.</string>
+    <string name="settings_group_keyboard">키보드</string>
+    <string name="settings_group_keyboard_desc">외장 키보드를 쓸 때와 화면 터치 키보드를 쓸 때를 구분합니다. 아래 두 설정은 서로 독립입니다.</string>
+    <string name="settings_group_keyboard_summary">터치 제외 %1$s · 연결 알림 %2$s</string>
+    <string name="settings_group_stats">입력 통계</string>
+    <string name="settings_group_stats_desc">한/영 전환과 한영타를 얼마나 자주 겪는지, 자주 나온 한영타가 무엇인지 보여줍니다. 기록은 이 기기에만 남아요.</string>
+    <string name="stats_rail_summary">오늘 교체 %1$d회</string>
+    <string name="stats_overview">요약</string>
+    <string name="stats_empty">아직 기록이 없어요. 한/영을 바꾸거나 「교체?」 버튼이 뜨면 여기에 쌓여요.</string>
+    <string name="stats_line_today">오늘 — 한/영 전환 %1$d회 · 교체 제안 %2$d회 → 교체 %3$d회</string>
+    <string name="stats_line_week">최근 7일 — 전환 %1$d회 · 제안 %2$d회 → 교체 %3$d회(%4$d%%) · 무시 %5$d · 예외 %6$d</string>
+    <string name="stats_line_speed">평균 타수(글자 키, 분당) — 오늘 %1$s · 최근 7일 %2$s</string>
+    <string name="stats_by_day">날짜별</string>
+    <string name="stats_line_day">%1$d/%2$d  전환 %3$d · 제안 %4$d · 교체 %5$d</string>
+    <string name="stats_words">자주 나온 한영타</string>
+    <string name="stats_words_desc">한/영 전환 직후 자동으로 뜬 제안을 %1$d번 무시하고 한 번도 교체하지 않은 단어는 그 뒤로 묻지 않아요(「그만 묻는 중」). 기록을 지우면 다시 물어요. 드래그로 직접 선택한 경우엔 항상 판정해요.</string>
+    <string name="stats_words_empty">아직 없어요</string>
+    <string name="stats_word_line">%1$s → %2$s   교체 %3$d · 무시 %4$d</string>
+    <string name="stats_word_suppressed"> · 그만 묻는 중</string>
+    <string name="stats_settings">기록 설정</string>
+    <string name="stats_enabled">입력 기록 남기기</string>
+    <string name="stats_enabled_desc">한/영 전환 횟수, 「교체?」 버튼을 눌렀는지·무시했는지, 버튼이 뜬 영문과 바꿀 글자를 이 기기에만 저장해요(최근 30일, 단어는 최대 200개). 밖으로 보내지 않아요. 끄면 새로 쌓지 않고 「그만 묻기」도 멈춰요.</string>
+    <string name="stats_typing_speed">타수 측정</string>
+    <string name="stats_typing_speed_desc">글자 키를 몇 번 눌렀는지와 치던 시간만 세서 분당 타수를 보여줘요(어떤 키인지는 기록하지 않아요, 2초 넘게 쉰 시간은 빼요). 켜면 모든 키 입력이 앱을 한 번씩 거쳐서 저사양 기기에서는 조금 느려질 수 있어요.</string>
+    <string name="stats_clear">기록 모두 지우기</string>
+    <string name="stats_cleared">입력 기록을 지웠어요</string>
+    <string name="settings_group_diag">전환 원인 진단</string>
+    <string name="settings_group_diag_desc">원인 모를 한/영 자동 전환이 반복될 때만 잠깐 켜세요. 전환 직전에 눌린 물리 키를 기록해 보여줍니다.</string>
+    <string name="settings_group_theme">화면 테마</string>
+    <string name="settings_group_theme_desc">앱 화면(온보딩·설정)의 색입니다. 고르면 즉시 바뀝니다.</string>
+
+    <!-- ── 테마 ─────────────────────────────────────────────────────────── -->
+    <string name="settings_theme_system">시스템 (기본)</string>
+    <string name="settings_theme_system_desc">기기의 밝게/어둡게 설정을 따라갑니다</string>
+    <string name="settings_theme_light">라이트</string>
+    <string name="settings_theme_light_desc">언제나 밝게</string>
+    <string name="settings_theme_dark">다크</string>
+    <string name="settings_theme_dark_desc">언제나 어둡게</string>
+    <string name="settings_theme_beige">베이지</string>
+    <string name="settings_theme_beige_desc">따뜻한 미색 종이에 먹빛 글자</string>
+    <string name="settings_theme_cyber">사이버펑크</string>
+    <string name="settings_theme_cyber_desc">검보라 바탕에 네온 시안·마젠타</string>
+    <string name="settings_theme_high_contrast">고대비</string>
+    <string name="settings_theme_high_contrast_desc">순흑·순백·노란 강조, 굵은 윤곽선</string>
+    <string name="settings_theme_custom">사용자 지정</string>
+    <string name="settings_theme_custom_desc">4색만 고르면 나머지는 자동</string>
+    <string name="settings_theme_custom_title">사용자 지정 색</string>
+    <string name="settings_theme_custom_help">배경·카드·글자·강조 네 가지만 고르면, 보조 글자·구분선·톤 버튼·상태 색은 기본 테마와 같은 규칙으로 자동으로 맞춰집니다. 글자와 강조색이 배경 위에서 잘 읽히지 않으면 읽힐 만큼만 자동으로 진하게(또는 밝게) 보정해요.</string>
+    <string name="settings_theme_custom_bg">배경</string>
+    <string name="settings_theme_custom_surface">카드</string>
+    <string name="settings_theme_custom_text">글자</string>
+    <string name="settings_theme_custom_accent">강조</string>
+    <string name="settings_theme_custom_adjusted">가독성 보정: %1$s %2$s → %3$s</string>
+    <string name="settings_theme_custom_start_from">다른 테마의 색에서 시작하기</string>
+    <string name="settings_theme_random">랜덤</string>
+    <string name="settings_theme_scope_title">어디까지 바뀌나요</string>
+    <string name="settings_theme_scope_desc">테마는 앱 화면에만 적용됩니다. 플래시·배지·빠른 메뉴는 화면 위에 따로 뜨는 오버레이라 각자의 색 설정을 그대로 씁니다 — 테마를 바꿔도 그 색은 변하지 않아요.</string>
 </resources>

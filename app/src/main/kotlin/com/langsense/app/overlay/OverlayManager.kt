@@ -5,15 +5,19 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Bundle
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
 import com.langsense.app.R
 import com.langsense.app.util.ImeLocaleParser
+import com.langsense.app.util.InputStats
 import com.langsense.app.util.Prefs
 import kotlin.math.roundToInt
 
@@ -27,21 +31,48 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     private val handler = Handler(Looper.getMainLooper())
 
     private var flashView: FlashOverlayView? = null
+    /** 플래시 창 파라미터(1회 생성 후 재사용). */
+    private var flashParams: WindowManager.LayoutParams? = null
+    /** 재생 종료 후 창을 잠시 유지했다가 제거하는 예약(연속 전환 시 창 생성/파괴 churn 방지). */
+    private val flashLinger = Runnable { removeFlash() }
     // 같은 색 플래시가 아주 짧은 간격으로 다시 들어오면(잔존 중복 발화) 건너뛰는 렌더 단계 안전망.
     // 근본 원인은 ImeStateDetector(합치기/불응기/멱등)에서 처리하며, 이건 마지막 시각 방어일 뿐이다.
     private var lastFlashColorArgb = 0
     private var lastFlashAt = 0L
+    /** 마지막 플래시의 실제 총 재생 길이(ms). 동일 색 중복 억제 창을 재생 길이에 연동하기 위함. */
+    private var lastFlashTotalMs = 0L
     private var badgeView: BadgeOverlayView? = null
-    private var badgeParams: WindowManager.LayoutParams? = null
     private var chipView: ReplaceChipView? = null
     private var chipDismiss: Runnable? = null
     // 칩이 들고 있는 동안 소유하는 노드. 탭으로 소비되든, 타임아웃/교체로 버려지든 removeChip() 에서
     // 반드시 한 번 recycle() 한다(API 33 미만 노드 풀 누수 방지).
     private var pendingNode: AccessibilityNodeInfo? = null
+    // 현재 떠 있는 칩의 (변환 결과, 선택 범위). 드래그 중 동일 칩 재생성(깜박임/타이머 리셋) 억제용.
+    private var lastChipConverted: String? = null
+    private var lastChipSelStart = -1
+    private var lastChipSelEnd = -1
 
     private var quickMenuView: QuickMenuOverlayView? = null
     /** 간편 메뉴 항목(앱 열기/설정/토글 등). 서비스가 [setQuickMenuItems] 로 주입. */
     private var quickMenuItems: List<QuickMenuItem> = emptyList()
+    /**
+     * 서비스가 1회 주입하는 배지 탭 디스패치 훅(추가 기능: 배지 탭 동작 커스터마이즈). `var` 필드를
+     * 참조하는 람다로 배지에 연결하므로([showBadge] 의 `onTap` 참조), 배지 뷰가 서비스 생존 동안
+     * 1회만 생성돼도 이후 이 필드가 갱신되면 다음 탭부터 바로 반영된다(뷰 재생성 불필요).
+     * 미주입 상태(null)면 기존처럼 [toggleQuickMenu] 로 폴백.
+     */
+    private var badgeTapHandler: (() -> Unit)? = null
+    /**
+     * 서비스가 1회 주입하는 배지 롱프레스 훅(배지 롱프레스로 즉시 언어 전환, 2026-09 추가).
+     * [badgeTapHandler] 와 동일한 이유로 `var` 필드 참조 람다로 연결한다. 미주입 상태(null)면
+     * [BadgeOverlayView] 가 아무것도 하지 않는다(안전한 no-op).
+     */
+    private var badgeLongPressHandler: (() -> Unit)? = null
+    /** 닫힌 메뉴(WebView)의 유휴 캐시. [QUICK_MENU_CACHE_MS] 뒤 또는 메모리 압박 시 폐기. */
+    private var cachedQuickMenu: QuickMenuOverlayView? = null
+    private val quickMenuCacheExpire = Runnable { trimQuickMenuCache() }
+    /** 퀵메뉴 창 파라미터(1회 생성 후 재사용). */
+    private var quickMenuParams: WindowManager.LayoutParams? = null
 
     private val overlayType: Int = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 
@@ -65,62 +96,101 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     fun showFlash(lang: String) = onMain {
         if (released) return@onMain
         if (!prefs.flashEnabled) return@onMain
+        // 언어 미판별(UNKNOWN)은 사용자에게 "UNKNOWN" 텍스트 플래시로 노출하지 않는다.
+        if (lang == ImeLocaleParser.UNKNOWN) return@onMain
         if (!prefs.isLangEnabled(lang)) return@onMain
-        // 렌더 단계 최종 안전망: 색과 무관하게 최소 간격(LANG_FLASH_MIN_INTERVAL_MS) 안의 재요청은
-        // 같은 전환에서 비롯된 중복으로 보고 건너뛴다. 근본 방어는 ImeStateDetector 의 권위 소스 읽기
-        // (stale 없는 설정값 직접 읽기)이므로 이 창은 짧게만 둔다 — 과거 700ms 는 빠른 정상 재전환
-        // (1초 내 한→영→한)의 두 번째 플래시까지 삼켜 "반응이 씹히는" 원인이었다.
+        // 렌더 단계 안전망 두 겹. 근본 방어는 ImeStateDetector 이며 여기는 최종 시각 방어일 뿐이다.
+        // ① 색과 무관한 에피소드 최소 간격(LANG_FLASH_MIN_INTERVAL_MS=300ms) — 같은 전환에서
+        //    비롯된 즉발 중복 억제. 과거 700ms 는 빠른 정상 재전환까지 삼켜 "씹힘"의 원인이었다.
+        // ② 동일 색 중복 억제 창 = "직전 재생의 실제 총 길이 + 꼬리 여유(FLASH_DEDUP_MS)".
+        //    시작 시각 기준 고정 350ms 는 짧은 설정(100ms×1회=총 150ms)에서 잔존 중복(~350~550ms
+        //    후 도착)이 창 만료 직후 별개 깜박임으로 렌더되는 원인이었다.
+        // 두 검사 모두 통과했을 때만 상태를 갱신한다 — 억제된 요청이 창을 앞으로 밀어
+        // 정당한 다음 플래시까지 삼키지 않게 하기 위함.
         val now = SystemClock.uptimeMillis()
-        if (now - lastLangFlashAt < LANG_FLASH_MIN_INTERVAL_MS) return@onMain
+        if (now - lastLangFlashAt < LANG_FLASH_MIN_INTERVAL_MS) {
+            Log.d(TAG, "flash suppressed(episode): lang=$lang, +${now - lastLangFlashAt}ms")
+            return@onMain
+        }
+        val colorArgb = prefs.flashColorArgb(lang)
+        if (colorArgb == lastFlashColorArgb && now - lastFlashAt < lastFlashTotalMs + FLASH_DEDUP_MS) {
+            Log.d(TAG, "flash suppressed(dedup): lang=$lang, +${now - lastFlashAt}ms")
+            return@onMain
+        }
         lastLangFlashAt = now
-        flash(prefs.flashColorArgb(lang), ImeLocaleParser.displayName(lang))
-    }
-
-    /** 포커스 없는 키 입력 경고(동일한 플래시 방식, 회색 + 안내 텍스트). */
-    fun showNoFocusWarning(message: String) = onMain {
-        if (released) return@onMain
-        flash(0xD9555555.toInt(), message)
-    }
-
-    private fun flash(colorArgb: Int, text: String) {
-        // 렌더 단계 안전망: 동일 색 플래시가 FLASH_DEDUP_MS 안에 다시 오면 중복으로 보고 건너뛴다.
-        // (다른 언어는 색이 달라 정상 표시됨. 사람은 같은 언어로 이만큼 빨리 두 번 전환할 수 없음.)
-        val now = SystemClock.uptimeMillis()
-        if (colorArgb == lastFlashColorArgb && now - lastFlashAt < FLASH_DEDUP_MS) return
         lastFlashColorArgb = colorArgb
         lastFlashAt = now
+        lastFlashTotalMs = FlashOverlayView.totalDurationMs(prefs.flashDurationMs, prefs.flashCount)
+        Log.d(TAG, "flash render: lang=$lang, total=${lastFlashTotalMs}ms")
+        flash(colorArgb, ImeLocaleParser.displayName(lang))
+    }
 
-        removeFlash()
-        val view = FlashOverlayView(context)
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            overlayType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        )
-        // [7] 기본 윈도우 enter/exit 애니메이션 제거 → 색이 좌→우로 채워지지 않고 전체 화면이
-        // 한 프레임에 꽉 찬 상태로 나타난다. (페이드아웃은 뷰 알파 애니메이션이 따로 처리)
-        params.windowAnimations = 0
-        runCatching { wm.addView(view, params) }.onFailure { return }
-        flashView = view
-        // onEnd 시점에 다른 플래시로 교체되었을 수 있으므로 자기 자신일 때만 제거(오제거 방지).
-        view.play(colorArgb, text, prefs.flashDurationMs, prefs.flashCount) { removeFlashIf(view) }
+    /**
+     * 포커스 없는 키 입력 경고(동일한 플래시 방식, 회색 + 안내 텍스트).
+     * 재경고 쿨다운은 KeyEventMonitor 가 담당하므로 여기서는 바로 렌더하되, 언어 플래시의
+     * dedup 상태(lastFlashColorArgb 등)는 건드리지 않는다 — 과거엔 회색이 그 상태를 오염시켜
+     * 직후 언어 플래시의 중복 억제를 무력화했다.
+     */
+    fun showNoFocusWarning(message: String) = onMain {
+        if (released) return@onMain
+        Log.d(TAG, "flash render: no-focus warning")
+        // 색은 고정 회색이지만 불투명도는 플래시 설정을 따른다 — 사용자가 플래시를 흐리게 해놨는데
+        // 경고만 진하게 남으면 같은 표현 수단인데 따로 노는 꼴이 된다(예전엔 0xD9555555 하드코딩).
+        flash(prefs.warningFlashArgb(), message)
+    }
+
+    /**
+     * 순수 렌더 — 중복 억제/상태 갱신은 호출자(showFlash) 책임.
+     *
+     * 저사양 최적화: 전체화면 창(2000×1200 서피스 ≈ 9.6MB×버퍼)을 플래시마다 만들고 부수면 전환마다
+     * 30~80ms 가 든다. 뷰/창을 1개만 유지하고, 재생이 끝나면 곧바로 제거하는 대신 INVISIBLE 로 숨긴 채
+     * [FLASH_LINGER_MS] 동안 붙여 둔다 — 그 사이 다음 전환이 오면 addView 없이 `play()` 만 다시 한다.
+     * (INVISIBLE 이면 WMS 가 창을 합성/입력에서 제외하므로 알파 0 으로 두는 것과 달리 상주 비용이 없다.)
+     */
+    private fun flash(colorArgb: Int, text: String) {
+        handler.removeCallbacks(flashLinger)
+        var view = flashView
+        if (view == null) {
+            view = FlashOverlayView(context)
+            val params = flashParams ?: WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                overlayType,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+            ).also {
+                // [7] 기본 윈도우 enter/exit 애니메이션 제거 → 색이 좌→우로 채워지지 않고 전체 화면이
+                // 한 프레임에 꽉 찬 상태로 나타난다. (페이드아웃은 뷰 알파 애니메이션이 따로 처리)
+                it.windowAnimations = 0
+                coverWholeScreen(it)
+                flashParams = it
+            }
+            if (runCatching { wm.addView(view, params) }.isFailure) return
+            flashView = view
+        } else {
+            view.cancel() // 진행 중이면 절단(기존 "교체" 의미 그대로)
+            view.visibility = View.VISIBLE
+        }
+        val v = view
+        // onEnd 시점에 다른 뷰로 교체되었을 수 있으므로 자기 자신일 때만 처리(오제거 방지).
+        v.play(colorArgb, text, prefs.flashDurationMs, prefs.flashCount) { onFlashEnded(v) }
+    }
+
+    private fun onFlashEnded(view: FlashOverlayView) {
+        if (flashView !== view) return
+        view.visibility = View.INVISIBLE
+        handler.postDelayed(flashLinger, FLASH_LINGER_MS)
     }
 
     private fun removeFlash() {
+        handler.removeCallbacks(flashLinger)
         flashView?.let {
             it.cancel()
             runCatching { wm.removeView(it) }
         }
         flashView = null
-    }
-
-    /** 현재 표시 중인 플래시가 [view] 와 동일할 때만 제거한다. */
-    private fun removeFlashIf(view: FlashOverlayView) {
-        if (flashView === view) removeFlash()
     }
 
     // ---------------------------------------------------------------------
@@ -146,16 +216,21 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
 
             val view = BadgeOverlayView(
                 context, wm, params,
-                onTap = { toggleQuickMenu() },
+                onTap = { (badgeTapHandler ?: this::toggleQuickMenu).invoke() },
+                onLongPress = { badgeLongPressHandler?.invoke() },
                 onPositionSaved = { x, y -> prefs.setBadgePosition(x, y) }
             )
+            badgeStyleSig = null // 새 뷰에는 반드시 적용
             applyBadgeStyle(view)
             view.setLanguage(label)
 
             // 저장 위치가 있으면 사용, 없으면 우하단 기본값
             if (prefs.badgeX >= 0 && prefs.badgeY >= 0) {
-                params.x = prefs.badgeX
-                params.y = prefs.badgeY
+                // 저장 시점과 화면 방향/크기가 달라졌을 수 있으므로(회전 후 재표시 등) 현재 화면
+                // 경계로 1차 보정 — 이대로면 배지가 화면 밖에 붙어 드래그로도 복구할 수 없다.
+                val dm = context.resources.displayMetrics
+                params.x = prefs.badgeX.coerceIn(0, dm.widthPixels)
+                params.y = prefs.badgeY.coerceIn(0, dm.heightPixels)
             } else {
                 val (dx, dy) = BadgeOverlayView.defaultPosition(view)
                 params.x = dx
@@ -163,7 +238,9 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
             }
             runCatching { wm.addView(view, params) }.onFailure { return@onMain }
             badgeView = view
-            badgeParams = params
+            // 실측 크기(view.width)는 첫 레이아웃 후에야 알 수 있으므로, 붙은 뒤 배지 폭까지
+            // 반영한 2차 보정으로 완전히 화면 안에 들어오게 한다.
+            view.post { view.ensureOnScreen() }
         } else {
             // 재사용: 라벨 + 크기/색 스타일을 다시 적용(설정 변경 즉시 반영).
             applyBadgeStyle(existing)
@@ -171,11 +248,41 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         }
     }
 
-    /** 현재 설정(크기/배경색/글씨색)을 배지에 적용. */
-    private fun applyBadgeStyle(view: BadgeOverlayView) =
-        view.applyStyle(prefs.badgeSize, prefs.badgeBgColorArgb(), prefs.badgeTextColorArgb())
+    /** 마지막으로 배지에 적용한 (크기, 배경, 글씨) — 같으면 재적용을 건너뛴다. null = 미적용. */
+    private var badgeStyleSig: Triple<Int, Int, Int>? = null
+
+    /**
+     * 현재 설정(크기/배경색/글씨색)을 배지에 적용. 언어 전환마다 [showBadge] 가 호출되는데, 스타일이
+     * 그대로인데도 매번 GradientDrawable 3 + LayerDrawable 1 을 새로 만들고 재레이아웃하던 것을
+     * 시그니처 비교로 건너뛴다(설정 변경 시엔 값이 달라 자연히 재적용).
+     */
+    private fun applyBadgeStyle(view: BadgeOverlayView) {
+        val sig = Triple(prefs.badgeSize, prefs.badgeBgColorArgb(), prefs.badgeTextColorArgb())
+        if (sig == badgeStyleSig) return
+        badgeStyleSig = sig
+        view.applyStyle(sig.first, sig.second, sig.third)
+    }
 
     fun updateBadge(lang: String) = showBadge(lang)
+
+    /** 배지 창이 실제로 붙어 있는지(오버레이 권한이 늦게 부여된 경우의 재시도 판단용). */
+    fun hasBadge(): Boolean = badgeView != null
+
+    /**
+     * 화면 회전/크기 변경 시 서비스가 호출. 새 화면 밖에 남은 배지를 화면 안으로 되돌린다
+     * (배지 창은 서비스 생존 동안 유지되므로 여기서 보정하지 않으면 배지가 사라진 것처럼 보이고
+     * 화면 밖이라 드래그로도 복구 불가). post 로 미뤄 새 displayMetrics 가 반영된 뒤 실행한다.
+     */
+    fun onScreenChanged() = onMain {
+        if (released) return@onMain
+        val v = badgeView ?: return@onMain
+        v.post {
+            // 저장된 원래 위치에서 다시 클램프한다. 현재 좌표만 클램프하면 세로→가로에서 눌린
+            // 값이 세로로 돌아와도 그대로 남아(유효 범위라 보정 안 됨) 배지가 영구히 이동한다.
+            if (prefs.badgeX >= 0 && prefs.badgeY >= 0) v.moveWithinScreen(prefs.badgeX, prefs.badgeY)
+            else v.ensureOnScreen()
+        }
+    }
 
     fun hideBadge() = onMain { hideBadgeInternal() }
 
@@ -183,7 +290,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         hideQuickMenuInternal() // 배지가 사라지면 그 주위 메뉴도 함께 닫는다
         badgeView?.let { runCatching { wm.removeView(it) } }
         badgeView = null
-        badgeParams = null
+        badgeStyleSig = null
     }
 
     // ---------------------------------------------------------------------
@@ -195,6 +302,19 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         quickMenuItems = items
     }
 
+    /** 서비스가 배지 탭 디스패치 로직을 주입(배지 탭 동작 커스터마이즈 — [badgeTapHandler] 참조). */
+    fun setBadgeTapHandler(handler: () -> Unit) {
+        badgeTapHandler = handler
+    }
+
+    /** 서비스가 배지 롱프레스 로직을 주입(즉시 언어 전환 — [badgeLongPressHandler] 참조). */
+    fun setBadgeLongPressHandler(handler: () -> Unit) {
+        badgeLongPressHandler = handler
+    }
+
+    /** 배지 탭 피드백 펄스를 외부(직접 액션 실행 경로)에서도 재사용할 수 있게 공개. */
+    fun pulseBadge() = onMain { if (!released) badgeView?.pulse() }
+
     /** 배지 탭 시: 열려 있으면 (수납 애니메이션과 함께) 닫고, 닫혀 있으면 배지를 앵커로 메뉴를 연다. */
     fun toggleQuickMenu() = onMain {
         if (released) return@onMain
@@ -204,33 +324,48 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
             return@onMain
         }
         val bv = badgeView ?: return@onMain
-        val bp = badgeParams ?: return@onMain
         if (quickMenuItems.isEmpty()) return@onMain
         bv.pulse()
         // 배지가 사라지는 일은 없지만(사라지면 hideQuickMenuInternal 이 메뉴도 함께 닫음) 방어적으로
         // 최초 좌표를 폴백으로 남겨둔다.
-        val initialAnchorX = bp.x + bv.width / 2
-        val initialAnchorY = bp.y + bv.height / 2
+        val initialAnchor = badgeCenterOnScreen(bv)
+        val reduce = prefs.radialReduceMotion
 
-        val view = QuickMenuOverlayView(
-            context,
-            anchorProvider = {
-                // 회전 등으로 다시 레이아웃될 때 배지의 "현재" 위치를 읽는다(Bug 6 — 고정 좌표로
-                // 열면 회전 후 예전 배지 위치를 중심으로 부채꼴이 펼쳐지는 문제 방지).
-                val curBv = badgeView
-                val curBp = badgeParams
-                if (curBv != null && curBp != null) {
-                    (curBp.x + curBv.width / 2) to (curBp.y + curBv.height / 2)
-                } else {
-                    initialAnchorX to initialAnchorY
-                }
-            },
-            items = quickMenuItems,
-            reduceMotion = prefs.radialReduceMotion // 저사양 모드면 펼친 뒤 연속 애니메이션을 끈다
-        ) {
-            hideQuickMenu()
+        // 저사양 최적화: 직전에 닫힌 메뉴(WebView)가 캐시에 살아 있으면 재사용한다 — WebView 콜드
+        // 스타트(저사양 0.5~1.5s, 40~80MB churn)를 두 번째 오픈부터 피한다. 렌더러가 죽었거나
+        // 저사양 모드 값이 바뀌었으면(HTML 초기화가 달라짐) 버리고 새로 만든다.
+        handler.removeCallbacks(quickMenuCacheExpire)
+        val cached = cachedQuickMenu
+        cachedQuickMenu = null
+        val reused = cached != null && !cached.isDead && cached.reduceMotion == reduce
+        if (cached != null && !reused) cached.destroyNow()
+
+        val view = if (reused) cached!! else runCatching {
+            // 생성자에서 WebView 를 만드는데, WebView 프로바이더가 업데이트 중이거나 비활성화면
+            // RuntimeException 이 던져진다. 이 경로는 배지 터치 리스너에서 바로 이어지므로 감싸지
+            // 않으면 프로세스가 죽고 시스템이 접근성 서비스를 꺼버린다(사용자가 수동 재활성화 필요).
+            QuickMenuOverlayView(
+                context,
+                anchorProvider = {
+                    // 회전 등으로 다시 레이아웃될 때 배지의 "현재" 위치를 읽는다(Bug 6 — 고정 좌표로
+                    // 열면 회전 후 예전 배지 위치를 중심으로 부채꼴이 펼쳐지는 문제 방지).
+                    badgeView?.let { badgeCenterOnScreen(it) } ?: initialAnchor
+                },
+                items = quickMenuItems,
+                reduceMotion = reduce, // 저사양 모드면 펼친 뒤 연속 애니메이션을 끈다
+                colorProvider = { prefs.radialAccentColorHex to prefs.radialGlowColorHex },
+                maxRadiusScaleProvider = { prefs.radialMaxRadiusScale }
+            ) {
+                hideQuickMenu()
+            }
+        }.getOrElse {
+            Log.w(TAG, "quick menu unavailable: ${it.javaClass.simpleName}")
+            runCatching {
+                Toast.makeText(context, R.string.quick_menu_unavailable, Toast.LENGTH_SHORT).show()
+            }
+            return@onMain
         }
-        val params = WindowManager.LayoutParams(
+        val params = quickMenuParams ?: WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             overlayType,
@@ -238,17 +373,64 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
-        )
-        params.windowAnimations = 0 // 등장 연출은 뷰 애니메이션으로 직접 처리
-        runCatching { wm.addView(view, params) }.onFailure { return@onMain }
+        ).also {
+            it.windowAnimations = 0 // 등장 연출은 뷰 애니메이션으로 직접 처리
+            coverWholeScreen(it)
+            quickMenuParams = it
+        }
+        if (runCatching { wm.addView(view, params) }.isFailure) {
+            // attach 가 안 된 뷰는 onDetachedFromWindow 가 영영 오지 않아 WebView 가 누수된다.
+            view.destroyNow()
+            return@onMain
+        }
         quickMenuView = view
+        if (reused) view.reopen()
+    }
+
+    /** 닫힌 메뉴의 유휴 캐시 폐기(만료·메모리 압박·정리). 서비스의 onTrimMemory 에서도 호출. */
+    fun trimQuickMenuCache(): Unit = onMain {
+        handler.removeCallbacks(quickMenuCacheExpire)
+        cachedQuickMenu?.destroyNow()
+        cachedQuickMenu = null
+    }
+
+    /**
+     * 배지 중심의 **화면 절대 좌표**(px). 배지 창(params.x/y 원점 = 상태바 아래)과 퀵메뉴 창의 원점이
+     * 서로 다르므로 화면 좌표로 넘기고, 메뉴 창 기준으로 바꾸는 건 [QuickMenuOverlayView] 가 한다
+     * (메뉴 창 원점도 기기마다 다르다 — 펀치홀 폰은 그 아래부터).
+     */
+    private fun badgeCenterOnScreen(view: BadgeOverlayView): Pair<Int, Int> {
+        val loc = IntArray(2)
+        view.getLocationOnScreen(loc)
+        return (loc[0] + view.width / 2) to (loc[1] + view.height / 2)
+    }
+
+    /**
+     * 전체 화면 창(플래시·메뉴)이 펀치홀 줄·시스템 바까지 덮게 한다. 없으면 펀치홀 폰(S25+)에서 창이 상태바 아래부터
+     * 놓여, 메뉴 배경이 상태바만 빼고 깔렸다(2026-10 녹화 실측: 위 94px 는 안 어두워짐).
+     */
+    private fun coverWholeScreen(p: WindowManager.LayoutParams) {
+        p.layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        else WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) p.fitInsetsTypes = 0
     }
 
     fun hideQuickMenu() = onMain { hideQuickMenuInternal() }
 
     private fun hideQuickMenuInternal() {
-        quickMenuView?.let { runCatching { wm.removeView(it) } }
+        val v = quickMenuView ?: return
         quickMenuView = null
+        runCatching { wm.removeView(v) }
+        if (released || v.isDead) {
+            v.destroyNow()
+            return
+        }
+        // 창만 떼고 WebView 는 잠시 보관 — 다음 오픈이 콜드 스타트를 건너뛴다(toggleQuickMenu 참조).
+        cachedQuickMenu?.destroyNow()
+        cachedQuickMenu = v
+        handler.removeCallbacks(quickMenuCacheExpire)
+        handler.postDelayed(quickMenuCacheExpire, QUICK_MENU_CACHE_MS)
     }
 
     // ---------------------------------------------------------------------
@@ -268,16 +450,38 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         fullText: String,
         selStart: Int,
         selEnd: Int,
-        converted: String
+        converted: String,
+        timeoutMs: Long = CHIP_TIMEOUT_MS,
+        /** true 면 원래 자리에 원문이 그대로 있을 때만 바꾼다(한/영 전환 직후 제안 — 문서 안 다른 곳의 같은 글자를 바꾸지 않게). */
+        exactRange: Boolean = false,
     ) = onMain {
         if (released) { node.recycle(); return@onMain }
-        removeChip() // 이전 칩이 있었다면 그 노드까지 함께 회수
-        pendingNode = node
-        val view = ReplaceChipView(context)
-        view.bind(converted) {
-            applyReplacement(node, fullText, selStart, selEnd, converted)
-            removeChip()
+        // 드래그로 선택을 넓히는 동안 selection-changed 가 연발하는데, 매번 칩을 재생성하면
+        // 칩이 깜박이고 2초 소멸 타이머도 계속 리셋돼 "마지막 이벤트 후 2초"까지 남는다.
+        // 같은 변환 결과·같은 선택 범위면 떠 있는 칩(과 타이머)을 그대로 둔다.
+        if (chipView != null && converted == lastChipConverted &&
+            selStart == lastChipSelStart && selEnd == lastChipSelEnd
+        ) {
+            node.recycle()
+            return@onMain
         }
+        removeChip() // 이전 칩이 있었다면 그 노드까지 함께 회수(결과 미집계 — 드래그 중 다른 칩으로 바뀐 것)
+        pendingNode = node
+        val original = fullText.substring(selStart.coerceIn(0, fullText.length), selEnd.coerceIn(selStart.coerceIn(0, fullText.length), fullText.length))
+        val view = ReplaceChipView(context)
+        view.bind(
+            converted,
+            onTap = {
+                applyReplacement(node, fullText, selStart, selEnd, converted, exactRange)
+                chipOutcomeListener?.invoke(original, converted, InputStats.Outcome.ACCEPTED)
+                removeChip()
+            },
+            onLongPress = {
+                addSelectionAsTypoException(original)
+                chipOutcomeListener?.invoke(original, converted, InputStats.Outcome.EXCEPTED)
+                removeChip()
+            },
+        )
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -288,10 +492,37 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             y = statusBarHeight() + dp(8f)
         }
-        runCatching { wm.addView(view, params) }.onFailure { return@onMain }
+        // 실패 시 removeChip 으로 pendingNode 까지 회수 — 여기서 그냥 빠지면 칩도 타이머도 없어
+        // 방금 세팅한 pendingNode 를 회수할 주체가 사라진다(노드 풀 누수).
+        runCatching { wm.addView(view, params) }.onFailure { removeChip(); return@onMain }
         chipView = view
+        lastChipConverted = converted
+        lastChipSelStart = selStart
+        lastChipSelEnd = selEnd
 
-        chipDismiss = Runnable { removeChip() }.also { handler.postDelayed(it, CHIP_TIMEOUT_MS) }
+        chipDismiss = Runnable {
+            chipOutcomeListener?.invoke(original, converted, InputStats.Outcome.IGNORED)
+            removeChip()
+        }.also { handler.postDelayed(it, timeoutMs) }
+    }
+
+    /** "교체?" 칩의 결과(교체 / 무시 / 예외)를 받는 쪽 — 서비스가 입력 통계에 넣는다(2026-10). */
+    private var chipOutcomeListener: ((original: String, converted: String, outcome: InputStats.Outcome) -> Unit)? = null
+
+    fun setChipOutcomeListener(listener: (original: String, converted: String, outcome: InputStats.Outcome) -> Unit) {
+        chipOutcomeListener = listener
+    }
+
+    /** 칩을 길게 누름: 선택한 라틴 단어 하나를 한영타 예외로 등록하고 토스트로 알린다. */
+    private fun addSelectionAsTypoException(selected: String) {
+        val word = Prefs.typoExceptionCandidate(selected)
+        val msg = when {
+            word == null -> context.getString(R.string.chip_exception_single_word)
+            prefs.addTypoException(word) == null ->
+                context.getString(R.string.settings_replace_exceptions_full, Prefs.MAX_TYPO_EXCEPTIONS)
+            else -> context.getString(R.string.chip_exception_added, word)
+        }
+        runCatching { Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() }
     }
 
     /**
@@ -306,18 +537,37 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         fullText: String,
         selStart: Int,
         selEnd: Int,
-        converted: String
+        converted: String,
+        exactRange: Boolean = false,
     ) {
         val s = selStart.coerceIn(0, fullText.length)
         val e = selEnd.coerceIn(s, fullText.length)
         val original = fullText.substring(s, e)
 
-        // 노드가 갱신되었을 수 있으므로 최신 텍스트를 우선 사용(없으면 캡처된 fullText).
-        val liveText = node.text?.toString() ?: fullText
-        val (es, ee) = resolveReplaceRange(liveText, s, e, original) ?: return
+        // ⚠️ node 는 이벤트 시점의 스냅샷이라 refresh() 없이 읽으면 칩이 떠 있던 최대 2초 사이
+        // 사용자가 친 글자가 안 보이고, ACTION_SET_TEXT 가 옛 전체 텍스트로 덮어써 그 글자를 지운다.
+        // refresh 실패(창·뷰가 사라짐)나 빈 텍스트면 엉뚱하게 덮어쓰지 않도록 교체를 포기한다.
+        if (!runCatching { node.refresh() }.getOrDefault(false)) return
+        val liveText = runCatching { node.text?.toString() }.getOrNull() ?: return
+        val (es, ee) = (if (exactRange) exactReplaceRange(liveText, s, e, original) else resolveReplaceRange(liveText, s, e, original)) ?: return
         val newText = liveText.substring(0, es) + converted + liveText.substring(ee)
 
-        if (trySetText(node, newText)) return
+        // 교체 전 실제 커서. 칩이 떠 있는 동안 사용자가 교체 범위 뒤에 더 쳤으면(한/영 전환 직후 제안) 그 커서를 길이 차만큼
+        // 옮겨 지킨다 — 교체 자리 뒤로 되돌리면 이어 치던 위치를 잃는다.
+        val liveCaret = runCatching { node.textSelectionEnd }.getOrDefault(-1)
+        if (trySetText(node, newText)) {
+            // ACTION_SET_TEXT 는 Editable 전체를 갈아끼우므로 대부분의 에디터에서 커서가 문서
+            // 끝으로 튄다. 교체한 자리 뒤로 되돌려 사용자가 이어서 타이핑할 수 있게 한다
+            // (지원하지 않는 에디터도 있으므로 best-effort).
+            val caret = if (liveCaret > ee && liveCaret <= liveText.length) liveCaret + converted.length - (ee - es)
+            else es + converted.length
+            val caretArgs = Bundle().apply {
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, caret)
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, caret)
+            }
+            runCatching { node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, caretArgs) }
+            return
+        }
         pasteFallback(node, converted, es, ee)
     }
 
@@ -334,9 +584,13 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         return idx to (idx + original.length)
     }
 
+    /** 원래 자리에 원문이 그대로 있을 때만(한/영 전환 직후 제안). 지웠거나 고쳤으면 교체하지 않는다(null). */
+    private fun exactReplaceRange(liveText: String, s: Int, e: Int, original: String): Pair<Int, Int>? =
+        if (e <= liveText.length && liveText.substring(s, e) == original) s to e else null
+
     /** 1차: ACTION_SET_TEXT. editable 이 아니거나 false 반환 시 실패로 간주. */
     private fun trySetText(node: AccessibilityNodeInfo, newText: String): Boolean {
-        if (!node.isEditable) return false
+        if (!runCatching { node.isEditable }.getOrDefault(false)) return false
         val args = Bundle().apply {
             putCharSequence(
                 AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
@@ -367,11 +621,13 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
             node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selArgs)
         }.getOrDefault(false)
 
-        val pasted = runCatching {
+        // 선택이 안 잡혔으면 붙여넣기를 하면 안 된다 — "선택 영역 대체"가 아니라 현재 커서 위치에
+        // 그냥 삽입돼, 원래 영타는 남고 그 옆에 한글이 하나 더 붙는다(텍스트 파손).
+        val pasted = selectionSet && runCatching {
             node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
         }.getOrDefault(false)
 
-        if (!selectionSet || !pasted) {
+        if (!pasted) {
             // 붙여넣기까지 실패: 변환 결과가 클립보드에 있음을 사용자에게 안내.
             handler.post {
                 runCatching {
@@ -388,6 +644,9 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         chipView = null
         pendingNode?.let { runCatching { it.recycle() } }
         pendingNode = null
+        lastChipConverted = null
+        lastChipSelStart = -1
+        lastChipSelEnd = -1
     }
 
     // ---------------------------------------------------------------------
@@ -400,6 +659,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         onMain {
             removeFlash()
             hideQuickMenuInternal()
+            trimQuickMenuCache()
             hideBadgeInternal()
             removeChip()
         }
@@ -423,9 +683,31 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     private fun dp(value: Float): Int = (value * context.resources.displayMetrics.density).roundToInt()
 
     companion object {
+        /** 플래시 렌더/억제 추적용(실기기에서 "추가 깜박임"이 트리거인지 렌더인지 판별). */
+        private const val TAG = "OverlayManager"
+
         const val CHIP_TIMEOUT_MS = 2000L
 
-        /** 같은 색 플래시 중복 억제 창(ms). 근본 방어(ImeStateDetector) 뒤의 렌더 단계 마지막 안전망. */
+        /** 한/영 전환 직후 제안 칩은 사용자가 치는 중에 뜨므로 조금 더 오래 둔다(누를지 판단할 시간). */
+        const val SWITCH_CHIP_TIMEOUT_MS = 4000L
+
+        /**
+         * 플래시 재생 종료 후 창을 (숨긴 채) 유지하는 시간(ms). 이 안에 다음 전환이 오면 창 생성/파괴
+         * 없이 재생만 다시 한다. 연속 토글의 전형적 간격을 덮되 무한 상주는 피한다.
+         */
+        const val FLASH_LINGER_MS = 1500L
+
+        /**
+         * 닫힌 래디얼 메뉴(WebView)를 재사용을 위해 보관하는 시간(ms). 짧게 잡아 저사양 기기에서
+         * 40~60MB 가 오래 상주하지 않게 하되, "닫았다가 바로 다시 여는" 흔한 패턴은 덮는다.
+         */
+        const val QUICK_MENU_CACHE_MS = 20_000L
+
+        /**
+         * 같은 색 플래시 중복 억제의 "재생 종료 후 꼬리 여유"(ms). 실제 억제 창은
+         * 직전 재생의 총 길이([FlashOverlayView.totalDurationMs]) + 이 값 — flash() 참조.
+         * 근본 방어(ImeStateDetector) 뒤의 렌더 단계 마지막 안전망.
+         */
         const val FLASH_DEDUP_MS = 350L
 
         /**

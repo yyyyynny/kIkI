@@ -85,12 +85,9 @@
 ## 상태 관리
 
 ```kotlin
-data class ImeState(
-    val locale: String,
-    val subtypeId: Int,
-    val timestamp: Long
-)
-// emitIfChanged: 이전 lastState.locale 과 다를 때만 발동(중복 제거 1차).
+// 상태는 lastLang: String? 하나(마지막으로 발동한 언어). 과거의 ImeState(subtypeId/timestamp) 는
+// 어디서도 읽히지 않으면서 발동마다 IMM IPC(currentInputMethodSubtype) 를 낭비해 제거했다.
+// emitIfChanged: 이전 lastLang 과 다를 때만 발동(중복 제거 1차).
 // requestRecheck: 여러 감지 신호를 COALESCE_MS 동안 합침(2차) + 발동 후 REFRACTORY_MS 불응기(3차).
 // onServiceConnected 멱등화: 재연결 시 detector 중복 등록 방지(4차).
 // 안티-플랩(FLAP_GUARD_MS): 직전 언어로 되돌아가는 stale 재발동 차단(5차, 렌더 가드 700ms 뒤 누수 보완).
@@ -112,7 +109,7 @@ data class ImeState(
 | API 35 | predictive back gesture 영향 없음 | — |
 | One UI 3.x~7.x | 팝업 텍스트 패턴 확인 완료 | ImeLocaleParser 매핑 |
 | One UI 8.x | 실기기 로그 확인 필요 (TBD) | TBD |
-| One UI 9.x | **미지원 (베타)** | 별도 분기 작성 금지 |
+| One UI 9.x | 지원(2026-10-16). 지문 창이 키보드 언어를 바꿨다 되돌림 | 자동 전환 조용히 처리(`isAutoSwitch`) |
 
 ---
 

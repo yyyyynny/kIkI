@@ -51,7 +51,7 @@
 | One UI 6.x | `"한국어"` 또는 `"Korean"` | `"English"` |
 | One UI 7.x | `"한국어"` | `"English"` |
 | One UI 8.x | 실기기 로그로 확인 필요 (TBD) |
-| One UI 9.x | **미지원 (베타)** |
+| One UI 9.x | 실기기(S25+)에서 플래시 동작 확인, 팝업 패턴은 진단 기록으로 확인 필요 (TBD) |
 
 패키지명 필터: `packageName == "android"` 또는 `packageName.contains("samsung")` 인 이벤트만 처리
 
@@ -88,7 +88,7 @@ WindowManager.LayoutParams:
   소(0): 12sp / 패딩 6·3dp / minWidth 32dp
   중(1): 14sp / 패딩 8·4dp / minWidth 40dp   ← 기본 = 기존 외형
   대(2): 18sp / 패딩 11·6dp / minWidth 52dp
-배경: GradientDrawable, 코너 6dp, 색 = badge_bg_color(#RRGGBB) + BADGE_BG_ALPHA(0.8)
+배경: GradientDrawable, 코너 8dp, 색 = badge_bg_color(#RRGGBB) + badgeBgOpacityPercent(기본 80%)
       → 기본값(#000000)이면 기존 #CC000000 과 100% 동일
 텍스트: Bold, 색 = badge_text_color(#RRGGBB, 불투명), 기본 흰색
   한국어 → "한"
@@ -183,13 +183,19 @@ object HangulConverter {
     )
 
     /**
-     * 신뢰도 판정: 입력 문자열이 한영타일 가능성 반환 (0.0 ~ 1.0)  [실제 구현 기준]
+     * 신뢰도 판정: 입력 문자열이 한영타일 가능성 반환 (0.0 ~ 1.0)  [개념 설명용 — 단순화됨]
      *
-     * 두 신호를 곱한다:
-     *  - mapRatio   = 두벌식 자판에 매핑되는 영문자 비율
-     *  - composeRatio = 변환 결과 중 "완성형 한글 음절" / (완성형 + 조합 실패해 남은 낱자모)
-     * 실제 영어 단어는 모음/자음 배열이 한글 규칙과 어긋나 낱자모가 많이 남아 낮게 나온다.
-     * (설정의 "신뢰도 임계값(%)" 인라인 설명이 이 로직을 사용자 언어로 풀어 쓴 것)
+     * 아래 스니펫은 초기 구현(조합 성공률 기반)이며, 현재 코드는 이것과 다르다.
+     *
+     * ⚠️ **현재 `HangulConverter.analyze()` 는 `TypoLanguageModel.judge()` 의 가설별 맞대결로
+     * 판정한다**(2026-09 재설계, 상세는 CLAUDE.md Feature 4 + docs/한영타_검증.md):
+     * 선택을 공백/한글 경계로 토큰화하고, 토큰마다 두 한영타 가설(CapsLock 꺼짐 = 원문 그대로 /
+     * 켜짐 = 대소문자 반전)을 세 대안 설명(영어 단어 trigram / 한국어 글에서 대문자로 쓰인 적 있는
+     * 라틴 문자열 "Shift 증인 사전" / 약어 bigram)과 맞붙여, 가설마다 가장 강한 반론을 상한으로 한
+     * 신뢰도의 최댓값을 쓴다. 한국어 쪽은 어절 안 음절 2-gram + 자주 쓰는 어절 기억, Shift 가
+     * 무의미한 키의 대문자는 반대 증거(Shift 물리), 주변에 한글이 있으면 영어 단어 가설이 불리해진다.
+     * 표는 `TypoTables`(tools/typo-model/build_tables.py 로 생성). 아래의 조합 성공률(composeRatio)은
+     * "조합 실패한 낱자모에 최저 확률을 준다"는 형태로 한국어 모델 안에 흡수됐다.
      */
     fun detectEnglishToKorean(input: String): Float {
         val letters = input.filter { it.isLetter() }
@@ -265,6 +271,10 @@ object HangulConverter {
 > ℹ️ 위 블록은 **개념 골격**이다. 실제 `HangulConverter.kt` 는 표준 두벌식 오토마타를 완전히 구현했다
 > (복합 중성 `ㅘ/ㅚ/ㅢ`, 복합 종성 `ㄺ/ㄼ/ㅄ`, 연음·도깨비불, 역변환 `convertKorToEng` 포함).
 > 안드로이드 의존성이 없는 순수 Kotlin 이라 JVM 단위 테스트로 검증된다(`HangulConverterTest`).
+> 2026-09 부터 `analyzeReverse()`(한글→영어 방향, `god`→`행` 류를 사전 완전일치로만 감지)도
+> 추가돼 `TextSelectionMonitor.pickAnalysis()` 가 정방향을 먼저 보고, 약하고 한글이 섞여
+> 있을 때만 역방향도 계산해 더 나은 쪽을 쓴다(혼합 선택도 놓치지 않기 위함 —
+> CLAUDE.md Feature 4 참조).
 
 ### TextSelectionMonitor 감지 로직
 
@@ -282,6 +292,9 @@ fun onTextSelectionChanged(event: AccessibilityEvent) {
     if (selectedText.isBlank() || selectedText.length < 2) return
 
     // 한영타 신뢰도 판정
+    // ⚠️ [개념 설명용] 현재 코드는 선택 전체를 통째로 변환하지 않는다 — `HangulConverter.analyze()`
+    // 가 판정과 함께 **토큰별로** 교체 문자열을 만든다(2026-09: `cpu wjdakf` → `체ㅕ 정말` 버그 수정,
+    // 영어 단어는 그대로 두고 한영타만 바꾸며 `cpusms` 는 `cpu는` 으로 쪼갠다). CLAUDE.md Feature 4 참조.
     val confidence = HangulConverter.detectEnglishToKorean(selectedText)
     if (confidence >= 0.70f) {
         val converted = HangulConverter.convertEngToKor(selectedText)
@@ -326,8 +339,8 @@ WindowManager flags:
 ## Feature 5: 래디얼 메뉴 (배지 탭) — 사용자 원본 HTML 을 WebView 로 렌더
 
 상시 배지를 **탭**하면(드래그와 구분) 배지 주위로 살아 숨쉬는 유리 칩이 부채꼴로 펼쳐지는 간편 메뉴.
-**외형·모션의 진실은 HTML 파일**: `app/src/main/assets/radialmenu.html`(= 사용자 원본,
-`design/reference/radialmenu.html` 과 동일). 과거 네이티브(Canvas) 재이식은 원본과 미세하게 달라
+**외형·모션의 진실은 HTML 파일**: `app/src/main/assets/radialmenu.html`(사용자 원본
+`design/reference/radialmenu.html` 에 앱 통합 배선을 더한 배포본 — 원본 스냅샷과 동일하지 않음). 과거 네이티브(Canvas) 재이식은 원본과 미세하게 달라
 폐기했고, 이제 `QuickMenuOverlayView` 가 이 HTML 을 **WebView 로 그대로 렌더**한다(메뉴 외형을
 바꾸려면 Kotlin 이 아니라 HTML 을 고친다).
 
@@ -388,6 +401,42 @@ WindowManager flags:
 
 ---
 
+## 추가 기능 3: 전환 원인 진단 (2026-09 추가)
+
+원인 모를 자동 한/영 전환(실사용 중 발견된 사례: 키보드가 아니라 One UI 물리 키보드 설정의
+"언어 전환 바로가기"가 Space + 다른 키 조합에서 의도치 않게 발동 — 사용자는 정확히 어떤 키인지
+몰랐다)을 스스로 찾을 수 있게, 실제 전환이 감지된 직전에 눌린 물리 키를 기록해 설정 화면에
+보여주는 진단 도구(`SettingsActivity` → "전환 원인 진단", 기본 **OFF**).
+
+### 동작
+- `LangSenseAccessibilityService.onKeyEvent`가 (토글 ON 일 때만) 모든 물리 키 다운을 작은
+  원형 버퍼(`KeyTriggerDiagnostics.BUFFER_SIZE`=32, 반복 이벤트는 애초에 기록 제외)에 기록 — `KeyEventMonitor.isTypingCandidate`가
+  모디파이어 키를 걸러내는 것과 **독립적으로**, 그 필터보다 먼저 기록한다(One UI 단축키는 대개
+  모디파이어+문자키 조합이라 모디파이어 자체가 진단에 필요).
+- `ImeStateDetector`가 전환을 확정해 `onLanguageChanged`를 부르면, 그 시점 기준
+  `KeyTriggerDiagnostics.CORRELATE_WINDOW_MS`(2초 — detector 자체의 신호 합치기+백오프+역행
+  재확인 지연을 덮는 값) 안에 눌렸던 키들을 `KeyTriggerDiagnostics.recentKeyNames`(순수 함수,
+  원형 버퍼를 오래된→최신 순으로 훑어 순서 보존·중복 제거)로 뽑아 `KeyEvent.keyCodeToString` 으로
+  이름 붙이고, `Prefs.lastSwitchTriggerKeys`/`lastSwitchTriggerAt` 에 저장한다.
+- 설정 화면이 "최근 감지: {키 조합} · {상대 시각}" 으로 표시(`DateUtils.getRelativeTimeSpanString`),
+  지우기 버튼으로 리셋 가능. **저장값 자체는 문장이 아니라 데이터**다 — 키를 찾았으면 조합
+  문자열, 캡처는 됐는데 못 찾았으면 `Prefs.lastSwitchTriggerKeys` 에 빈 문자열(`lastSwitchTriggerAt`
+  =0L 인 "한 번도 캡처된 적 없음"과 구분)만 남기고, "어떤 문장으로 보여줄지"는
+  `SettingsActivity.refreshDiagnosticResult()` 가 세 상태(없음/키 있음/캡처됐지만 못 찾음)를
+  나눠 판단한다 — 시스템이 이 서비스보다 먼저 키를 가로챈 경우 등, 못 찾은 것도 유의미한 정보다.
+- **"터치 키보드 제외"(추가 기능 2) 하위 옵션**: `Prefs.diagnosticPausedByTouchKeyboardExclude`
+  (기본 OFF)가 꺼져 있으면 터치 키보드 제외 여부와 무관하게 항상 캡처하고, 켠 사용자만 터치
+  키보드가 떠 있는 동안 진단도 함께 멈춘다(`LangSenseAccessibilityService.diagnosticActive()`).
+  "터치 키보드 제외" 자체가 OFF 면 이 하위 옵션은 효과가 없다.
+
+### 저사양 원칙
+`syncServiceInfo()`가 `noFocusEnabled || diagnosticKeyLoggingEnabled` 일 때만
+`FLAG_REQUEST_FILTER_KEY_EVENTS`(키당 Binder 동기 왕복)를 구독 — Feature 3 과 게이트를 공유하므로
+둘 다 꺼져 있으면(둘 다 기본이 아니므로 일반적) 순수 오버헤드가 없다. 원형 버퍼 자체 연산은
+배열 인덱싱뿐이라 디스패치 스레드에서도 무시할 만한 비용.
+
+---
+
 ## ImeLocaleParser 유틸리티
 
 ```kotlin
@@ -442,6 +491,10 @@ object ImeLocaleParser {
 | 포커스 없음 임계값 | 3회 | Int 1~5 | |
 | 한영타 교체 기능 | ON | Boolean | |
 | 한영타 신뢰도 임계값 | 70% | Int 50~90 (step 5) | **인라인 설명 추가 [4]** |
+| **전환 원인 진단(키 기록)** | OFF | Boolean | 신규(추가 기능 3), 키당 Binder 왕복 비용 있어 기본 꺼짐 |
+
+> 이 표는 초기 구현 시점 항목 위주라 "터치 키보드 제외"/"퀵메뉴 항목"/"배지 탭 동작"/"플로팅
+> 메뉴" 등 이후 추가된 설정은 CLAUDE.md 해당 Feature 절을 참조(코드가 진실).
 
 > 색 선택 UI(32색 팔레트 + #RRGGBB 입력)는 `colorPickerRow` 공용 컴포넌트로 추출되어
 > 플래시 색 설정과 배지 색 설정이 동일 코드를 공유한다(복붙 방지).

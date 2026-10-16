@@ -5,9 +5,15 @@
     android:fillViewport="true"
     android:scrollbars="none">
 
+    <!--
+        폭은 MainActivity 가 화면 크기에 맞춰 조정한다 — 태블릿 가로(1338dp)에서 한 줄이 화면
+        끝까지 늘어나면 읽기 힘들어, 넓은 화면에서는 최대 폭을 걸고 가운데로 모은다.
+    -->
     <LinearLayout
+        android:id="@+id/contentColumn"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
         android:orientation="vertical"
         android:paddingStart="20dp"
         android:paddingEnd="20dp"
@@ -19,7 +25,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/onboarding_title"
-            android:textColor="@color/ui_on_surface"
+            android:tag="fg=onSurface"
+            android:textColor="?attr/uiOnSurface"
             android:textSize="28sp"
             android:letterSpacing="0.01"
             android:textStyle="bold" />
@@ -29,7 +36,8 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:text="@string/onboarding_desc"
-            android:textColor="@color/ui_on_surface_muted"
+            android:tag="fg=onSurfaceMuted"
+            android:textColor="?attr/uiOnSurfaceMuted"
             android:textSize="14sp"
             android:lineSpacingExtra="2dp" />
 
@@ -54,6 +62,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:background="@drawable/bg_card"
+            android:tag="bg=card"
             android:orientation="vertical"
             android:padding="20dp">
 
@@ -67,9 +76,10 @@
                     android:layout_width="28dp"
                     android:layout_height="28dp"
                     android:background="@drawable/bg_step_chip"
+                    android:tag="bg=stepChip fg=onAccentContainer"
                     android:gravity="center"
                     android:text="@string/step_no_1"
-                    android:textColor="@color/ui_on_accent_container"
+                    android:textColor="?attr/uiOnAccentContainer"
                     android:textSize="14sp"
                     android:textStyle="bold" />
 
@@ -79,7 +89,8 @@
                     android:layout_marginStart="12dp"
                     android:layout_weight="1"
                     android:text="@string/step_overlay"
-                    android:textColor="@color/ui_on_surface"
+                    android:tag="fg=onSurface"
+                    android:textColor="?attr/uiOnSurface"
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
@@ -101,7 +112,8 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:text="@string/step_overlay_desc"
-                android:textColor="@color/ui_on_surface_muted"
+                android:tag="fg=onSurfaceMuted"
+                android:textColor="?attr/uiOnSurfaceMuted"
                 android:textSize="13sp"
                 android:lineSpacingExtra="2dp" />
 
@@ -111,10 +123,11 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
                 android:background="@drawable/bg_button_primary"
+                android:tag="bg=buttonPrimary fg=onAccent"
                 android:minHeight="48dp"
                 android:stateListAnimator="@null"
                 android:text="@string/btn_grant_overlay"
-                android:textColor="@color/ui_on_accent"
+                android:textColor="?attr/uiOnAccent"
                 android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -125,6 +138,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:background="@drawable/bg_card"
+            android:tag="bg=card"
             android:orientation="vertical"
             android:padding="20dp">
 
@@ -138,9 +152,10 @@
                     android:layout_width="28dp"
                     android:layout_height="28dp"
                     android:background="@drawable/bg_step_chip"
+                    android:tag="bg=stepChip fg=onAccentContainer"
                     android:gravity="center"
                     android:text="@string/step_no_2"
-                    android:textColor="@color/ui_on_accent_container"
+                    android:textColor="?attr/uiOnAccentContainer"
                     android:textSize="14sp"
                     android:textStyle="bold" />
 
@@ -150,7 +165,8 @@
                     android:layout_marginStart="12dp"
                     android:layout_weight="1"
                     android:text="@string/step_accessibility"
-                    android:textColor="@color/ui_on_surface"
+                    android:tag="fg=onSurface"
+                    android:textColor="?attr/uiOnSurface"
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
@@ -172,9 +188,32 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:text="@string/step_accessibility_desc"
-                android:textColor="@color/ui_on_surface_muted"
+                android:tag="fg=onSurfaceMuted"
+                android:textColor="?attr/uiOnSurfaceMuted"
                 android:textSize="13sp"
                 android:lineSpacingExtra="2dp" />
+
+            <!-- 접근성 서비스를 켜기 전에 무엇을 읽고 남기는지 알린다(2026-10). 숨기지 않고 버튼 바로 위에 둔다 —
+                 스토어에 올리게 되면 접근성 API 사용 앱에 요구되는 사전 고지 자리이기도 하다. -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/disclosure_title"
+                android:tag="fg=onSurface"
+                android:textColor="?attr/uiOnSurface"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/disclosure_body"
+                android:tag="fg=onSurfaceMuted"
+                android:textColor="?attr/uiOnSurfaceMuted"
+                android:textSize="12.5sp"
+                android:lineSpacingExtra="3dp" />
 
             <Button
                 android:id="@+id/btnAccessibility"
@@ -182,10 +221,11 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
                 android:background="@drawable/bg_button_primary"
+                android:tag="bg=buttonPrimary fg=onAccent"
                 android:minHeight="48dp"
                 android:stateListAnimator="@null"
                 android:text="@string/btn_open_accessibility"
-                android:textColor="@color/ui_on_accent"
+                android:textColor="?attr/uiOnAccent"
                 android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -196,6 +236,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:background="@drawable/bg_card"
+            android:tag="bg=card"
             android:orientation="vertical"
             android:padding="20dp">
 
@@ -209,9 +250,10 @@
                     android:layout_width="28dp"
                     android:layout_height="28dp"
                     android:background="@drawable/bg_step_chip"
+                    android:tag="bg=stepChip fg=onAccentContainer"
                     android:gravity="center"
                     android:text="@string/step_no_3"
-                    android:textColor="@color/ui_on_accent_container"
+                    android:textColor="?attr/uiOnAccentContainer"
                     android:textSize="14sp"
                     android:textStyle="bold" />
 
@@ -221,7 +263,8 @@
                     android:layout_marginStart="12dp"
                     android:layout_weight="1"
                     android:text="@string/step_battery"
-                    android:textColor="@color/ui_on_surface"
+                    android:tag="fg=onSurface"
+                    android:textColor="?attr/uiOnSurface"
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
@@ -243,7 +286,8 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:text="@string/step_battery_desc"
-                android:textColor="@color/ui_on_surface_muted"
+                android:tag="fg=onSurfaceMuted"
+                android:textColor="?attr/uiOnSurfaceMuted"
                 android:textSize="13sp"
                 android:lineSpacingExtra="2dp" />
 
@@ -253,12 +297,26 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
                 android:background="@drawable/bg_button_tonal"
+                android:tag="bg=buttonTonal fg=onAccentContainer"
                 android:minHeight="48dp"
                 android:stateListAnimator="@null"
                 android:text="@string/btn_battery"
-                android:textColor="@color/ui_on_accent_container"
+                android:textColor="?attr/uiOnAccentContainer"
                 android:textSize="14sp"
                 android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btnBatteryLater"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:minHeight="40dp"
+                android:gravity="center"
+                android:background="?attr/selectableItemBackground"
+                android:text="@string/btn_battery_later"
+                android:tag="fg=muted"
+                android:textColor="?attr/uiMuted"
+                android:textSize="12sp" />
         </LinearLayout>
 
         <!-- 앱 설정 -->
@@ -268,10 +326,11 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
             android:background="@drawable/bg_button_tonal"
+            android:tag="bg=buttonTonal fg=onAccentContainer"
             android:minHeight="52dp"
             android:stateListAnimator="@null"
             android:text="@string/btn_settings"
-            android:textColor="@color/ui_on_accent_container"
+            android:textColor="?attr/uiOnAccentContainer"
             android:textSize="15sp"
             android:textStyle="bold" />
 
@@ -281,9 +340,21 @@
             android:layout_marginTop="20dp"
             android:gravity="center"
             android:text="@string/privacy_note"
-            android:textColor="@color/ui_muted"
+            android:tag="fg=muted"
+            android:textColor="?attr/uiMuted"
             android:textSize="12sp"
             android:lineSpacingExtra="2dp" />
+
+        <!-- 마지막 커밋 날짜로 자동 계산되는 버전(코드는 MainActivity.kt 에서 채운다). -->
+        <TextView
+            android:id="@+id/tvVersion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center"
+            android:tag="fg=muted"
+            android:textColor="?attr/uiMuted"
+            android:textSize="11sp" />
 
     </LinearLayout>
 </ScrollView>

@@ -14,7 +14,6 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.InputMethodSubtype
 import androidx.core.content.ContextCompat
-import com.langsense.app.model.ImeState
 import com.langsense.app.util.ImeLocaleParser
 
 /**
@@ -59,7 +58,8 @@ class ImeStateDetector(
     private val imm = appContext.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
     private val handler = Handler(Looper.getMainLooper())
 
-    private var lastState: ImeState? = null
+    /** 마지막으로 발동한(=현재로 아는) 언어. null 이면 아직 모름. */
+    private var lastLang: String? = null
 
     /**
      * 등록 성공 여부를 리시버/옵저버 **개별로** 추적한다. 과거처럼 둘을 AND 한 단일 플래그면,
@@ -72,6 +72,16 @@ class ImeStateDetector(
     /** 합치는 구간 동안 들어온 윈도우 팝업 텍스트 힌트(삼성 내부 토글 대응). 매 [runRecheck] 후 비운다. */
     private var pendingPopupHint: String? = null
 
+    /** [pendingPopupHint] 를 낸 창(패키지·글자 수) — 전환 원인 진단용. 글자 내용은 남기지 않는다. */
+    private var pendingHintSource: String? = null
+
+    /**
+     * 마지막 발동의 근거(전환 원인 진단, 2026-10). 서비스가 [onLanguageChanged] 안에서 읽는다.
+     * 값: `setting`(설정값이 실제로 바뀜) / `popup:패키지/글자수`(창 글자를 언어 팝업으로 읽음) / `imm`(입력기 조회 폴백).
+     */
+    var lastEmitBasis: String = ""
+        private set
+
     /** 합쳐진 단 하나의 재확인 작업. 신호가 올 때마다 취소 후 재예약된다. */
     private val recheckRunnable = Runnable { runRecheck() }
 
@@ -81,6 +91,18 @@ class ImeStateDetector(
     /** "변경 없음"으로 끝난 평가를 백오프 재확인할 남은 횟수. 강한 신호가 올 때마다 충전된다. */
     private var retriesLeft = 0
 
+    /**
+     * 현재 재확인 체인(합치기 배치 + 백오프 재시도 전체)이 강한 신호에서 비롯됐는지.
+     * 폴백 기기(권위 매핑 불가)에서 stale 가능한 IMM 값은 **강한 신호가 포함된 체인에서만**
+     * 발동 근거로 쓴다 — 그렇지 않으면 발동 후 [ECHO_GUARD_MS] 가 지난 뒤 아무 앱의 윈도우
+     * 이벤트(약한 신호)가 stale IMM 을 "직전 언어로의 새 전환"으로 재발동시켜, 곧이은 정정
+     * 발동이 그 플래시를 절단하는 "짧은 추가 깜박임"을 만든다. 시간 가드가 아니라 신호 출처
+     * 게이트라 정상 빠른 재전환과 무관하다(회귀 없음).
+     * 약한 신호는 절대 false 로 덮어쓰지 않고(백오프 대기 중 클로버 방지), 발동 시·재시도
+     * 예산 소진 시·stop() 에서만 리셋한다.
+     */
+    private var pendingStrong = false
+
     /** 발동 횟수(전환 1회당 1 증가). 한 전환에 정확히 1회만 늘어야 함을 로그로 검증하기 위함. */
     private var emitCount = 0
 
@@ -88,7 +110,7 @@ class ImeStateDetector(
     private var lastEmitAt = 0L
 
     /**
-     * 직전 발동에서 "벗어난" 언어(= 그 전의 lastState.locale). 비권위 소스(팝업 힌트/IMM 폴백)가
+     * 직전 발동에서 "벗어난" 언어(= 그 전의 lastLang). 비권위 소스(팝업 힌트/IMM 폴백)가
      * [ECHO_GUARD_MS] 안에 이 언어로 되돌아가는 값을 내면 stale 메아리로 보고 무시한다.
      * 권위 소스(설정값 직접 읽기)에는 적용하지 않으므로 정상 빠른 재전환은 놓치지 않는다.
      */
@@ -96,11 +118,22 @@ class ImeStateDetector(
 
     /**
      * 마지막으로 관측한 권위 소스 키("IME id:서브타입 해시"). 권위 값은 **이 키가 실제로 바뀌었을
-     * 때만** 발동 근거가 된다 — lastState 와 다르다는 이유만으로 발동하면, 서브타입이 안 바뀌는
+     * 때만** 발동 근거가 된다 — lastLang 과 다르다는 이유만으로 발동하면, 서브타입이 안 바뀌는
      * 삼성 내부 토글 기기에서 힌트로 발동한 언어를 (변하지 않은) 설정값이 도로 뒤집는 새 중복
      * 깜박임이 생기기 때문. "설정값의 변화"만 전환 증거로 취급한다.
      */
     private var lastAuthKey: String? = null
+
+    /**
+     * "권위 역행" 지연 확인 상태. 일부 IME 는 한 번의 토글에 `selected_input_method_subtype` 를
+     * 두 번 기록한다(중간값→최종값). 중간값이 직전 언어([prevLang])로 읽히면 진짜 빠른 재전환과
+     * 구별이 안 되므로, 발동 직후([REVERT_CONFIRM_WINDOW_MS] 안) 직전 언어로 되돌아가는 권위 키는
+     * 즉시 발동하지 않고 [REVERT_CONFIRM_DELAY_MS] 뒤 재확인한다 — 같은 키가 유지되면 진짜
+     * 재전환으로 발동, 그 사이 최종값으로 넘어갔으면 자연 no-op(중복 깜박임 소스 차단).
+     * 차단(가드)이 아니라 지연이므로 정상 빠른 재전환은 최대 250ms 늦게 발동할 뿐 유실되지 않는다.
+     */
+    private var pendingRevertKey: String? = null
+    private var revertDeferredAt = 0L
 
     /** 현재 IME id 기준 서브타입 목록 캐시(권위 소스 매핑용 — IME 가 바뀔 때만 재조회해 IPC 최소화). */
     private var cachedImeId: String? = null
@@ -119,8 +152,33 @@ class ImeStateDetector(
 
     /** 서비스 시작 시 호출: 리스너 등록 + 현재 언어 캐시(플래시 없이). 현재 언어 코드 반환. */
     fun start(): String {
+        registerListeners()
+        if (!receiverRegistered || !observerRegistered) {
+            // 주 감지 경로(옵저버/리시버)가 죽은 채 방치되면 "화면이 안 바뀌면 반응이 없는" 상태가
+            // 된다. 시스템 부하로 일시 실패했을 수 있으므로 잠시 뒤 1회 재등록을 시도한다
+            // (stop() 의 removeCallbacksAndMessages 가 취소를 담당).
+            handler.postDelayed(registerRetry, REGISTER_RETRY_MS)
+        }
+        val auth = readAuthoritative()
+        if (auth != null) lastAuthKey = auth.key
+        val lang = auth?.lang ?: immFallbackLang()
+        if (lang != ImeLocaleParser.UNKNOWN) {
+            lastLang = lang
+        }
+        return lang
+    }
+
+    private val registerRetry = Runnable {
+        registerListeners()
+        if (!receiverRegistered || !observerRegistered) {
+            Log.w(TAG, "listener re-registration still incomplete (receiver=$receiverRegistered, observer=$observerRegistered)")
+        }
+    }
+
+    /** 리시버/옵저버 등록. 실패한 쪽만 다시 시도한다(성공한 쪽은 그대로). */
+    private fun registerListeners() {
         // 등록이 실제로 실패했을 때 무조건 성공으로 기록하면 주 감지 경로가 조용히 죽은 채 재등록도
-        // 안 된다. 개별 플래그로 성공 여부를 반영해, 부분 실패 시 다음 start() 에서 실패한 쪽만 재시도.
+        // 안 된다. 개별 플래그로 성공 여부를 반영해, 부분 실패 시 실패한 쪽만 재시도.
         if (!receiverRegistered) {
             receiverRegistered = runCatching {
                 ContextCompat.registerReceiver(
@@ -148,13 +206,6 @@ class ImeStateDetector(
         if (!receiverRegistered || !observerRegistered) {
             Log.w(TAG, "listener registration incomplete (receiver=$receiverRegistered, observer=$observerRegistered)")
         }
-        val auth = readAuthoritative()
-        if (auth != null) lastAuthKey = auth.key
-        val lang = auth?.lang ?: immFallbackLang()
-        if (lang != ImeLocaleParser.UNKNOWN) {
-            lastState = ImeState(lang, currentSubtypeId(), System.currentTimeMillis())
-        }
-        return lang
     }
 
     /**
@@ -165,8 +216,12 @@ class ImeStateDetector(
     fun stop() {
         handler.removeCallbacksAndMessages(null)
         pendingPopupHint = null
+        pendingHintSource = null
         pendingSince = 0L
         retriesLeft = 0
+        pendingStrong = false
+        pendingRevertKey = null
+        revertDeferredAt = 0L
         runCatching { appContext.unregisterReceiver(imeChangeReceiver) }
         runCatching { appContext.contentResolver.unregisterContentObserver(subtypeObserver) }
         receiverRegistered = false
@@ -175,12 +230,20 @@ class ImeStateDetector(
 
     /** 접근성 윈도우 이벤트 경로(백스톱 + Samsung 팝업 텍스트 fallback). */
     fun onWindowStateChanged(event: AccessibilityEvent) {
-        val popupLang = if (isSystemPopupSource(event)) {
-            ImeLocaleParser.parseFromSystemPopupText(eventText(event))
+        val pkg = event.packageName?.toString()
+        val text = if (ImeLocaleParser.isPopupPackage(pkg)) {
+            eventText(event).takeIf { it.length <= ImeLocaleParser.POPUP_TEXT_MAX }
         } else null
-        // 팝업 텍스트가 실제로 잡힌 경우만 "강한 신호"(재시도 충전). 그 외 일반 윈도우 이벤트는
-        // 백스톱 재확인만 하고 재시도 예산은 건드리지 않는다(시스템 전체 윈도우 변화마다 오기 때문).
-        requestRecheck(popupLang, strong = popupLang != null)
+        val popupLang = ImeLocaleParser.parseFromSystemPopupText(text)
+        // 팝업 텍스트가 잡혔고 **그 내용이 새 정보일 때만** "강한 신호"(재시도 충전). 현재 언어를
+        // 그대로 말하는 후행 팝업까지 강한 신호로 치면, 폴백 기기에서 재확인 체인이 메아리 가드
+        // (ECHO_GUARD_MS) 너머까지 이어져 stale IMM 값이 재발동하는 연료가 된다. 일반 윈도우
+        // 이벤트는 백스톱 재확인만 하고 재시도 예산은 건드리지 않는다(시스템 전체 윈도우 변화마다
+        // 오기 때문).
+        requestRecheck(
+            popupLang, strong = popupLang != null && popupLang != lastLang,
+            source = text?.let { "$pkg/${it.length}" },
+        )
     }
 
     /**
@@ -194,18 +257,25 @@ class ImeStateDetector(
      * @param popupHint 윈도우 이벤트에서 파싱한 팝업 언어(있으면 서브타입보다 우선 — 삼성 내부 토글 대응).
      * @param strong 브로드캐스트/옵저버/팝업처럼 "전환이 실제로 있었다"고 볼 신호인지. 강한 신호만
      *   no-op 재시도 예산([retriesLeft])을 충전한다.
+     * @param source 힌트를 낸 창(패키지·글자 수) — 전환 원인 진단용.
      */
-    private fun requestRecheck(popupHint: String? = null, strong: Boolean = false) {
+    private fun requestRecheck(popupHint: String? = null, strong: Boolean = false, source: String? = null) {
         val now = SystemClock.uptimeMillis()
         if (popupHint != null && popupHint != ImeLocaleParser.UNKNOWN) {
             // 팝업 힌트는 비권위 소스: ① 현재 언어와 같으면 새 정보가 없고(폐기),
             // ② 방금 벗어난 언어로 곧장 되돌아가는 값이면 삼성 팝업의 지연된 메아리(폐기).
             // 그 외에는 저장 — 서브타입이 안 바뀌는 삼성 내부 토글의 연속 전환도 놓치지 않는다.
-            val noNews = popupHint == lastState?.locale
+            val noNews = popupHint == lastLang
             val echo = popupHint == prevLang && now - lastEmitAt < ECHO_GUARD_MS
-            if (!noNews && !echo) pendingPopupHint = popupHint
+            if (!noNews && !echo) {
+                pendingPopupHint = popupHint
+                pendingHintSource = source
+            }
         }
-        if (strong) retriesLeft = MAX_NOOP_RETRIES
+        if (strong) {
+            retriesLeft = MAX_NOOP_RETRIES
+            pendingStrong = true
+        }
         if (pendingSince == 0L) pendingSince = now
         handler.removeCallbacks(recheckRunnable)
         val delay = if (now - pendingSince >= COALESCE_MAX_WAIT_MS) 0L else COALESCE_MS
@@ -216,7 +286,7 @@ class ImeStateDetector(
      * 합쳐진 단일 재확인.
      *
      * 1) 권위 소스(설정값)를 먼저 평가하되, **관측 키가 실제로 바뀌었을 때만** 발동 근거로 삼는다.
-     *    (키 불변 = 설정값에 새 정보 없음. lastState 와 다르다는 이유로 발동하면 삼성 내부 토글
+     *    (키 불변 = 설정값에 새 정보 없음. lastLang 과 다르다는 이유로 발동하면 삼성 내부 토글
      *    기기에서 힌트 발동을 도로 뒤집는 중복 깜박임이 생긴다.)
      * 2) 권위 키가 그대로면 팝업 힌트가 유일한 신호(삼성 내부 토글: 서브타입 불변, 팝업만 변경).
      *    권위 키가 바뀌었는데 힌트가 그와 다르면 힌트는 stale 이므로 버려진다.
@@ -227,25 +297,75 @@ class ImeStateDetector(
      * 재확인한다(전환의 조용한 유실 방지).
      */
     private fun runRecheck() {
+        // 메인 루퍼 Runnable 에서 예외가 새면 접근성 서비스 프로세스가 통째로 죽는다(→ 시스템 재바인드에
+        // 의존, 일부 ROM 은 서비스를 꺼버림). 감지 1회를 잃는 편이 훨씬 싸다.
+        try {
+            runRecheckInner()
+        } catch (t: Throwable) {
+            Log.w(TAG, "recheck failed: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
+    private fun runRecheckInner() {
         pendingSince = 0L
         val hint = pendingPopupHint
+        val hintBasis = "popup:${pendingHintSource.orEmpty()}"
         pendingPopupHint = null
+        pendingHintSource = null
 
         val auth = readAuthoritative()
         if (auth != null) {
             val changed = auth.key != lastAuthKey
+            // 발동 직후 직전 언어로 되돌아가는 키 변경은 서브타입 이중 기록(바운스)의 중간값일 수
+            // 있으므로, lastAuthKey 를 갱신하지 않은 채 잠깐 미뤄 재확인한다(주석: pendingRevertKey).
+            if (changed && deferSuspectRevert(auth)) return
+            if (!changed) pendingRevertKey = null // 바운스가 원래 키로 되돌아와 소멸한 경우 등
             lastAuthKey = auth.key
-            if (changed && emitIfChanged(auth.lang, authoritative = true)) return
-            if (!changed && hint != null && emitIfChanged(hint, authoritative = false)) return
+            if (changed && emitIfChanged(auth.lang, authoritative = true, basis = "setting")) return
+            if (!changed && hint != null && emitIfChanged(hint, authoritative = false, basis = hintBasis)) return
         } else {
-            if (hint != null && emitIfChanged(hint, authoritative = false)) return
-            if (emitIfChanged(immFallbackLang(), authoritative = false)) return
+            if (hint != null && emitIfChanged(hint, authoritative = false, basis = hintBasis)) return
+            // IMM 폴백은 stale 가능 → 강한 신호에서 비롯된 체인에서만 발동 근거로 인정.
+            if (pendingStrong && emitIfChanged(immFallbackLang(), authoritative = false, basis = "imm")) return
         }
         if (retriesLeft > 0) {
             val attempt = MAX_NOOP_RETRIES - retriesLeft
             retriesLeft--
             handler.postDelayed(recheckRunnable, RETRY_BACKOFF_MS[attempt])
+        } else {
+            pendingStrong = false // 발동 없이 재시도 예산 소진 → 체인 종료
         }
+    }
+
+    /**
+     * "권위 역행" 의심 판정 + 지연 확인 예약. true 를 반환하면 이번 평가에서 발동을 보류한 것이다
+     * (호출부는 lastAuthKey 를 갱신하지 않고 종료 — 재확인 시 changed 판정이 유지되도록).
+     *
+     * 의심 조건: 키가 바뀌었고, 그 언어가 직전에 벗어난 언어([prevLang])이며, 마지막 발동 후
+     * [REVERT_CONFIRM_WINDOW_MS] 이내. 의심되면 [REVERT_CONFIRM_DELAY_MS] 뒤 재확인을 예약하고,
+     * 재확인 시점에도 같은 키가 유지되어 있으면 진짜 재전환으로 확인(false 반환 → 발동 진행).
+     */
+    private fun deferSuspectRevert(auth: AuthReading): Boolean {
+        val now = SystemClock.uptimeMillis()
+        val suspect = auth.lang == prevLang && now - lastEmitAt < REVERT_CONFIRM_WINDOW_MS
+        if (!suspect) {
+            pendingRevertKey = null
+            return false
+        }
+        if (pendingRevertKey == auth.key && now - revertDeferredAt >= REVERT_CONFIRM_DELAY_MS) {
+            pendingRevertKey = null // 유예 후에도 같은 키 → 진짜 재전환으로 확인
+            return false
+        }
+        if (pendingRevertKey != auth.key) {
+            pendingRevertKey = auth.key
+            revertDeferredAt = now
+        }
+        // 다른 신호가 합치기 창을 다시 열어도 유예 시각(revertDeferredAt)은 유지되므로,
+        // 남은 유예 시간만큼만 재예약해 확인 지연이 늘어나지 않게 한다.
+        val remaining = (REVERT_CONFIRM_DELAY_MS - (now - revertDeferredAt)).coerceAtLeast(1L)
+        handler.removeCallbacks(recheckRunnable)
+        handler.postDelayed(recheckRunnable, remaining)
+        return true
     }
 
     /**
@@ -255,20 +375,22 @@ class ImeStateDetector(
      * [ECHO_GUARD_MS] 안에 되돌아가는 값은 stale 메아리로 무시. 권위 값(설정 직접 읽기)은 정의상
      * stale 이 없으므로 가드 없이 신뢰한다 → 1초 안의 정상 한→영→한 재전환도 그대로 발동(씹힘 해소).
      */
-    private fun emitIfChanged(lang: String, authoritative: Boolean): Boolean {
+    private fun emitIfChanged(lang: String, authoritative: Boolean, basis: String): Boolean {
         if (lang == ImeLocaleParser.UNKNOWN) return false
-        val last = lastState?.locale
+        val last = lastLang
         if (lang == last) return false
         if (!authoritative && lang == prevLang &&
             SystemClock.uptimeMillis() - lastEmitAt < ECHO_GUARD_MS
         ) return false
         prevLang = last
-        lastState = ImeState(lang, currentSubtypeId(), System.currentTimeMillis())
+        lastLang = lang
         lastEmitAt = SystemClock.uptimeMillis()
         retriesLeft = 0 // 발동했으면 이 배치의 재시도는 끝
+        pendingStrong = false // 발동 = 체인 종료
         emitCount++
         // 한 전환당 정확히 1회만 찍혀야 한다(실기기 검증용 로그).
         Log.d(TAG, "language change emitted: $lang (emit #$emitCount, authoritative=$authoritative)")
+        lastEmitBasis = basis
         onLanguageChanged(lang)
         return true
     }
@@ -325,16 +447,6 @@ class ImeStateDetector(
         lastUnresolvedHash = 0
     }
 
-    private fun currentSubtypeId(): Int =
-        runCatching { imm.currentInputMethodSubtype?.hashCode() }.getOrNull() ?: -1
-
-    /** Samsung/시스템 팝업으로 보이는 이벤트만 텍스트 fallback 대상으로. */
-    private fun isSystemPopupSource(event: AccessibilityEvent): Boolean {
-        val pkg = event.packageName?.toString() ?: return false
-        return pkg == "android" || pkg.contains("samsung", ignoreCase = true) ||
-            pkg.contains("inputmethod", ignoreCase = true) || pkg.contains("honeyboard", ignoreCase = true)
-    }
-
     private fun eventText(event: AccessibilityEvent): String =
         event.text.joinToString(" ") { it?.toString().orEmpty() }
 
@@ -371,5 +483,22 @@ class ImeStateDetector(
         /** "변경 없음" 평가 후 백오프 재확인 횟수/간격. 저사양 기기의 늦은 설정 전파를 흡수한다. */
         private const val MAX_NOOP_RETRIES = 2
         private val RETRY_BACKOFF_MS = longArrayOf(200L, 400L)
+
+        /**
+         * "권위 역행" 의심 창(ms): 마지막 발동 후 이 시간 안에 직전 언어로 되돌아가는 권위 키
+         * 변경은 서브타입 이중 기록(바운스)의 중간값일 수 있어 지연 확인 대상이 된다.
+         * 바운스의 두 기록은 실질 동시(수십 ms 간격)지만, 저사양 전파 지연 시 관측은 합치기
+         * 상한([COALESCE_MAX_WAIT_MS]=400) + 백오프(200+400) = 최대 ~1000ms 까지 벌어질 수
+         * 있어 그보다 여유 있게 잡는다(과거 600ms 는 자기 케이던스를 못 덮어 늦은 바운스가
+         * 의심 판정을 탈출했다). 차단이 아니라 250ms 지연 확인이므로 이 창 안의 진짜 재전환도
+         * 유실되지 않는다.
+         */
+        private const val REVERT_CONFIRM_WINDOW_MS = 1200L
+
+        /** 권위 역행 의심 시 재확인까지의 유예(ms). 바운스 최종값이 설정에 반영되기에 충분한 시간. */
+        private const val REVERT_CONFIRM_DELAY_MS = 250L
+
+        /** 리시버/옵저버 등록 실패 시 재등록까지의 지연(ms). */
+        private const val REGISTER_RETRY_MS = 5000L
     }
 }

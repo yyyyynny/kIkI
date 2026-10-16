@@ -4,11 +4,15 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
+import android.os.Handler
+import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
 import androidx.appcompat.widget.AppCompatTextView
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -16,6 +20,7 @@ import kotlin.math.roundToInt
 /**
  * 상시 언어 배지 (Feature 2). 화면 모서리에 현재 입력 언어를 항상 표시.
  * 드래그로 위치 변경 가능하며, 드래그 종료 시 위치를 콜백으로 저장한다.
+ * 길게 누르면(롱프레스) [onLongPress] 로 즉시 언어 전환 요청을 알린다(추가 기능, 2026-09).
  */
 @SuppressLint("ViewConstructor")
 class BadgeOverlayView(
@@ -23,6 +28,7 @@ class BadgeOverlayView(
     private val windowManager: WindowManager,
     private val params: WindowManager.LayoutParams,
     private val onTap: () -> Unit,
+    private val onLongPress: () -> Unit,
     private val onPositionSaved: (x: Int, y: Int) -> Unit
 ) : AppCompatTextView(context) {
 
@@ -31,6 +37,23 @@ class BadgeOverlayView(
     private var startX = 0
     private var startY = 0
     private var dragging = false
+
+    /** 롱프레스가 이미 발동됐으면 ACTION_UP 에서 탭(performClick)으로 또 처리하지 않는다. */
+    private var longPressTriggered = false
+    private val longPressHandler = Handler(Looper.getMainLooper())
+
+    /** 시스템 설정(접근성의 "터치 및 잡기 스타일" 등)을 존중해 하드코딩 대신 이 값을 쓴다.
+     * (static API — `ViewConfiguration.get(context)` 의 인스턴스 메서드가 아니다.) */
+    private val longPressTimeoutMs: Long
+        get() = ViewConfiguration.getLongPressTimeout().toLong()
+
+    private val longPressRunnable = Runnable {
+        if (!dragging) {
+            longPressTriggered = true
+            pulse()
+            runCatching { onLongPress() }
+        }
+    }
 
     init {
         gravity = Gravity.CENTER
@@ -44,6 +67,19 @@ class BadgeOverlayView(
         text = label
     }
 
+    /** 탭 동작을 performClick 경유로 둬 TalkBack 등 접근성 도구로도 메뉴를 열 수 있게 한다. */
+    override fun performClick(): Boolean {
+        super.performClick()
+        onTap()
+        return true
+    }
+
+    /** 창이 떼어진 뒤(배지 숨김/서비스 정리) 예약된 롱프레스 콜백이 실행되지 않게 정리. */
+    override fun onDetachedFromWindow() {
+        longPressHandler.removeCallbacksAndMessages(null)
+        super.onDetachedFromWindow()
+    }
+
     /**
      * 배지 탭 피드백 펄스 (추가 기능 1, radial-menu.html 의 badge pulse 이식).
      * 래디얼 메뉴를 열거나 닫을 때 배지가 살짝 커졌다 돌아오는 짧은 스케일 연출. 외형/설정은 바꾸지 않는다.
@@ -55,8 +91,9 @@ class BadgeOverlayView(
         animate()
             .scaleX(PULSE_SCALE).scaleY(PULSE_SCALE)
             .setDuration(PULSE_HALF_MS)
+            .setInterpolator(DecelerateInterpolator())
             .withEndAction {
-                animate().scaleX(1f).scaleY(1f).setDuration(PULSE_HALF_MS).start()
+                animate().scaleX(1f).scaleY(1f).setDuration(PULSE_HALF_MS).setInterpolator(DecelerateInterpolator()).start()
             }
             .start()
     }
@@ -129,30 +166,74 @@ class BadgeOverlayView(
         setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    // 이동 입력을 화면 갱신 주기(vsync)로 묶지 않고 바로 받는다 — 드래그 때 배지가 손가락보다
+                    // 한 프레임 늦던 잔랙(2026-10 S25+ 녹화 실측)을 줄인다.
+                    requestUnbufferedDispatch(event)
                     downRawX = event.rawX
                     downRawY = event.rawY
                     startX = params.x
                     startY = params.y
                     dragging = false
+                    longPressTriggered = false
+                    longPressHandler.postDelayed(longPressRunnable, longPressTimeoutMs)
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - downRawX).roundToInt()
                     val dy = (event.rawY - downRawY).roundToInt()
-                    if (abs(dx) > touchSlop || abs(dy) > touchSlop) dragging = true
+                    if (!dragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                        dragging = true
+                        longPressHandler.removeCallbacks(longPressRunnable)
+                    }
                     params.x = clampX(startX + dx)
                     params.y = clampY(startY + dy)
                     runCatching { windowManager.updateViewLayout(this, params) }
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    // 드래그면 위치 저장, 단순 탭이면 간편 메뉴 열기.
-                    if (dragging) onPositionSaved(params.x, params.y) else onTap()
+                    longPressHandler.removeCallbacks(longPressRunnable)
+                    // 드래그면 위치 저장, 롱프레스가 이미 발동했으면 탭으로 또 처리하지 않는다,
+                    // 그 외 단순 탭이면 간편 메뉴 열기(또는 배지 탭 커스텀 동작).
+                    when {
+                        dragging -> onPositionSaved(params.x, params.y)
+                        !longPressTriggered -> performClick()
+                    }
+                    true
+                }
+                // 드래그 중 시스템이 제스처를 가로채면 CANCEL 로 끝난다 — 여기서 저장하지 않으면
+                // 옮긴 위치가 유실돼 다음 표시 때 예전 자리로 돌아간다.
+                MotionEvent.ACTION_CANCEL -> {
+                    longPressHandler.removeCallbacks(longPressRunnable)
+                    if (dragging) onPositionSaved(params.x, params.y)
+                    dragging = false
                     true
                 }
                 else -> false
             }
         }
+    }
+
+    /**
+     * 현재 params 좌표가 화면 밖이면 화면 안으로 되돌린다(회전/해상도 변경, 저장 좌표 복원 대비).
+     * 저장값(prefs)은 건드리지 않는다 — 사용자가 저장한 위치는 그대로 두고, 표시할 때마다 그
+     * 시점의 화면에 맞춰 보정만 한다([moveWithinScreen] 참조).
+     */
+    fun ensureOnScreen() = moveWithinScreen(params.x, params.y)
+
+    /**
+     * [x], [y] 로 옮기되 화면 경계 안으로 보정한다.
+     *
+     * 회전 시 저장값을 **다시** 적용하는 데 쓴다 — 클램프는 파괴적이라(세로에서 아래쪽이던 배지가
+     * 가로에서 위로 눌린 뒤 다시 세로로 돌아와도 눌린 좌표가 유효 범위라 복원되지 않는다),
+     * 매번 저장 원본에서 출발해야 "회전 왕복 시 원위치 복귀"가 성립한다.
+     */
+    fun moveWithinScreen(x: Int, y: Int) {
+        val cx = clampX(x)
+        val cy = clampY(y)
+        if (cx == params.x && cy == params.y) return
+        params.x = cx
+        params.y = cy
+        if (isAttachedToWindow) runCatching { windowManager.updateViewLayout(this, params) }
     }
 
     private val touchSlop: Int
@@ -180,9 +261,12 @@ class BadgeOverlayView(
         const val SIZE_MEDIUM = 1
         const val SIZE_LARGE = 2
 
-        /** 탭 펄스: 최대 배율과 반(half) 지속 시간(ms). */
-        private const val PULSE_SCALE = 1.12f
-        private const val PULSE_HALF_MS = 130L
+        /**
+         * 탭 펄스: 최대 배율과 반(half) 지속 시간(ms). 배지 창은 내용 크기만 해서 1.12배로 커지면 발광 테두리가 창
+         * 가장자리에서 잘려 뚝 끊겨 보였다 — 발광 여백(4dp) 안에 머무는 1.06배로 줄였다.
+         */
+        private const val PULSE_SCALE = 1.06f
+        private const val PULSE_HALF_MS = 90L
 
         /** 발광 halo 두께(dp)와 각 레이어 알파(글씨색 기반 — 목업 box-shadow/inset ring 근사). */
         private const val HALO_THICKNESS_DP = 4f

@@ -9,12 +9,24 @@
     <color name="chip_text">#FFFFFFFF</color>
 
     <!-- ── 시맨틱 UI 팔레트 (라이트) ─────────────────────────────────── -->
+    <!--
+        ⚠️ 접근성(WCAG AA) — 아래 색들은 '장식'이 아니라 '본문 텍스트 쌍'이다.
+        전경/배경으로 실제로 함께 쓰이는 조합은 반드시 명암비 4.5:1 이상을 유지할 것
+        (색을 고칠 때 상대휘도 공식으로 재검증하고, 아래 수치도 같이 갱신).
+          · status_ok (#12703A)            on status_ok_container (#E4F5EA)  = 5.45:1
+            status_need (#B91C1C)          on status_need_container (#FCEAEA) = 5.58:1
+            → MainActivity.tintPill() 이 이 쌍으로 필(pill)의 글씨색/배경색을 함께 칠한다.
+          · ui_on_surface_muted (#5F6673)  on ui_bg (#F4F6FA)   = 5.34:1 / on ui_surface = 5.78:1
+            ui_muted (#5F6673)             on ui_bg (#F4F6FA)   = 5.34:1
+            → activity_main.xml 의 설명문·개인정보 안내 문구가 이 조합으로 렌더된다.
+        (다크 팔레트 values-night/colors.xml 은 이미 5.6~7.7:1 로 통과 — 변경 불필요)
+    -->
     <!-- 화면 배경 / 카드 표면 -->
     <color name="ui_bg">#F4F6FA</color>
     <color name="ui_surface">#FFFFFF</color>
     <!-- 본문/보조 텍스트 -->
     <color name="ui_on_surface">#1A1C20</color>
-    <color name="ui_on_surface_muted">#6B7280</color>
+    <color name="ui_on_surface_muted">#5F6673</color>
     <!-- 강조색(버튼/헤더/위젯 tint)과 그 위 텍스트 -->
     <color name="ui_accent">#2563EB</color>
     <color name="ui_on_accent">#FFFFFF</color>
@@ -23,11 +35,136 @@
     <color name="ui_on_accent_container">#1D4ED8</color>
     <!-- 구분선 / 보조(muted) 텍스트 별칭 -->
     <color name="ui_divider">#E5E7EB</color>
-    <color name="ui_muted">#6B7280</color>
+    <color name="ui_muted">#5F6673</color>
 
-    <!-- 상태 색(완료/필요) + 필(pill) 컨테이너 -->
-    <color name="status_ok">#16A34A</color>
+    <!-- 상태 색(완료/필요) + 필(pill) 컨테이너 — 위 접근성 주석의 텍스트 쌍 -->
+    <color name="status_ok">#12703A</color>
     <color name="status_ok_container">#E4F5EA</color>
-    <color name="status_need">#DC2626</color>
+    <color name="status_need">#B91C1C</color>
     <color name="status_need_container">#FCEAEA</color>
+
+    <!-- 사용자 지정 테마 바탕 스타일의 안전 기본값(실제 색은 런타임 팔레트가 준다 — themes.xml) -->
+    <color name="custom_light_bg">#F4F6FA</color>
+    <color name="custom_light_surface">#FFFFFF</color>
+    <color name="custom_light_on_surface">#1A1C20</color>
+    <color name="custom_light_on_surface_muted">#5F6673</color>
+    <color name="custom_light_accent">#2563EB</color>
+    <color name="custom_dark_bg">#0F1115</color>
+    <color name="custom_dark_surface">#1A1D23</color>
+    <color name="custom_dark_on_surface">#E6E8EC</color>
+    <color name="custom_dark_on_surface_muted">#9CA3AF</color>
+    <color name="custom_dark_accent">#5B9DF7</color>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         고정 팔레트 3종 (베이지 / 사이버펑크 / 고대비)
+
+         위의 `ui_*`/`status_*` 는 '라이트'(+ values-night 가 '다크')로, 시스템/라이트/다크
+         테마가 쓰는 DayNight 쌍이다. 아래 세 벌은 **다크모드 한정자를 타지 않는 고정색**이라
+         values-night 에 대응 파일을 두지 않고 접두사로 이름을 분리한다
+         (`Theme.LangSense.Beige/Cyber/HighContrast` 가 attr 에 직접 바인딩).
+
+         ⚠️ 접근성(WCAG AA): 아래 수치는 상대휘도 공식으로 실제 계산한 값이다. 색을 고치면
+         반드시 재계산하고 이 주석도 함께 갱신할 것. 전경/배경으로 함께 쓰이는 쌍만 적었다.
+         ────────────────────────────────────────────────────────────────── -->
+
+    <!-- ── 베이지(따뜻한 종이 위의 잉크) ────────────────────────────────
+         2026-09 재설계: 예전 배경(#EFE4CE)은 채도가 높은 황갈색이라 "종이"보다 판지/크라프트지에
+         가까웠다. 배경을 옅은 미색 종이로, 카드를 한 장 더 밝은 종이로 올리고, 글자는 먹빛 잉크,
+         강조는 세피아 잉크로 둔다. 구분선도 누런 선 대신 종이 결 정도로 옅게.
+         on_surface/surface        14.43:1   on_surface_muted/surface   6.16:1
+         on_surface_muted/bg        5.60:1   accent/surface             6.66:1
+         accent/bg                  6.06:1   on_accent/accent           6.75:1
+         on_accent_container/accent_container 7.72:1
+         status_ok/status_ok_container        5.21:1
+         status_need/status_need_container    5.32:1                          -->
+    <color name="beige_bg">#F3EDE0</color>
+    <color name="beige_surface">#FBF8F1</color>
+    <color name="beige_on_surface">#2B241C</color>
+    <color name="beige_on_surface_muted">#675C4D</color>
+    <color name="beige_accent">#8A461A</color>
+    <color name="beige_on_accent">#FFF9EF</color>
+    <color name="beige_accent_container">#EFE3CD</color>
+    <color name="beige_on_accent_container">#6B3512</color>
+    <color name="beige_divider">#E0D3BB</color>
+    <color name="beige_muted">#675C4D</color>
+    <color name="beige_status_ok">#3B6A2B</color>
+    <color name="beige_status_ok_container">#E3EBD3</color>
+    <color name="beige_status_need">#A2352A</color>
+    <color name="beige_status_need_container">#F4DFD7</color>
+    <!-- 리플 20%(=0x33): 강조색 버튼 위는 밝은 on_accent, 톤 버튼 위는 짙은 accent -->
+    <color name="beige_ripple_on_accent">#33FFF9EF</color>
+    <color name="beige_ripple_on_tonal">#338A461A</color>
+    <!-- 종이 테마엔 컨테이너 테두리가 없다(채움만으로 충분히 구분됨) -->
+    <color name="beige_outline">#00000000</color>
+
+    <!-- ── 사이버펑크(검보라 바탕 + 네온 시안·마젠타) ─────────────────────
+         2026-09 재설계: 예전엔 검정 바탕에 시안 하나뿐이라 "시안 강조한 다크 테마"로 보였다.
+         사이버펑크의 핵심인 **시안×마젠타 네온 대비**를 역할로 나눈다 — 주 강조(스위치·슬라이더·
+         주 버튼·제목)는 네온 시안, 톤 컨테이너(선택된 목록·톤 버튼·NEW 칩)는 짙은 자주 위의 네온
+         마젠타. 바탕/카드/구분선은 무채색 대신 보랏빛이 도는 어둠이고, 컨테이너엔 네온 윤곽
+         (cyber_outline)을 둘러 빛나는 간판 느낌을 낸다.
+         on_surface/surface        15.99:1   on_surface_muted/surface   7.93:1
+         on_surface_muted/bg        8.42:1   accent/surface            13.47:1
+         accent/bg                 14.29:1   on_accent/accent          13.12:1
+         on_accent_container/accent_container 6.38:1
+         status_ok/status_ok_container       10.88:1
+         status_need/status_need_container    5.86:1                          -->
+    <color name="cyber_bg">#07060F</color>
+    <color name="cyber_surface">#110E1E</color>
+    <color name="cyber_on_surface">#ECEAF7</color>
+    <color name="cyber_on_surface_muted">#A9A3C9</color>
+    <color name="cyber_accent">#2BF0F5</color>
+    <color name="cyber_on_accent">#04161A</color>
+    <color name="cyber_accent_container">#2A0F3D</color>
+    <color name="cyber_on_accent_container">#FF5CE1</color>
+    <color name="cyber_divider">#2E2553</color>
+    <color name="cyber_muted">#A9A3C9</color>
+    <color name="cyber_status_ok">#3DF5A0</color>
+    <color name="cyber_status_ok_container">#062A1E</color>
+    <color name="cyber_status_need">#FF5C86</color>
+    <color name="cyber_status_need_container">#36091F</color>
+    <!-- 강조색(밝은 시안) 위에는 어두운 리플, 자주 톤 컨테이너 위에는 마젠타 리플 -->
+    <color name="cyber_ripple_on_accent">#3304161A</color>
+    <color name="cyber_ripple_on_tonal">#33FF5CE1</color>
+    <!-- 네온 마젠타 윤곽(55%) — 톤 컨테이너 테두리 -->
+    <color name="cyber_outline">#8CFF5CE1</color>
+
+    <!-- ── 고대비 ───────────────────────────────────────────────────────
+         on_surface/surface        21.00:1   on_surface_muted/surface  17.14:1
+         on_surface_muted/bg       17.14:1   accent/surface            14.67:1
+         accent/bg                 14.67:1   on_accent/accent          14.67:1
+         on_accent_container/accent_container 14.67:1
+         status_ok/status_ok_container       15.82:1
+         status_need/status_need_container    8.32:1
+
+         ⚠️ surface == bg == accent_container == status_*_container == 순흑이라
+         '채움'으로만 구분되던 요소(필/칩/톤 버튼)는 테두리가 없으면 사라진다 →
+         uiStrokeWidth 를 2dp 로 올리고 drawable 에 stroke 를 넣었다.                -->
+    <color name="hc_bg">#000000</color>
+    <color name="hc_surface">#000000</color>
+    <color name="hc_on_surface">#FFFFFF</color>
+    <color name="hc_on_surface_muted">#E8E8E8</color>
+    <color name="hc_accent">#FFD400</color>
+    <color name="hc_on_accent">#000000</color>
+    <color name="hc_accent_container">#000000</color>
+    <color name="hc_on_accent_container">#FFD400</color>
+    <color name="hc_divider">#FFFFFF</color>
+    <color name="hc_muted">#E8E8E8</color>
+    <color name="hc_status_ok">#35FF8A</color>
+    <color name="hc_status_ok_container">#000000</color>
+    <color name="hc_status_need">#FF7A7A</color>
+    <color name="hc_status_need_container">#000000</color>
+    <!--
+        ⚠️ 강조색이 노란색(#FFD400)이라 흰 리플은 1.4:1 로 사실상 안 보인다 —
+        여기만 반드시 '검정' 반투명 리플을 쓴다. 톤 버튼은 바탕이 순흑이므로 반대로
+        노란 리플이어야 보인다.
+    -->
+    <color name="hc_ripple_on_accent">#33000000</color>
+    <color name="hc_ripple_on_tonal">#33FFD400</color>
+    <!--
+        컨테이너 테두리 = 흰색. 필/스텝 칩/톤 버튼의 채움이 전부 순흑이라, 이 테두리가 없으면
+        검정 위 검정이 되어 모양이 통째로 사라진다(2026-09 실측: 온보딩의 요약 필·"필요함" 필·
+        단계 번호 원·"배터리 설정 열기" 버튼이 전부 글자만 떠 있었다).
+    -->
+    <color name="hc_outline">#FFFFFF</color>
 </resources>
