@@ -51,7 +51,7 @@
 | One UI 6.x | `"한국어"` 또는 `"Korean"` | `"English"` |
 | One UI 7.x | `"한국어"` | `"English"` |
 | One UI 8.x | 실기기 로그로 확인 필요 (TBD) |
-| One UI 9.x | **미지원 (베타)** |
+| One UI 9.x | 실기기(S25+)에서 플래시 동작 확인, 팝업 패턴은 진단 기록으로 확인 필요 (TBD) |
 
 패키지명 필터: `packageName == "android"` 또는 `packageName.contains("samsung")` 인 이벤트만 처리
 

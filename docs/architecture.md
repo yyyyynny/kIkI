@@ -109,7 +109,7 @@
 | API 35 | predictive back gesture 영향 없음 | — |
 | One UI 3.x~7.x | 팝업 텍스트 패턴 확인 완료 | ImeLocaleParser 매핑 |
 | One UI 8.x | 실기기 로그 확인 필요 (TBD) | TBD |
-| One UI 9.x | **미지원 (베타)** | 별도 분기 작성 금지 |
+| One UI 9.x | 지원(2026-10-16). 지문 창이 키보드 언어를 바꿨다 되돌림 | 자동 전환 조용히 처리(`isAutoSwitch`) |
 
 ---
 

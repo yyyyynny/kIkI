@@ -60,7 +60,7 @@ Gradle Wrapper(8.11.1)가 포함되어 있어 별도 Gradle 설치는 필요 없
 ## 지원 범위
 
 - minSdk 29 (Android 10) ~ targetSdk 35 (Android 15)
-- Samsung One UI 3.x ~ 8.x (One UI 9.x 및 API 36+ 는 미지원)
+- 실행 OS: Android 10 ~ 17, Samsung One UI 3.x ~ 9.x
 
 ## 개인정보 / 보안
 
