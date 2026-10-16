@@ -10,7 +10,7 @@
 #     걸려 있었는데, 명시 의존 자체를 빼면서 그 제약도 사라졌다.
 # → agp 를 9.x 로 올리면 coreKtx 제약이 풀린다. 그때 coreKtx 도 최신으로 같이 올릴 것.
 [versions]
-agp = "8.7.3"
+agp = "9.3.0"
 kotlin = "2.0.21"
 coreKtx = "1.16.0"
 appcompat = "1.7.1"
