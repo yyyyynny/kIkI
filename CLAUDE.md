@@ -76,6 +76,7 @@
 | 주 타겟 기기 | Samsung Galaxy Tab S6 Lite, Galaxy Tab S9 FE+ |
 | One UI 버전 | One UI 3.x ~ **8.x (최대 8.5)** |
 | **One UI 제외** | One UI 9.x (베타 테스트 중 — 추후 별도 대응) |
+| ⚠️ 실제 테스트 기기 | 갤럭시 S25+ = **One UI 9.0 · Android 17**(위 제외 범위) — 범위 조정 여부 미정(`docs/인수인계_2026-10-16.md`) |
 
 ---
 
@@ -1009,8 +1010,8 @@ SettingsActivity  — 2단(목록+상세) IA, 2026-09 재구성
       화면 전체 하이라이트 방지).
 
 ThemeManager — 앱 화면 테마 7종 적용(setDefaultNightMode + setTheme 두 축, 사용자 지정은 런타임 팔레트)
-               + `padForSystemBars`: Android 15(targetSdk 35)는 화면 끝까지 그리기가 강제라 두 화면 루트에 시스템 바·펀치홀·
-                 화면 키보드 여백을 더한다(2026-10, S25+ 에서 제목이 상태바 아래 깔리던 문제 — Android 14 이하 태블릿엔 안 보였다)
+               + `padForSystemBars`: Android 15 이상 + targetSdk 35 는 화면 끝까지 그리기가 강제라 두 화면 루트에 시스템 바·펀치홀·
+                 화면 키보드 여백을 더한다(2026-10, S25+(One UI 9.0·Android 17) 에서 제목이 상태바 아래 깔리던 문제 — Android 14 이하 태블릿엔 안 보였다)
 UiDrawables  — 공용 배경(카드·필·칩·버튼)을 코드로 생성 + XML 역할 태그 바인딩(사용자 지정 색이 닿게)
 ```
 
