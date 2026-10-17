@@ -102,6 +102,8 @@ class SettingsActivity : AppCompatActivity() {
 
     /** 태블릿 폭이면 목록+상세를 나란히(2단), 좁으면 목록→상세로 들어가는 1단. */
     private var twoPane: Boolean = false
+    /** 1단에서 상세를 보는 중인가 — 전환 효과 도중엔 뷰 표시 상태가 잠깐 어긋나므로 따로 든다. */
+    private var inDetail = false
 
     /** 테마 변경은 화면을 다시 만들어야 반영되므로, 지금 적용된 테마를 기억해 뒀다 비교한다. */
     private var appliedTheme: String = Prefs.THEME_SYSTEM
@@ -198,6 +200,7 @@ class SettingsActivity : AppCompatActivity() {
         // 1단에서는 목록이 기본이지만, 상세를 보던 중 재생성(테마 변경·회전)됐으면 그 자리로 돌아간다.
         if (!twoPane) {
             if (restoredInDetail) {
+                inDetail = true
                 railRoot.visibility = View.GONE
                 detailScroll.visibility = View.VISIBLE
             } else {
@@ -209,7 +212,7 @@ class SettingsActivity : AppCompatActivity() {
         // 1단에서 상세를 보고 있으면 뒤로가기는 앱 종료가 아니라 목록으로.
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (!twoPane && detailScroll.visibility == View.VISIBLE) showList() else finish()
+                if (inDetail) showList() else finish()
             }
         })
     }
@@ -584,20 +587,24 @@ class SettingsActivity : AppCompatActivity() {
         groupDefs().firstOrNull { it.id == id }?.newMarker?.let { prefs.markSeen(it) }
         renderRail()
         renderDetail()
-        if (!twoPane) {
-            railRoot.visibility = View.GONE
-            detailScroll.visibility = View.VISIBLE
-        }
         detailScroll.scrollTo(0, 0)
+        if (twoPane) {
+            // 2단은 화면이 바뀌는 게 아니라 오른쪽 내용만 바뀐다 — 제자리에서 짧게 나타나기만.
+            if (animateNav()) {
+                detailScroll.alpha = 0f
+                detailScroll.animate().alpha(1f).setDuration(NAV_ENTER_MS).setInterpolator(EASE_OUT).start()
+            }
+        } else {
+            inDetail = true
+            switchPane(out = railRoot, into = detailScroll, direction = 1)
+        }
         syncBackButton()
-        enterFrom(detailScroll, if (twoPane) 0 else 1)
     }
 
     private fun showList(animate: Boolean = true) {
-        railRoot.visibility = View.VISIBLE
-        detailScroll.visibility = View.GONE
+        inDetail = false
+        switchPane(out = detailScroll, into = railRoot, direction = -1, animate = animate)
         syncBackButton()
-        if (animate) enterFrom(railRoot, -1)
     }
 
     /**
@@ -605,25 +612,50 @@ class SettingsActivity : AppCompatActivity() {
      * 이 목록을 여는데 맨 위 화면에 화살표가 있으면 "어디서 왔지?" 싶은 어색함이 된다. 숨기면 제목을 검색칸 왼쪽 끝에 맞춘다.
      */
     private fun syncBackButton() {
-        val show = !twoPane && detailScroll.visibility == View.VISIBLE
+        val show = inDetail
         backButton.visibility = if (show) View.VISIBLE else View.GONE
         (titleView.layoutParams as LinearLayout.LayoutParams).marginStart = dp(if (show) 8 else 4)
         titleView.requestLayout()
     }
 
     /**
-     * 화면이 바뀔 때 짧게 미끄러지며 나타나게 한다(2026-10, "모드 진입에 애니메이션이 없다" 제보). [direction] 1 = 오른쪽에서,
-     * -1 = 왼쪽에서, 0 = 제자리 페이드. 200ms·강한 감속 곡선(진입은 빠르게 시작해 부드럽게 멈춘다). 시스템 애니메이션을 끈
-     * 기기에선 생략한다.
+     * 1단 목록 ↔ 상세 전환(2026-10-17, Llove `apple-design`·`emil-design-eng` 스킬 대조로 재작성).
+     * - 들어간 길로 나온다: 앞으로(+1)는 목록이 왼쪽으로 빠지고 상세가 오른쪽에서, 뒤로(-1)는 그 반대. 예전엔 나가는 화면이
+     *   효과 없이 사라졌다.
+     * - 두 화면을 겹치지 않는다: 나가는 화면이 먼저 다 사라진 뒤 들어오는 화면이 나타난다(겹치면 반투명 유령이 생긴다 —
+     *   온보딩→설정에서 실제로 본 문제). 나가기가 들어오기보다 짧다.
+     * - 하루 수십 번 쓰는 이동이라 짧고 작게(나가기 60ms + 들어오기 140ms, 12dp), 키보드로 연 경우와 시스템 애니메이션 끔은
+     *   효과 없이 바로 바꾼다 — 이 앱 사용자는 외장 키보드로 설정을 돌아다닌다.
+     * 전환 중 다시 눌러도 두 화면의 진행 중 효과를 먼저 멈추고 최종 상태를 정하므로 어긋나지 않는다.
      */
-    private fun enterFrom(view: View, direction: Int) {
-        if (!ValueAnimator.areAnimatorsEnabled()) return
-        view.animate().cancel()
-        view.alpha = 0f
-        view.translationX = dp(24) * direction.toFloat()
-        view.animate().alpha(1f).translationX(0f).setDuration(200)
-            .setInterpolator(PathInterpolator(0.23f, 1f, 0.32f, 1f)).start()
+    private fun switchPane(out: View, into: View, direction: Int, animate: Boolean = true) {
+        out.animate().cancel()
+        into.animate().cancel()
+        into.alpha = 1f
+        into.translationX = 0f
+        if (!animate || !animateNav() || out.visibility != View.VISIBLE) {
+            out.visibility = View.GONE
+            out.alpha = 1f
+            out.translationX = 0f
+            into.visibility = View.VISIBLE
+            return
+        }
+        into.visibility = View.GONE
+        val shift = dp(NAV_SHIFT_DP).toFloat() * direction
+        out.animate().alpha(0f).translationX(-shift).setDuration(NAV_EXIT_MS).setInterpolator(EASE_OUT)
+            .withEndAction {
+                out.visibility = View.GONE
+                out.alpha = 1f
+                out.translationX = 0f
+                into.visibility = View.VISIBLE
+                into.alpha = 0f
+                into.translationX = shift
+                into.animate().alpha(1f).translationX(0f).setDuration(NAV_ENTER_MS).setInterpolator(EASE_OUT).start()
+            }.start()
     }
+
+    /** 터치로 움직일 때만 효과를 준다 — 키보드 조작(터치 모드 아님)과 시스템 애니메이션 끔은 즉시. */
+    private fun animateNav(): Boolean = ValueAnimator.areAnimatorsEnabled() && window.decorView.isInTouchMode
 
     private fun renderDetail() {
         // ⚠️ 이 두 목록은 **지금 화면에 붙어 있는 뷰만** 담아야 한다. 그룹을 옮길 때마다 상세 뷰를
@@ -1410,7 +1442,7 @@ class SettingsActivity : AppCompatActivity() {
             imageTintList = android.content.res.ColorStateList.valueOf(themeColor(R.attr.uiOnSurface))
             layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
             setOnClickListener {
-                if (!twoPane && detailScroll.visibility == View.VISIBLE) showList() else finish()
+                if (inDetail) showList() else finish()
             }
         }
         val title = TextView(this).apply {
@@ -1481,7 +1513,7 @@ class SettingsActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
         outState.putString(STATE_GROUP, currentGroup)
         outState.putString(STATE_QUERY, query)
-        outState.putBoolean(STATE_IN_DETAIL, !twoPane && detailScroll.visibility == View.VISIBLE)
+        outState.putBoolean(STATE_IN_DETAIL, inDetail)
     }
 
     private fun syncToggles() {
@@ -2350,6 +2382,11 @@ class SettingsActivity : AppCompatActivity() {
     ).roundToInt()
 
     companion object {
+        private const val NAV_EXIT_MS = 60L
+        private const val NAV_ENTER_MS = 140L
+        private const val NAV_SHIFT_DP = 12
+        /** 강한 감속 곡선 — 처음이 빨라 바로 반응하는 느낌(emil-design-eng 의 --ease-out). */
+        private val EASE_OUT = PathInterpolator(0.23f, 1f, 0.32f, 1f)
         /** 퀵메뉴 "선택됨" 행의 고정 높이(dp) — 드래그 자리교체 판정/애니메이션 오프셋 기준. */
         private const val ROW_HEIGHT_DP = 52
 
