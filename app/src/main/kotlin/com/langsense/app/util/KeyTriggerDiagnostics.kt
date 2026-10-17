@@ -80,9 +80,25 @@ object KeyTriggerDiagnostics {
         pkg.contains("biometrics", ignoreCase = true) || pkg.contains("samsungpass", ignoreCase = true)
         )
 
-    /** 이 전환이 시스템이 한 자동 전환인지 — 시스템 화면이 앞일 때, 또는 직후 그 전 언어로 되돌아갈 때. */
-    fun isAutoSwitch(front: String?, lang: String, now: Long, autoAt: Long, langBeforeAuto: String?): Boolean =
-        isSystemAuthScreen(front) || (langBeforeAuto == lang && now - autoAt in 0..AUTO_REVERT_MS)
+    /**
+     * 앞 화면(앱·시스템 창)이 바뀐 뒤 이 시간 안의 전환은 화면이 바꾼 것으로 본다. 입력칸이 바뀌면 키보드가 그 칸에 맞춰
+     * 언어를 바꾼다 — 공유 시트(IntentResolver)가 뜰 때와 닫혀 앱으로 돌아올 때(2026-10 S25+ 네이버 웹툰 제보), 지문 창.
+     * 감지 쪽 지연(합치기 150ms + 재확인 최대 1초)을 덮는 값.
+     * 한계: 앱을 바꾸자마자 1.5초 안에 사용자가 직접 한/영을 누르면 조용히 넘어간다(배지는 바뀐다) — 확장: 최근 물리 키·
+     * 터치 키보드 한/영 키 흔적이 있으면 제외.
+     */
+    const val SCREEN_SWITCH_MS = 1_500L
+
+    /**
+     * 이 전환이 사용자가 아니라 화면이 한 자동 전환인지 — 시스템 인증 화면이 앞일 때, 앞 화면이 막 바뀌었을 때
+     * ([screenChangedAt], 0 이면 모름), 또는 인증 화면 직후 그 전 언어로 되돌아갈 때.
+     */
+    fun isAutoSwitch(
+        front: String?, lang: String, now: Long, autoAt: Long, langBeforeAuto: String?, screenChangedAt: Long = 0L,
+    ): Boolean =
+        isSystemAuthScreen(front) ||
+            (screenChangedAt > 0L && now - screenChangedAt in 0..SCREEN_SWITCH_MS) ||
+            (langBeforeAuto == lang && now - autoAt in 0..AUTO_REVERT_MS)
 
     /** 전환 순간의 상황. 진단 기록에 "키=값;…" 으로 저장하고, 사람이 읽을 문구는 화면이 만든다. */
     data class SwitchContext(
@@ -90,12 +106,15 @@ object KeyTriggerDiagnostics {
         val touchKeyboard: Boolean = false,
         val front: String? = null,
         val auto: Boolean = false,
+        /** 앞 화면이 바뀐 뒤 전환까지 걸린 ms(-1 = 모름). 화면이 바꾼 전환 판정([SCREEN_SWITCH_MS])을 실기기 기록으로 맞추는 근거. */
+        val sinceScreenMs: Long = -1L,
     ) {
         fun encode(): String = listOfNotNull(
             basis.takeIf { it.isNotEmpty() }?.let { "basis=$it" },
             "touch=1".takeIf { touchKeyboard },
             front?.let { "front=$it" },
             "auto=1".takeIf { auto },
+            sinceScreenMs.takeIf { it >= 0 }?.let { "since=$it" },
         ).joinToString(";")
 
         companion object {
@@ -103,7 +122,9 @@ object KeyTriggerDiagnostics {
             fun decode(s: String): SwitchContext? {
                 if ('=' !in s) return null
                 val m = s.split(';').mapNotNull { p -> p.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } }.toMap()
-                return SwitchContext(m["basis"].orEmpty(), m["touch"] == "1", m["front"], m["auto"] == "1")
+                return SwitchContext(
+                    m["basis"].orEmpty(), m["touch"] == "1", m["front"], m["auto"] == "1", m["since"]?.toLongOrNull() ?: -1L,
+                )
             }
         }
     }

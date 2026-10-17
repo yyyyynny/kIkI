@@ -287,7 +287,8 @@ class LangSenseAccessibilityService : AccessibilityService(),
         var types = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
         if (excl) types = types or AccessibilityEvent.TYPE_WINDOWS_CHANGED
         if (replace || noFocus) types = types or AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED
-        if (noFocus) types = types or AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
+        // 타수 측정: 터치 키보드 입력은 물리 키 이벤트가 아니라 글자 변경 이벤트로만 보인다(2026-10).
+        if (noFocus || prefs.typingSpeedEnabled) types = types or AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
 
         val managed = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
             AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
@@ -636,7 +637,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
         // 사용자가 한 전환이 아닌데 파랑·빨강이 번쩍였다). 전환 1회당 루트 노드 조회 1회.
         val front = frontPackage()
         val now = SystemClock.uptimeMillis()
-        val auto = KeyTriggerDiagnostics.isAutoSwitch(front, lang, now, autoSwitchAt, langBeforeAuto)
+        val auto = KeyTriggerDiagnostics.isAutoSwitch(front, lang, now, autoSwitchAt, langBeforeAuto, screenChangedAt)
         if (KeyTriggerDiagnostics.isSystemAuthScreen(front)) {
             if (langBeforeAuto == null) langBeforeAuto = prev
             autoSwitchAt = now
@@ -646,7 +647,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
         // 전환 원인 진단(추가 기능 3): 기본은 featuresEnabled() 게이트와 무관하게 항상 캡처한다
         // ("왜 전환됐는지"는 오버레이 표시 여부와 별개의 관심사) — 단, 하위 옵션을 켠 사용자는
         // 터치 키보드가 떠 있는 동안 진단도 함께 멈춘다([diagnosticActive] 참조).
-        if (diagnosticActive()) captureDiagnosticTrigger(front, auto)
+        if (diagnosticActive()) captureDiagnosticTrigger(front, auto, if (screenChangedAt > 0L) now - screenChangedAt else -1L)
         if (!auto) prefs.recordSwitch() // 입력 통계(꺼져 있으면 아무것도 안 함) — 시스템이 한 전환은 세지 않는다
         // 터치 키보드 제외 ON + 소프트 키보드 표시 중 → 플래시/배지 모두 비활성(추가 기능 2).
         if (!featuresEnabled()) return
@@ -659,6 +660,17 @@ class LangSenseAccessibilityService : AccessibilityService(),
         if (lang == ImeLocaleParser.KO && prefs.replaceEnabled && prefs.switchSuggestEnabled) {
             guarded("switchSuggestion") { trySwitchSuggestion() }
         }
+    }
+
+    /** 마지막으로 앞에 뜬 화면의 패키지와 바뀐 시각(uptime) — "화면이 바꾼 전환" 판정용([KeyTriggerDiagnostics.SCREEN_SWITCH_MS]). */
+    private var lastScreenPkg: String? = null
+    private var screenChangedAt = 0L
+
+    /** 창 상태 변화마다(노드 조회 없음). 키보드·언어 팝업과 이 앱의 창은 화면 변화로 치지 않는다 — 사용자의 전환에도 뜨기 때문. */
+    private fun noteScreenChange(pkg: String?) {
+        if (pkg == null || pkg == packageName || pkg == SYSTEM_UI_PKG || ImeLocaleParser.isPopupPackage(pkg) || pkg == lastScreenPkg) return
+        lastScreenPkg = pkg
+        screenChangedAt = SystemClock.uptimeMillis()
     }
 
     /** 맨 앞 화면의 앱 패키지(노드 조회 1회). 못 읽으면 null. */
@@ -711,6 +723,8 @@ class LangSenseAccessibilityService : AccessibilityService(),
     private var typingKeys = 0
     private var typingMs = 0L
     private var lastTypingKeyAt = 0L
+    /** 마지막 물리 글자 키 시각 — 그 키가 만든 글자 변경 이벤트를 터치 입력으로 두 번 세지 않게. */
+    private var lastPhysicalTypingAt = 0L
     private var typingFlushScheduled = false
 
     /** 디스패치 스레드에서 정수 더하기만 하고, 저장은 [TYPING_FLUSH_MS] 마다 한 번(키마다 디스크에 쓰지 않게). */
@@ -750,7 +764,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
      * 박아 넣으면 "값이 없다"와 "값이 이 특정 문장이다"를 구분할 수 없어, 나중에 문구를 다듬거나
      * 다른 화면에서 다르게 보여주고 싶을 때 저장된 과거 값까지 꼬인다.
      */
-    private fun captureDiagnosticTrigger(front: String?, auto: Boolean) {
+    private fun captureDiagnosticTrigger(front: String?, auto: Boolean, sinceScreenMs: Long) {
         val names = KeyTriggerDiagnostics.recentKeyNames(
             diagKeyCodes, diagKeyAtUptime, diagKeyWriteIndex, SystemClock.uptimeMillis()
         ) { code -> KeyEvent.keyCodeToString(code).removePrefix("KEYCODE_") }
@@ -759,6 +773,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
             touchKeyboard = computeSoftKeyboardVisible(),
             front = front,
             auto = auto,
+            sinceScreenMs = sinceScreenMs,
         )
         prefs.recordSwitchTrigger(KeyTriggerDiagnostics.describe(names) ?: "", ctx.encode())
     }
@@ -774,6 +789,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
         guarded("onAccessibilityEvent") {
             when (event.eventType) {
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                    noteScreenChange(event.packageName?.toString())
                     imeDetector.onWindowStateChanged(event)
                     scheduleSoftKeyboardRecheck()
                     retryBadgeIfMissing()
@@ -784,7 +800,11 @@ class LangSenseAccessibilityService : AccessibilityService(),
                 // 글자가 실제 편집칸에 들어갔다는 가장 직접적인 신호(포커스 경고 오발동 방지용).
                 AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {
                     val now = SystemClock.uptimeMillis()
-                    if (shouldCheckEditable(now)) {
+                    // 터치 키보드 타수: 바뀐 글자 "수"만 본다(내용은 읽지 않음). 물리 키가 방금 눌렸으면 그 키의 메아리라 세지 않는다.
+                    if (typingSpeedOn && now - lastPhysicalTypingAt > PHYSICAL_KEY_ECHO_MS &&
+                        InputStats.isTouchKeystroke(event.addedCount, event.removedCount)
+                    ) countTypingKey()
+                    if (prefs.noFocusEnabled && shouldCheckEditable(now)) {
                         val node = runCatching { event.source }.getOrNull() ?: return@guarded
                         try {
                             markEditableActivity(node, now)
@@ -857,7 +877,10 @@ class LangSenseAccessibilityService : AccessibilityService(),
             // (Bug 1) 메인(디스패치) 스레드에서는 키 이벤트 속성만 보는 저비용 판정만 동기로 하고 즉시
             // 반환한다. 무거운 포커스 조회(노드 트리 IPC)는 백그라운드 스레드로 넘긴다.
             if (!keyMonitor.isTypingCandidate(e)) return false
-            if (typingSpeedOn) countTypingKey()
+            if (typingSpeedOn) {
+                lastPhysicalTypingAt = SystemClock.uptimeMillis()
+                countTypingKey()
+            }
             // 터치 키보드 제외 ON + 소프트 키보드 표시 중 → 포커스 없는 키 입력 경고 비활성(추가 기능 2).
             if (!featuresEnabled()) return false
             // 최근 입력 실착 여부는 메인 스레드에서 저렴하게 스냅샷(타임스탬프 비교)해 백그라운드로 전달.
@@ -1011,6 +1034,10 @@ class LangSenseAccessibilityService : AccessibilityService(),
 
         /** 타수 측정 값을 저장하는 간격(키마다 쓰지 않는다). */
         private const val TYPING_FLUSH_MS = 30_000L
+        /** 물리 키 뒤 이 시간 안의 글자 변경은 그 키의 결과로 본다(저사양 기기의 이벤트 지연 포함). */
+        private const val PHYSICAL_KEY_ECHO_MS = 500L
+        /** 알림창·볼륨 같은 시스템 UI 는 입력칸을 바꾸지 않으므로 화면 변화로 치지 않는다. */
+        private const val SYSTEM_UI_PKG = "com.android.systemui"
 
         /**
          * 직전 입력 실착으로 "포커스 있음"을 인정하는 시간(ms). 타이핑 중 편집 이벤트 간격을 넉넉히

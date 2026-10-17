@@ -97,4 +97,14 @@ class InputStatsTest {
         w = InputStats.recordWord(w, "c", "ㅊ", Outcome.ACCEPTED, 3)
         assertEquals(listOf("c", "b", "a"), InputStats.topWords(w, 3).map { it.original })
     }
+
+    @Test
+    fun 터치_한_타_판정은_조합은_세고_자동완성과_지우기는_뺀다() {
+        assertTrue(InputStats.isTouchKeystroke(1, 0))  // ㅎ
+        assertTrue(InputStats.isTouchKeystroke(1, 1))  // 하→한
+        assertTrue(InputStats.isTouchKeystroke(2, 1))  // 한+ㅏ→하나
+        assertTrue(InputStats.isTouchKeystroke(4, 3))  // hel→hell
+        assertFalse(InputStats.isTouchKeystroke(6, 3)) // hel→hello (자동완성)
+        assertFalse(InputStats.isTouchKeystroke(0, 1)) // 지우기
+    }
 }

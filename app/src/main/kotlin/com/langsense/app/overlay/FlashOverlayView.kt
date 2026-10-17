@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.view.Gravity
 import android.widget.FrameLayout
 import android.widget.TextView
+import com.langsense.app.util.ColorMath
 
 /**
  * 전체화면 플래시 오버레이 (Feature 1, 3).
@@ -15,7 +16,6 @@ import android.widget.TextView
 class FlashOverlayView(context: Context) : FrameLayout(context) {
 
     private val label = TextView(context).apply {
-        setTextColor(Color.WHITE)
         textSize = 28f
         setTypeface(typeface, android.graphics.Typeface.BOLD)
     }
@@ -40,8 +40,6 @@ class FlashOverlayView(context: Context) : FrameLayout(context) {
                 Gravity.CENTER
             )
         )
-        // 그림자로 어떤 배경색에서도 텍스트 가독성 확보
-        label.setShadowLayer(8f, 0f, 0f, Color.argb(180, 0, 0, 0))
     }
 
     /**
@@ -55,6 +53,12 @@ class FlashOverlayView(context: Context) : FrameLayout(context) {
     fun play(colorArgb: Int, text: String, durationMs: Int, count: Int, onEnd: () -> Unit) {
         cancelled = false
         setBackgroundColor(colorArgb)
+        // 글자색은 바탕 밝기로 흑/백을 고른다 — 파스텔 바탕(2026-10 기본값)에 흰 글자는 안 읽힌다.
+        // 그림자는 글자와 반대 밝기로 둘러 아래 화면이 비쳐도 윤곽이 남게 한다.
+        val fg = ColorMath.readableOn(colorArgb or 0xFF000000.toInt())
+        label.setTextColor(fg)
+        val shadow = if (fg == Color.WHITE) Color.argb(180, 0, 0, 0) else Color.argb(160, 255, 255, 255)
+        label.setShadowLayer(8f, 0f, 0f, shadow)
         label.text = text
         playCycle(count.coerceAtLeast(1), durationMs.toLong(), onEnd)
     }

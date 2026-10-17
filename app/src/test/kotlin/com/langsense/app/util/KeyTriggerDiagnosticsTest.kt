@@ -107,6 +107,18 @@ class KeyTriggerDiagnosticsTest {
         assertTrue(KeyTriggerDiagnostics.isSystemAuthScreen("com.samsung.android.samsungpass"))
     }
 
+    /** 공유 시트(웹툰 제보): 화면이 바뀐 직후 전환은 자동, 오래 지나서 한 전환·화면 변화를 모를 때는 사용자 전환. */
+    @Test
+    fun 화면이_막_바뀐_직후의_전환은_자동_전환() {
+        val share = "com.android.intentresolver"
+        assertTrue(KeyTriggerDiagnostics.isAutoSwitch(share, "en", 10_300, 0, null, screenChangedAt = 10_000))
+        assertTrue(KeyTriggerDiagnostics.isAutoSwitch("com.naver.linewebtoon", "ko", 20_400, 0, null, screenChangedAt = 20_000))
+        assertEquals(false, KeyTriggerDiagnostics.isAutoSwitch(share, "en", 10_000 + KeyTriggerDiagnostics.SCREEN_SWITCH_MS + 1, 0, null, screenChangedAt = 10_000))
+        assertEquals(false, KeyTriggerDiagnostics.isAutoSwitch(share, "en", 10_300, 0, null))
+        val ctx = KeyTriggerDiagnostics.SwitchContext("setting", front = share, auto = true, sinceScreenMs = 300)
+        assertEquals(ctx, KeyTriggerDiagnostics.SwitchContext.decode(ctx.encode()))
+    }
+
     /** 원인 우선순위와 저장 형식 왕복. 예전 문장 형식 기록은 해석하지 않는다(null). */
     @Test
     fun cause_classificationAndRoundTrip() {

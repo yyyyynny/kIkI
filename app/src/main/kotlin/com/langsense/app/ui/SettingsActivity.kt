@@ -37,6 +37,7 @@ import com.langsense.app.util.KeyTriggerDiagnostics
 import com.langsense.app.util.PermissionHelper
 import com.langsense.app.util.Prefs
 import com.langsense.app.util.SettingsSearch
+import com.langsense.app.util.SliderScale
 import com.langsense.app.util.ThemeManager
 import com.langsense.app.util.UiPalette
 import com.langsense.app.util.themeColor
@@ -1318,7 +1319,7 @@ class SettingsActivity : AppCompatActivity() {
             item(s(R.string.settings_radial_max_radius), path(menu, R.string.settings_radial), GROUP_MENU,
                 "선 길이, 반지름, 구석, 모서리, 메뉴 위치, 엉뚱한 곳, 멀리, 길게, radius"),
             item(s(R.string.settings_flash_auto_switch), path(flash, R.string.settings_flash), GROUP_FLASH,
-                "지문, 지문 인식, 생체 인증, 삼성 패스, 잠금 해제, 자동 전환, 저절로 바뀜, 깜박임, fingerprint"),
+                "지문, 지문 인식, 생체 인증, 삼성 패스, 잠금 해제, 공유, 공유 창, 화면 전환, 자동 전환, 저절로 바뀜, 깜박임, fingerprint"),
             item(s(R.string.settings_radial_reduce_motion), path(menu, R.string.settings_radial), GROUP_MENU,
                 "저사양, 움직임, 애니메이션, 버벅, 느림, 렉, 배터리, 가볍게, 모션, reduce motion"),
             // ── 한영타 교체 ──
@@ -1565,6 +1566,18 @@ class SettingsActivity : AppCompatActivity() {
                     // 앞 화면은 앱 이름으로(못 읽으면 패키지 이름). 예전 형식 기록은 저장된 문장 그대로.
                     val where = ctx?.front?.let { appLabel(it) } ?: t.context.takeIf { ctx == null && it.isNotEmpty() }
                     if (where != null) append("\n    ").append(getString(R.string.diag_front, where))
+                    // 근거·화면 변화 뒤 시간 — "원인을 알 수 없음"을 실기기 기록으로 좁히는 단서(2026-10)
+                    val basis = when {
+                        ctx == null || ctx.basis.isEmpty() -> null
+                        ctx.basis == "setting" -> getString(R.string.diag_basis_setting)
+                        ctx.basis.startsWith("popup") -> getString(R.string.diag_basis_popup)
+                        else -> getString(R.string.diag_basis_imm)
+                    }
+                    if (basis != null) {
+                        val since = ctx!!.sinceScreenMs.takeIf { it in 0..60_000 }
+                            ?.let { getString(R.string.diag_since_screen, String.format(java.util.Locale.ROOT, "%.1f", it / 1000.0)) }.orEmpty()
+                        append("\n    ").append(getString(R.string.diag_detail, basis, since))
+                    }
                 }
                 if (anyUnknown) {
                     append("\n\n")
@@ -1721,14 +1734,17 @@ class SettingsActivity : AppCompatActivity() {
         }
         header.addView(valueLabel)
 
-        val steps = (max - min) / step
+        val scale = SliderScale(min, max, step, percent = suffix == "%")
         val seek = SeekBar(this).apply {
             tintForCustomPalette(this)
-            this.max = steps
-            progress = ((value - min) / step).coerceIn(0, steps)
+            this.max = scale.steps
+            progress = scale.toProgress(value)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
-                    val v = min + p * step
+                    val v = scale.toValue(p)
+                    // 고를 수 없는 구간(예: 신뢰도 50% 미만)으로 끌면 손잡이를 끝값에 붙잡아 둔다.
+                    // 한계: 그 구간을 흐리게 그리지는 않는다 — 확장: 트랙 드로어블에 구간 레이어 추가.
+                    if (scale.toProgress(v) != p) { sb?.progress = scale.toProgress(v); return }
                     valueLabel.text = getString(R.string.slider_value_short_format, v, suffix)
                     // 저장을 onStopTrackingTouch 에만 두면 터치 드래그로만 값이 바뀐다 —
                     // 키보드/D-pad/TalkBack 조작은 이 콜백만 오므로 화면 숫자만 바뀌고 저장이
@@ -1738,7 +1754,7 @@ class SettingsActivity : AppCompatActivity() {
 
                 override fun onStartTrackingTouch(sb: SeekBar?) {}
                 override fun onStopTrackingTouch(sb: SeekBar?) {
-                    onChange(min + (sb?.progress ?: 0) * step)
+                    onChange(scale.toValue(sb?.progress ?: 0))
                 }
             })
         }
@@ -2393,6 +2409,9 @@ class SettingsActivity : AppCompatActivity() {
 
         private val PALETTE = listOf(
             "#000000", "#444444", "#888888", "#CCCCCC", "#FFFFFF",
+            // 파스텔(2026-10 사용자 요청, 플래시 기본값 2개 + Llove 커스텀 팔레트의 파스텔)
+            "#F2A7A7", "#A9C8F0", "#FFB3BA", "#FFDFBA", "#FFF5BA", "#BAFFC9", "#BAE1FF", "#C9C9FF",
+            "#E0BAFF", "#FFC9E3",
             "#CC2D2D", "#E53935", "#FF6F61", "#FF1744",
             "#1A6EBD", "#1565C0", "#2196F3", "#00B0FF",
             "#2D8C4E", "#2E7D32", "#43A047", "#00C853",
