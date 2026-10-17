@@ -76,12 +76,14 @@ class MainActivity : AppCompatActivity() {
     private val reviewMode: Boolean get() = intent.getBooleanExtra(EXTRA_REVIEW, false)
 
     /** 다시 보기로 왔으면 뒤에 있는 설정 화면으로 돌아가고, 아니면 설정을 열고 이 화면은 닫는다(뒤로가기로 다시 오지 않게). */
-    private fun openSettings() {
+    private fun openSettings(coldForward: Boolean = false) {
         if (!reviewMode) startActivity(Intent(this, SettingsActivity::class.java))
         finish()
-        // 앱 아이콘 → 곧장 설정으로 넘어갈 때 툭 바뀌지 않게 짧게 겹쳐 사라지게 한다.
+        // 두 화면을 반투명으로 겹치는 페이드는 쓰지 않는다 — 온보딩 카드·버튼이 목록 위에 유령처럼 비쳤다(2026-10 S25+ 녹화
+        // 14.7초, "첫 화면 불쾌한 골짜기"의 직접 원인). 버튼으로 넘어가면 시스템 기본 전환(불투명한 화면이 밀려 들어옴),
+        // 앱 아이콘으로 열어 첫 프레임 전에 곧장 넘기면 창 열림 효과가 이미 있으니 효과 없이 바꾼다.
         @Suppress("DEPRECATION")
-        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+        if (coldForward) overridePendingTransition(0, 0)
     }
 
     override fun onResume() {
@@ -92,8 +94,13 @@ class MainActivity : AppCompatActivity() {
             recreate()
             return
         }
-        if (refreshStatus() && !reviewMode) openSettings()
+        val first = !resumedOnce
+        resumedOnce = true
+        // 처음 onResume = 앱 아이콘으로 막 연 것(화면이 아직 안 보임). 그 뒤 = 시스템 설정에서 권한을 켜고 돌아온 것.
+        if (refreshStatus() && !reviewMode) openSettings(coldForward = first)
     }
+
+    private var resumedOnce = false
 
     /**
      * 넓은 화면에서는 본문 폭을 [R.dimen.content_max_width] 로 묶고 가운데로 모은다.

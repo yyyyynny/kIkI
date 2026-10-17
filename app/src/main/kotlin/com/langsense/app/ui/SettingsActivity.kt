@@ -61,6 +61,8 @@ class SettingsActivity : AppCompatActivity() {
 
     private lateinit var prefs: Prefs
     private lateinit var savedHint: TextView
+    private lateinit var backButton: View
+    private lateinit var titleView: TextView
 
     /**
      * 래디얼 메뉴 등 외부에서 바뀔 수 있는 토글(배지/플래시/한영타). 화면 재개 시 현재 값으로 다시
@@ -199,9 +201,10 @@ class SettingsActivity : AppCompatActivity() {
                 railRoot.visibility = View.GONE
                 detailScroll.visibility = View.VISIBLE
             } else {
-                showList()
+                showList(animate = false) // 첫 화면은 창 열림 효과만 — 목록이 따로 미끄러지면 "뒤로 온" 것처럼 보인다
             }
         }
+        syncBackButton()
 
         // 1단에서 상세를 보고 있으면 뒤로가기는 앱 종료가 아니라 목록으로.
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
@@ -272,7 +275,13 @@ class SettingsActivity : AppCompatActivity() {
             setPadding(dp(12), dp(6), dp(12), dp(20))
         }
         column.addView(searchRow())
-        column.addView(railList)
+        // 목록도 상세·온보딩처럼 카드 한 장에 담는다 — 온보딩(카드)에서 맨바닥 목록으로 넘어가면 다른 앱처럼 보였다.
+        column.addView(FrameLayout(this).apply {
+            background = UiDrawables.card(this@SettingsActivity)
+            setPadding(dp(4), dp(6), dp(4), dp(6))
+            addView(railList)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            .also { it.topMargin = dp(12) })
         column.addView(versionFooter())
         column.addView(TextView(this).apply {
             text = getString(R.string.settings_review_onboarding)
@@ -580,13 +589,26 @@ class SettingsActivity : AppCompatActivity() {
             detailScroll.visibility = View.VISIBLE
         }
         detailScroll.scrollTo(0, 0)
+        syncBackButton()
         enterFrom(detailScroll, if (twoPane) 0 else 1)
     }
 
-    private fun showList() {
+    private fun showList(animate: Boolean = true) {
         railRoot.visibility = View.VISIBLE
         detailScroll.visibility = View.GONE
-        enterFrom(railRoot, -1)
+        syncBackButton()
+        if (animate) enterFrom(railRoot, -1)
+    }
+
+    /**
+     * 뒤로가기 화살표는 돌아갈 곳(1단 상세 → 목록)이 있을 때만 보인다(2026-10, 첫 화면 위화감 녹화 분석). 앱 아이콘이 곧장
+     * 이 목록을 여는데 맨 위 화면에 화살표가 있으면 "어디서 왔지?" 싶은 어색함이 된다. 숨기면 제목을 검색칸 왼쪽 끝에 맞춘다.
+     */
+    private fun syncBackButton() {
+        val show = !twoPane && detailScroll.visibility == View.VISIBLE
+        backButton.visibility = if (show) View.VISIBLE else View.GONE
+        (titleView.layoutParams as LinearLayout.LayoutParams).marginStart = dp(if (show) 8 else 4)
+        titleView.requestLayout()
     }
 
     /**
@@ -678,8 +700,14 @@ class SettingsActivity : AppCompatActivity() {
     private fun movedNoticesFor(group: String): List<MovedNotice> = MOVED_NOTICES
         .filter { it.fromGroup == group && showMarker(it.marker) }
 
+    /** 처음 설치한 뒤 업데이트된 적이 없으면 모든 기능이 처음이라 NEW 는 의미가 없다(덮어쓰기 설치는 업데이트로 친다). */
+    private val freshInstall: Boolean by lazy {
+        runCatching { packageManager.getPackageInfo(packageName, 0).let { it.firstInstallTime == it.lastUpdateTime } }
+            .getOrDefault(false)
+    }
+
     private fun showMarker(markerId: String?): Boolean {
-        if (markerId == null) return false
+        if (markerId == null || freshInstall) return false
         val since = Prefs.MARKER_SINCE[markerId] ?: return false
         return prefs.shouldShowMarker(markerId, since, appVersionCode())
     }
@@ -1375,6 +1403,7 @@ class SettingsActivity : AppCompatActivity() {
             setPadding(dp(8), dp(10), dp(16), dp(6))
         }
         val back = ImageButton(this).apply {
+            backButton = this
             setImageResource(R.drawable.ic_back)
             contentDescription = getString(R.string.settings_back)
             background = rippleCircleBackground()
@@ -1385,6 +1414,7 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
         val title = TextView(this).apply {
+            titleView = this
             text = getString(R.string.settings_title)
             textSize = 20f
             setTextColor(themeColor(R.attr.uiOnSurface))
