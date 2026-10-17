@@ -83,8 +83,10 @@
     <string name="settings_replace_exceptions_full">예외 단어는 최대 %1$d개까지예요</string>
     <string name="chip_exception_added">「%1$s」를 한영타 예외로 추가했어요 — 설정에서 뺄 수 있어요</string>
     <string name="chip_exception_single_word">한 단어만 선택했을 때 예외로 추가할 수 있어요</string>
-    <string name="settings_color_palette_open">팔레트</string>
-    <string name="settings_color_palette_close">팔레트 닫기</string>
+    <string name="settings_color_current">%1$s 지금 색 — 눌러서 원형 색 고르기</string>
+    <string name="settings_color_cancel">취소</string>
+    <string name="settings_color_apply">적용</string>
+    <string name="settings_color_more">다른 색 고르기(원형)</string>
     <string name="settings_color_hex">색상코드(#RRGGBB)</string>
     <string name="settings_apply">설정이 즉시 적용됩니다</string>
     <string name="settings_back">뒤로</string>

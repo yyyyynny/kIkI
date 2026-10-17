@@ -86,6 +86,33 @@ object ColorMath {
 
     fun toHex(c: Int): String = "#%06X".format(c and 0xFFFFFF)
 
+    /** HSV(색상 0~360, 채도·명도 0~1) → 불투명 ARGB. 원형 색 고르기([com.langsense.app.ui.ColorWheelView])용. */
+    fun hsvToRgb(h: Float, s: Float, v: Float): Int {
+        val hh = ((h % 360f) + 360f) % 360f / 60f
+        val c = v * s
+        val x = c * (1 - Math.abs(hh % 2 - 1))
+        val (r, g, b) = when (hh.toInt()) {
+            0 -> Triple(c, x, 0f); 1 -> Triple(x, c, 0f); 2 -> Triple(0f, c, x)
+            3 -> Triple(0f, x, c); 4 -> Triple(x, 0f, c); else -> Triple(c, 0f, x)
+        }
+        val m = v - c
+        fun ch(f: Float) = Math.round((f + m) * 255f)
+        return rgb(ch(r), ch(g), ch(b))
+    }
+
+    /** ARGB → [색상 0~360, 채도 0~1, 명도 0~1]. */
+    fun rgbToHsv(c: Int): FloatArray {
+        val r = red(c) / 255f; val g = green(c) / 255f; val b = blue(c) / 255f
+        val max = maxOf(r, g, b); val min = minOf(r, g, b); val d = max - min
+        val h = when {
+            d == 0f -> 0f
+            max == r -> 60f * (((g - b) / d) % 6f)
+            max == g -> 60f * ((b - r) / d + 2f)
+            else -> 60f * ((r - g) / d + 4f)
+        }
+        return floatArrayOf((h + 360f) % 360f, if (max == 0f) 0f else d / max, max)
+    }
+
     const val BLACK = 0xFF000000.toInt()
     const val WHITE = 0xFFFFFFFF.toInt()
     const val NEAR_BLACK = 0xFF111317.toInt()

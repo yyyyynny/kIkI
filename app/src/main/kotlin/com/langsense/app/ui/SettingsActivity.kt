@@ -18,6 +18,7 @@ import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.GridLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -103,13 +104,6 @@ class SettingsActivity : AppCompatActivity() {
     /** 테마 변경은 화면을 다시 만들어야 반영되므로, 지금 적용된 테마를 기억해 뒀다 비교한다. */
     private var appliedTheme: String = Prefs.THEME_SYSTEM
 
-    /**
-     * 펼쳐진 색 팔레트의 [colorPickerRow] key 집합 — 사용자 지정 테마 색은 고를 때마다 [recreate]
-     * 가 화면을 통째로 새로 그리는데, 그때마다 팔레트가 접힌 채로 다시 시작하면 "펼치고 → 한 번
-     * 고르면 접힘 → 다시 펼치고" 를 색마다 반복해야 해서 불편하다(사용자 제보, 2026-09). 이
-     * 인스턴스 필드 자체는 recreate() 로 죽지만 [onSaveInstanceState]/복원으로 값이 넘어간다.
-     */
-    private val openPaletteKeys: MutableSet<String> = mutableSetOf()
 
     private lateinit var railRoot: View
     private lateinit var railList: LinearLayout
@@ -131,7 +125,6 @@ class SettingsActivity : AppCompatActivity() {
             currentGroup = it.getString(STATE_GROUP) ?: GROUP_FLASH
             query = it.getString(STATE_QUERY).orEmpty()
             restoredInDetail = it.getBoolean(STATE_IN_DETAIL, false)
-            openPaletteKeys.addAll(it.getStringArrayList(STATE_OPEN_PALETTES).orEmpty())
         }
 
         twoPane = isWideEnoughForTwoPane()
@@ -239,10 +232,6 @@ class SettingsActivity : AppCompatActivity() {
         val c = resources.configuration
         return c.screenWidthDp >= TWO_PANE_MIN_WIDTH_DP && c.screenHeightDp >= TWO_PANE_MIN_HEIGHT_DP
     }
-
-    /** 32색 팔레트의 열 수 — 들어가는 만큼만, 최소 4열 최대 8열. */
-    private fun paletteColumns(): Int =
-        (detailContentWidthDp() / SWATCH_CELL_DP).coerceIn(4, 8)
 
     /** 테마 카드 격자의 열 수 — 아주 좁으면(폴드 접힘 등) 1열로 떨어뜨려 글자가 뭉치지 않게 한다. */
     private fun themeColumns(): Int = if (detailContentWidthDp() < THEME_TWO_COLUMN_MIN_DP) 1 else 2
@@ -1142,12 +1131,9 @@ class SettingsActivity : AppCompatActivity() {
             Triple(Prefs.CUSTOM_ACCENT, R.string.settings_theme_custom_accent, PALETTE),
         )
         slots.forEach { (slot, labelRes, swatches) ->
-            // key 를 줘서 recreate() 뒤에도 이 팔레트가 펼쳐진 채로 남게 한다(사용자 제보,
-            // 2026-09) — 색 고를 때마다 recreate() 가 화면을 통째로 새로 그려 팔레트가 매번
-            // 접힌 채로 시작하면, 여러 색을 잇달아 바꿔볼 때마다 다시 펼쳐야 해 불편했다.
             addView(
                 colorPickerRow(
-                    getString(labelRes), prefs.customThemeSeed(slot), swatches = swatches, key = "custom_$slot"
+                    getString(labelRes), prefs.customThemeSeed(slot), swatches = swatches
                 ) { hex ->
                     if (hex.equals(prefs.customThemeSeed(slot), ignoreCase = true)) return@colorPickerRow
                     prefs.setCustomThemeSeed(slot, hex)
@@ -1466,7 +1452,6 @@ class SettingsActivity : AppCompatActivity() {
         outState.putString(STATE_GROUP, currentGroup)
         outState.putString(STATE_QUERY, query)
         outState.putBoolean(STATE_IN_DETAIL, !twoPane && detailScroll.visibility == View.VISIBLE)
-        outState.putStringArrayList(STATE_OPEN_PALETTES, ArrayList(openPaletteKeys))
     }
 
     private fun syncToggles() {
@@ -1763,165 +1748,162 @@ class SettingsActivity : AppCompatActivity() {
         return container
     }
 
-    /**
-     * 언어별 플래시 색상 편집기 — 공용 [colorPickerRow] 를 prefs.colorHex 에 연결.
-     * ⚠️ [labelMinWidthDp] 로 라벨 폭을 고정한다 — "한국어"(3자)와 "영어"(2자)는 길이가 달라
-     * 라벨을 wrap_content 그대로 두면 그 뒤의 색 미리보기 원·입력칸이 행마다 다른 x 위치에서
-     * 시작해 두 행이 나란히 있을 때 어긋나 보였다(사용자 제보, 2026-09).
-     */
+    /** 언어별 플래시 색상 편집기 — 공용 [colorPickerRow] 를 prefs.colorHex 에 연결. */
     private fun colorEditor(lang: String, langLabel: String): View =
-        colorPickerRow(
-            langLabel, prefs.colorHex(lang), opacityPct = { prefs.flashOpacityPercent },
-            labelMinWidthDp = LANGUAGE_LABEL_MIN_WIDTH_DP
-        ) { hex -> prefs.setColorHex(lang, hex) }
+        colorPickerRow(langLabel, prefs.colorHex(lang), opacityPct = { prefs.flashOpacityPercent }) { hex ->
+            prefs.setColorHex(lang, hex)
+        }
 
     /**
-     * 공용 색 선택 컴포넌트: 라벨 + 원형 미리보기 + #RRGGBB 입력 + 32색 원형 팔레트.
-     * 플래시 색/배지 색 설정이 동일 코드를 공유한다(복붙 방지). 선택/입력 시 [onPicked] 에
-     * 정규화된 "#RRGGBB" 를 넘기고 저장 안내를 표시한다.
+     * 공용 색 선택(2026-10 재설계, 사용자 요청 "색 누르기 하나로 + 포토샵 같은 원형"): 라벨 줄 아래에 바로가기 색을 한 줄로
+     * 늘 보여 주고 **누르면 바로 적용**한다. 맨 앞은 지금 색(불투명도 반영), 맨 끝 무지개 원은 원형 색 고르기([ColorWheelView])
+     * 창을 연다 — 지금 색 원을 눌러도 같은 창. 예전의 "팔레트 열기 → 격자 → 누르기" 두 단계와 hex 입력칸은 그 창으로 옮겼다.
+     * 플래시·배지·메뉴·사용자 지정 테마가 이 한 함수를 공유한다.
      */
     private fun colorPickerRow(
         label: String,
         initialHex: String,
         /**
-         * 이 색에 적용되는 불투명도(%)를 **호출 시점에** 읽는 람다. 기본 100 이라 불투명도 설정이
-         * 없는 색(배지 글씨, 메뉴 강조/발광)은 기존과 동일하게 그려진다. 불투명도 슬라이더가
-         * 움직이면 [previewRefreshers] 를 통해 여기를 다시 읽어 미리보기가 따라온다.
+         * 이 색에 적용되는 불투명도(%)를 **호출 시점에** 읽는 람다. 기본 100 이라 불투명도 설정이 없는 색(배지 글씨, 메뉴
+         * 강조/발광)은 그대로 그려진다. 불투명도 슬라이더가 움직이면 [previewRefreshers] 로 지금 색 원이 따라온다.
          */
         opacityPct: () -> Int = { 100 },
-        /**
-         * 0 이면 라벨 폭이 wrap_content(기본). 여러 [colorPickerRow] 가 같은 카드 안에 나란히
-         * 쌓여 세로로 정렬돼 보여야 할 때(예: 한국어/영어 색상 두 행)만 지정한다 — 그 외 단독
-         * 행에서는 라벨 길이만큼만 차지하는 게 자연스럽다.
-         */
-        labelMinWidthDp: Int = 0,
-        /** 격자에 보일 견본 색 — 기본은 오버레이용 선명한 32색, 테마 배경·글자는 무채/옅은 색 목록. */
+        /** 바로가기 색 — 기본은 오버레이용(파스텔 + 선명한 색), 테마 배경·글자는 무채/옅은 색 목록. */
         swatches: List<String> = PALETTE,
-        /**
-         * 비 null 이면 이 팔레트의 펼침 상태를 [openPaletteKeys] 에 기억한다 — [recreate] 를 유발하는
-         * 사용자 지정 테마 색에만 필요하다(그 외 색은 recreate() 가 없어 펼침 상태가 그냥 유지된다).
-         */
-        key: String? = null,
         onPicked: (String) -> Unit
     ): View {
-        // 마지막으로 확정된 유효 색. 잘못된 입력으로 commit 이 거부될 때 입력칸을 되돌리는 기준.
         var currentHex = initialHex
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(10), 0, dp(4))
         }
-
-        val headerRow = LinearLayout(this).apply {
+        val hexText = TextView(this).apply {
+            text = currentHex
+            textSize = 12.5f
+            setTextColor(themeColor(R.attr.uiOnSurfaceMuted))
+        }
+        container.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-        }
-        val preview = View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(32), dp(32))
-        }
-        val hexInput = EditText(this).apply {
-            setText(initialHex)
-            filters = arrayOf(InputFilter.LengthFilter(7))
-            setSingleLine()
-            textSize = 14f
-            setTextColor(themeColor(R.attr.uiOnSurface))
-            setHintTextColor(themeColor(R.attr.uiOnSurfaceMuted))
-            tintForCustomPalette(this)
-            imeOptions = EditorInfo.IME_ACTION_DONE
-            hint = getString(R.string.settings_color_hex)
-            // 고정 폭이 아니라 남는 공간을 받는다 — 좁은 화면에서도 팔레트 버튼과 겹치지 않는다.
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
-                .also { it.weight = 1f; it.marginStart = dp(10) }
-        }
-        applyPreview(preview, initialHex, opacityPct())
-        // 불투명도 슬라이더가 움직일 때 이 미리보기도 함께 다시 그리도록 등록.
-        previewRefreshers.add { applyPreview(preview, currentHex, opacityPct()) }
+            addView(TextView(this@SettingsActivity).apply {
+                text = label
+                textSize = 14f
+                setTextColor(themeColor(R.attr.uiOnSurface))
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT).also { it.weight = 1f }
+            })
+            addView(hexText)
+        })
 
-        fun commit(raw: String) {
-            // 파싱 실패 시 normalizeHex 는 기본 회색을 돌려준다 — 그대로 저장하면 입력 도중
-            // 포커스를 잃었을 때(팔레트 스크롤 등) 사용자의 기존 색이 말없이 회색으로 날아간다.
-            // 유효하지 않으면 저장하지 않고 현재 값으로 입력칸만 되돌린다.
-            val normalized = Prefs.normalizeHexOrNull(raw)
-            if (normalized == null) {
-                hexInput.setText(currentHex)
-                return
-            }
+        val strip = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(6), 0, 0)
+        }
+        val current = View(this)
+        val shortcutViews = mutableListOf<Pair<String, View>>()
+
+        fun markSelection() {
+            current.background = swatchDrawable(currentHex, opacityPct())
+            shortcutViews.forEach { (hex, v) -> v.background = swatchDrawable(hex, selected = hex.equals(currentHex, true)) }
+        }
+
+        fun commit(hex: String) {
+            val normalized = Prefs.normalizeHexOrNull(hex) ?: return
+            if (normalized.equals(currentHex, ignoreCase = true)) return
             currentHex = normalized
-            hexInput.setText(normalized)
-            applyPreview(preview, normalized, opacityPct())
+            hexText.text = normalized
+            markSelection()
             onPicked(normalized)
             markSaved()
         }
-        hexInput.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_DONE) { commit(hexInput.text.toString()); true } else false
-        }
-        hexInput.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) commit(hexInput.text.toString()) }
 
-        headerRow.addView(TextView(this).apply {
-            text = label
-            textSize = 14f
-            setTextColor(themeColor(R.attr.uiOnSurface))
-            // 예전엔 64dp 고정이라 "배지 배경색"·"메뉴 강조색" 같은 6자 라벨이 잘렸다. 대신
-            // labelMinWidthDp 로 필요한 곳(언어별 색상 두 행)만 최소 폭을 줘 정렬을 맞춘다.
-            if (labelMinWidthDp > 0) minWidth = dp(labelMinWidthDp)
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).also { it.marginEnd = dp(10) }
-        })
-        headerRow.addView(preview)
-        headerRow.addView(hexInput)
-        container.addView(headerRow)
-
-        // 32색 팔레트 (8 x 4, 원형 스와치) — 기본은 접어 둔다.
-        //
-        // 색은 한 번 정하면 거의 안 만지는 설정인데, 항상 펼쳐 두면 스와치 32개가 화면을 가득 채워
-        // 자주 쓰는 스위치·슬라이더를 밀어낸다(예전 구조에선 팔레트 6벌이 전체 스크롤의 28%였다).
-        // 미리보기 원 또는 색 이름을 누르면 열린다.
-        // 열 수는 화면 폭에서 계산한다 — 8열 고정이면 8×(32+3+3)=304dp 가 필요해 폰(360dp)과
-        // 폴드 접힌 화면(329dp)에서 카드 밖으로 넘쳐 오른쪽 색들이 잘린다.
-        val startsOpen = key != null && openPaletteKeys.contains(key)
-        val palette = GridLayout(this).apply {
-            columnCount = paletteColumns()
-            setPadding(0, dp(8), 0, 0)
-            visibility = if (startsOpen) View.VISIBLE else View.GONE
-        }
-        val toggle = TextView(this).apply {
-            text = getString(if (startsOpen) R.string.settings_color_palette_close else R.string.settings_color_palette_open)
-            textSize = 12.5f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(themeColor(R.attr.uiAccent))
-            setPadding(dp(10), dp(6), dp(10), dp(6))
+        fun swatchView(size: Int, onClick: () -> Unit) = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(size), dp(size)).also { it.marginEnd = dp(8) }
             isClickable = true
             isFocusable = true
-            background = rippleBoundedBackground()
+            setOnClickListener { onClick() }
         }
-        fun togglePalette() {
-            val opening = palette.visibility != View.VISIBLE
-            palette.visibility = if (opening) View.VISIBLE else View.GONE
-            toggle.text = getString(
-                if (opening) R.string.settings_color_palette_close else R.string.settings_color_palette_open
-            )
-            if (key != null) {
-                if (opening) openPaletteKeys.add(key) else openPaletteKeys.remove(key)
-            }
-        }
-        toggle.setOnClickListener { togglePalette() }
-        preview.isClickable = true
-        preview.setOnClickListener { togglePalette() }
-        headerRow.addView(toggle)
+
+        val openWheel = { showColorWheel(label, currentHex) { commit(it) } }
+        strip.addView(swatchView(36) { openWheel() }.let { v ->
+            // 지금 색 — 바로가기와 구분되게 조금 크게, 오른쪽에 가는 구분선
+            current.layoutParams = v.layoutParams
+            current.isClickable = true
+            current.isFocusable = true
+            current.contentDescription = getString(R.string.settings_color_current, label)
+            current.setOnClickListener { openWheel() }
+            current
+        })
+        strip.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(1), dp(24)).also { it.marginEnd = dp(8) }
+            setBackgroundColor(themeColor(R.attr.uiDivider))
+        })
         swatches.forEach { hex ->
-            val swatch = View(this).apply {
-                val lp = GridLayout.LayoutParams().apply {
-                    width = dp(32); height = dp(32)
-                    setMargins(dp(3), dp(3), dp(3), dp(3))
-                }
-                layoutParams = lp
-                background = swatchDrawable(hex)
-                setOnClickListener { commit(hex) }
-            }
-            palette.addView(swatch)
+            val v = swatchView(30) { commit(hex) }.apply { contentDescription = hex }
+            shortcutViews.add(hex to v)
+            strip.addView(v)
         }
-        container.addView(palette)
+        strip.addView(swatchView(30) { openWheel() }.apply {
+            contentDescription = getString(R.string.settings_color_more)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                gradientType = GradientDrawable.SWEEP_GRADIENT
+                colors = IntArray(7) { ColorMath.hsvToRgb(it * 60f, 0.75f, 1f) }
+            }
+        })
+        markSelection()
+        previewRefreshers.add { current.background = swatchDrawable(currentHex, opacityPct()) }
+        container.addView(HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(strip)
+        })
         return container
+    }
+
+    /** 원형 색 고르기 창 — 확인을 눌러야 적용한다(사용자 지정 테마는 적용 때 화면을 다시 그려 창이 닫히기 때문). */
+    private fun showColorWheel(label: String, startHex: String, onPick: (String) -> Unit) {
+        val wheel = ColorWheelView(this)
+        val preview = View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)) }
+        val hexInput = EditText(this).apply {
+            setText(startHex)
+            filters = arrayOf(InputFilter.LengthFilter(7))
+            setSingleLine()
+            textSize = 15f
+            hint = getString(R.string.settings_color_hex)
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            tintForCustomPalette(this)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .also { it.weight = 1f; it.marginStart = dp(12) }
+        }
+        fun show(c: Int) { preview.background = swatchDrawable(ColorMath.toHex(c)) }
+        ColorMath.parseHex(startHex)?.let { wheel.setColor(it); show(it) }
+        wheel.onColorChanged = { c -> show(c); hexInput.setText(ColorMath.toHex(c)) }
+        hexInput.setOnEditorActionListener { _, _, _ ->
+            ColorMath.parseHex(hexInput.text.toString())?.let { wheel.setColor(it); show(it) }
+            false
+        }
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), 0)
+            gravity = Gravity.CENTER_HORIZONTAL
+            addView(wheel)
+            addView(LinearLayout(this@SettingsActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(12), 0, 0)
+                addView(preview)
+                addView(hexInput)
+            })
+        }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(label)
+            .setView(body)
+            .setNegativeButton(R.string.settings_color_cancel, null)
+            .setPositiveButton(R.string.settings_color_apply) { _, _ ->
+                // 입력칸에 직접 친 값이 있으면 그것을, 아니면 고리·사각형에서 고른 색을
+                onPick(Prefs.normalizeHexOrNull(hexInput.text.toString()) ?: ColorMath.toHex(wheel.color))
+            }
+            .show()
     }
 
     /** 배지 크기 3단계(소/중/대) 라디오 선택. */
@@ -2291,10 +2273,6 @@ class SettingsActivity : AppCompatActivity() {
         runCatching { android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show() }
     }
 
-    private fun applyPreview(view: View, hex: String, opacityPct: Int) {
-        view.background = swatchDrawable(hex, opacityPct)
-    }
-
     /**
      * 색 미리보기 원. [opacityPct] 가 100 미만이면 **밝음→어두움 그라데이션 바탕 위에** 반투명
      * 색을 얹어, 그 바탕이 비쳐 보이는 정도로 불투명도를 눈으로 확인할 수 있게 한다.
@@ -2306,7 +2284,20 @@ class SettingsActivity : AppCompatActivity() {
      * 배경과 구분이 안 돼 스와치가 통째로 안 보였다. 32색 팔레트([PALETTE])에도 흰색(#FFFFFF)·
      * 검정(#000000)이 있어 같은 문제가 있었다 — 색 자체와 대비시키면 어떤 배경 위에서도 보인다.
      */
-    private fun swatchDrawable(hex: String, opacityPct: Int = 100): android.graphics.drawable.Drawable {
+    private fun swatchDrawable(
+        hex: String, opacityPct: Int = 100, selected: Boolean = false,
+    ): android.graphics.drawable.Drawable {
+        if (selected) {
+            // 고른 바로가기 색: 강조색 고리 + 안쪽에 그 색(고리와 색 사이 2dp 틈)
+            val ring = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.TRANSPARENT)
+                setStroke(dp(2), themeColor(R.attr.uiAccent))
+            }
+            return android.graphics.drawable.LayerDrawable(arrayOf(ring, swatchDrawable(hex, opacityPct))).apply {
+                setLayerInset(1, dp(4), dp(4), dp(4), dp(4))
+            }
+        }
         val rgb = runCatching { Color.parseColor(hex) }.getOrDefault(Color.GRAY)
         val fill = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
@@ -2349,20 +2340,13 @@ class SettingsActivity : AppCompatActivity() {
         private const val DETAIL_PADDING_DP = 18
         private const val CARD_PADDING_DP = 18
 
-        /** 팔레트 스와치 한 칸이 차지하는 폭(32dp + 좌우 여백 3dp씩). */
-        private const val SWATCH_CELL_DP = 38
-
         /** 테마 카드를 2열로 둘 수 있는 최소 카드 안쪽 폭. 그 아래면 1열. */
         private const val THEME_TWO_COLUMN_MIN_DP = 300
-
-        /** [colorEditor] 의 라벨 최소 폭 — "한국어"(3자) 기준, "영어"(2자)와 나란히 정렬되게. */
-        private const val LANGUAGE_LABEL_MIN_WIDTH_DP = 52
 
         // 재생성(테마 변경·회전) 너머로 살려야 하는 화면 상태.
         private const val STATE_GROUP = "state_group"
         private const val STATE_QUERY = "state_query"
         private const val STATE_IN_DETAIL = "state_in_detail"
-        private const val STATE_OPEN_PALETTES = "state_open_palettes"
 
         // 설정 그룹 id — 기능 하나를 사용자가 찾는 이름 하나로 묶는 단위.
         private const val GROUP_FLASH = "flash"
@@ -2408,10 +2392,10 @@ class SettingsActivity : AppCompatActivity() {
         )
 
         private val PALETTE = listOf(
-            "#000000", "#444444", "#888888", "#CCCCCC", "#FFFFFF",
-            // 파스텔(2026-10 사용자 요청, 플래시 기본값 2개 + Llove 커스텀 팔레트의 파스텔)
+            // 파스텔을 맨 앞에(2026-10 사용자 요청 — 플래시 기본값 2개 + Llove 커스텀 팔레트의 파스텔)
             "#F2A7A7", "#A9C8F0", "#FFB3BA", "#FFDFBA", "#FFF5BA", "#BAFFC9", "#BAE1FF", "#C9C9FF",
             "#E0BAFF", "#FFC9E3",
+            "#000000", "#444444", "#888888", "#CCCCCC", "#FFFFFF",
             "#CC2D2D", "#E53935", "#FF6F61", "#FF1744",
             "#1A6EBD", "#1565C0", "#2196F3", "#00B0FF",
             "#2D8C4E", "#2E7D32", "#43A047", "#00C853",
