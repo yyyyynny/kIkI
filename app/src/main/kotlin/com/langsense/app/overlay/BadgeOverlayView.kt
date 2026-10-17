@@ -13,6 +13,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import androidx.appcompat.widget.AppCompatTextView
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -81,21 +82,27 @@ class BadgeOverlayView(
     }
 
     /**
-     * 배지 탭 피드백 펄스 (추가 기능 1, radial-menu.html 의 badge pulse 이식).
-     * 래디얼 메뉴를 열거나 닫을 때 배지가 살짝 커졌다 돌아오는 짧은 스케일 연출. 외형/설정은 바꾸지 않는다.
+     * 누르는 순간 반응(2026-10-17, apple-design "손 닿는 순간 피드백"): 손가락이 닿으면 바로 살짝 눌리고([press]),
+     * 떼거나 동작이 일어나면 살짝 넘치며 제자리로 돌아온다([pulse]). 예전엔 손을 뗀 뒤에야 커졌다 돌아왔다.
+     * 넘침은 1% 남짓이라 배지 창(내용 크기) 밖으로 발광이 잘리지 않는다.
      */
+    private fun press() {
+        animate().cancel()
+        animate().scaleX(PRESS_SCALE).scaleY(PRESS_SCALE).setDuration(PRESS_MS)
+            .setInterpolator(DecelerateInterpolator()).start()
+    }
+
+    /** 눌림에서 복귀(이미 눌려 있지 않으면 짧게 눌렸다 돌아온다 — 메뉴를 코드로 열고 닫을 때·롱프레스). */
     fun pulse() {
         animate().cancel()
-        scaleX = 1f
-        scaleY = 1f
-        animate()
-            .scaleX(PULSE_SCALE).scaleY(PULSE_SCALE)
-            .setDuration(PULSE_HALF_MS)
-            .setInterpolator(DecelerateInterpolator())
-            .withEndAction {
-                animate().scaleX(1f).scaleY(1f).setDuration(PULSE_HALF_MS).setInterpolator(DecelerateInterpolator()).start()
-            }
-            .start()
+        if (scaleX > PRESS_SCALE + 0.02f) {
+            animate().scaleX(PRESS_SCALE).scaleY(PRESS_SCALE).setDuration(PRESS_MS / 2)
+                .setInterpolator(DecelerateInterpolator()).withEndAction { release() }.start()
+        } else release()
+    }
+
+    private fun release() {
+        animate().scaleX(1f).scaleY(1f).setDuration(RELEASE_MS).setInterpolator(OvershootInterpolator(RELEASE_TENSION)).start()
     }
 
     /**
@@ -176,6 +183,7 @@ class BadgeOverlayView(
                     dragging = false
                     longPressTriggered = false
                     longPressHandler.postDelayed(longPressRunnable, longPressTimeoutMs)
+                    press()
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -184,6 +192,7 @@ class BadgeOverlayView(
                     if (!dragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
                         dragging = true
                         longPressHandler.removeCallbacks(longPressRunnable)
+                        release() // 끌기로 바뀌면 눌림을 바로 푼다
                     }
                     params.x = clampX(startX + dx)
                     params.y = clampY(startY + dy)
@@ -198,6 +207,7 @@ class BadgeOverlayView(
                         dragging -> onPositionSaved(params.x, params.y)
                         !longPressTriggered -> performClick()
                     }
+                    if (scaleX < 1f) pulse() // 탭 동작이 배지를 다시 부르지 않았어도 눌림이 남지 않게
                     true
                 }
                 // 드래그 중 시스템이 제스처를 가로채면 CANCEL 로 끝난다 — 여기서 저장하지 않으면
@@ -206,6 +216,7 @@ class BadgeOverlayView(
                     longPressHandler.removeCallbacks(longPressRunnable)
                     if (dragging) onPositionSaved(params.x, params.y)
                     dragging = false
+                    release()
                     true
                 }
                 else -> false
@@ -265,8 +276,11 @@ class BadgeOverlayView(
          * 탭 펄스: 최대 배율과 반(half) 지속 시간(ms). 배지 창은 내용 크기만 해서 1.12배로 커지면 발광 테두리가 창
          * 가장자리에서 잘려 뚝 끊겨 보였다 — 발광 여백(4dp) 안에 머무는 1.06배로 줄였다.
          */
-        private const val PULSE_SCALE = 1.06f
-        private const val PULSE_HALF_MS = 90L
+        private const val PRESS_SCALE = 0.94f
+        private const val PRESS_MS = 90L
+        private const val RELEASE_MS = 260L
+        /** 감쇠비 약 0.8 스프링의 넘침(1% 남짓)에 가까운 값. */
+        private const val RELEASE_TENSION = 2f
 
         /** 발광 halo 두께(dp)와 각 레이어 알파(글씨색 기반 — 목업 box-shadow/inset ring 근사). */
         private const val HALO_THICKNESS_DP = 4f

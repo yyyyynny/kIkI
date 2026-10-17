@@ -214,6 +214,7 @@ class LangSenseAccessibilityService : AccessibilityService(),
         guarded("post-init") {
             refreshSoftKeyboardState()
             refreshBadge()
+            overlay.prewarmQuickMenu()
         }
     }
 
