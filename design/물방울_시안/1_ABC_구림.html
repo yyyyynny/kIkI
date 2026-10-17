@@ -1,0 +1,37 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;font-family:'Noto Sans CJK KR',sans-serif;background:#fff}
+.row{display:flex;gap:0}
+.cell{width:300px;height:250px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.dark{background:radial-gradient(ellipse at 50% 50%,#0d2244,#030c1a)}
+.light{background:#fff;color:#222}
+.light::before{content:'오늘 날씨가 맑고 기온이 조금 올라 산책하기 좋은 하루가 되겠습니다. 미세먼지는 보통 수준입니다.';position:absolute;inset:14px;font-size:15px;line-height:1.7;color:#333;opacity:.9}
+.photo{background:linear-gradient(135deg,#f6d365,#fda085 45%,#a1c4fd)}
+.cap{position:absolute;bottom:8px;font-size:15px;font-weight:700;color:#888}
+.orb{width:160px;height:112px;border-radius:40px;position:relative;overflow:hidden;z-index:1}
+.lbl{position:relative;z-index:2;margin-top:10px;font-size:20px;font-weight:700;color:#e8f6ff;text-shadow:0 1px 3px #000a}
+.light .lbl,.photo .lbl{color:#1d2c4a;text-shadow:0 1px 2px #fff8}
+/* 지금 */
+.now{background:rgba(20,60,180,.12);border:3px solid rgba(180,240,255,.55);box-shadow:0 0 0 3px rgba(180,240,255,.55),0 0 40px 12px rgba(120,200,255,.7),0 0 100px 28px rgba(80,150,255,.4),inset 0 0 44px 12px rgba(127,210,255,.12)}
+.now .g{position:absolute;inset:-12% -16%;background:radial-gradient(ellipse 62% 44% at 40% 9%,rgba(255,255,255,.64),rgba(232,247,255,.3) 42%,transparent 72%)}
+/* 애니풍 공통 */
+.an{background:linear-gradient(180deg,rgba(150,215,255,.38) 0%,rgba(110,180,255,.28) 58%,rgba(60,130,235,.42) 58%,rgba(60,130,235,.5) 100%);
+ border:3px solid #2a5fb8;box-shadow:0 0 0 1.5px rgba(255,255,255,.85),0 0 22px 4px rgba(120,200,255,.55)}
+.cres{position:absolute;inset:9px;border-radius:32px;box-shadow:inset 8px 7px 0 0 #fff;-webkit-mask-image:radial-gradient(ellipse 60% 55% at 22% 18%,#000 55%,transparent 75%)}
+.dot1{position:absolute;left:46%;top:14%;width:14px;height:14px;border-radius:50%;background:#fff}
+.dot2{position:absolute;left:56%;top:13%;width:7px;height:7px;border-radius:50%;background:#fff}
+.rim{position:absolute;inset:6px;border-radius:34px;box-shadow:inset -5px -5px 0 0 rgba(255,255,255,.8);-webkit-mask-image:radial-gradient(ellipse 45% 40% at 82% 86%,#000 50%,transparent 80%)}
+.star{position:absolute;right:-8px;top:-10px;width:44px;height:44px;z-index:3}
+.star::before,.star::after{content:'';position:absolute;left:50%;top:50%;background:#fff;border-radius:50%;transform:translate(-50%,-50%)}
+.star::before{width:4px;height:44px;box-shadow:0 0 6px 1px #fff}
+.star::after{width:44px;height:4px;box-shadow:0 0 6px 1px #fff}
+.wrap{position:relative}
+/* C 은은 */
+.soft{border-width:2px;border-color:rgba(42,95,184,.75)}
+.soft .cres{box-shadow:inset 5px 4px 0 0 rgba(255,255,255,.9)}
+.soft .dot1{width:10px;height:10px;opacity:.95}
+.soft .rim{box-shadow:inset -3px -3px 0 0 rgba(255,255,255,.5)}
+.hdr{display:flex}.hdr div{width:300px;text-align:center;font:700 18px sans-serif;padding:10px 0;background:#222;color:#fff}
+</style></head><body>
+<div class="hdr"><div>지금</div><div>A 또렷(초승달·점·림·윤곽)</div><div>B A + 반짝이는 별</div><div>C 은은(얇게)</div></div>
+<div class="row"><div class="cell dark"><div class="orb now"><div class="g"></div></div><div class="lbl">설정</div><div class="cap">어두운 화면</div></div><div class="cell dark"><div class="orb an"><div class="cres"></div><div class="rim"></div><div class="dot1"></div><div class="dot2"></div></div><div class="lbl">설정</div><div class="cap">어두운 화면</div></div><div class="cell dark"><div class="wrap"><div class="orb an"><div class="cres"></div><div class="rim"></div><div class="dot1"></div><div class="dot2"></div></div><div class="star"></div></div><div class="lbl">설정</div><div class="cap">어두운 화면</div></div><div class="cell dark"><div class="orb an soft"><div class="cres"></div><div class="rim"></div><div class="dot1"></div></div><div class="lbl">설정</div><div class="cap">어두운 화면</div></div></div><div class="row"><div class="cell light"><div class="orb now"><div class="g"></div></div><div class="lbl">설정</div><div class="cap">흰 화면(글)</div></div><div class="cell light"><div class="orb an"><div class="cres"></div><div class="rim"></div><div class="dot1"></div><div class="dot2"></div></div><div class="lbl">설정</div><div class="cap">흰 화면(글)</div></div><div class="cell light"><div class="wrap"><div class="orb an"><div class="cres"></div><div class="rim"></div><div class="dot1"></div><div class="dot2"></div></div><div class="star"></div></div><div class="lbl">설정</div><div class="cap">흰 화면(글)</div></div><div class="cell light"><div class="orb an soft"><div class="cres"></div><div class="rim"></div><div class="dot1"></div></div><div class="lbl">설정</div><div class="cap">흰 화면(글)</div></div></div><div class="row"><div class="cell photo"><div class="orb now"><div class="g"></div></div><div class="lbl">설정</div><div class="cap">사진·밝은 색</div></div><div class="cell photo"><div class="orb an"><div class="cres"></div><div class="rim"></div><div class="dot1"></div><div class="dot2"></div></div><div class="lbl">설정</div><div class="cap">사진·밝은 색</div></div><div class="cell photo"><div class="wrap"><div class="orb an"><div class="cres"></div><div class="rim"></div><div class="dot1"></div><div class="dot2"></div></div><div class="star"></div></div><div class="lbl">설정</div><div class="cap">사진·밝은 색</div></div><div class="cell photo"><div class="orb an soft"><div class="cres"></div><div class="rim"></div><div class="dot1"></div></div><div class="lbl">설정</div><div class="cap">사진·밝은 색</div></div></div>
+</body></html>

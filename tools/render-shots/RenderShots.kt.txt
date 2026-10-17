@@ -1,0 +1,104 @@
+package com.langsense.app.render
+
+import android.app.Activity
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.os.Looper
+import android.provider.Settings
+import android.view.View
+import org.robolectric.RuntimeEnvironment
+import com.langsense.app.service.LangSenseAccessibilityService
+import com.langsense.app.ui.SettingsActivity
+import com.langsense.app.util.Prefs
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.Robolectric
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowDialog
+import java.io.File
+import java.time.Duration
+
+// 렌더 확인용 임시 테스트(커밋하지 않음). S25+ QHD 설정: 1440px / 3.5 = 411dp.
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "w411dp-h891dp-port-560dpi")
+class RenderShots {
+    private val out = File(System.getProperty("render.out") ?: "/tmp/claude-0/-home-user-kIkI/2b31e528-aec3-583e-90a8-690859725295/scratchpad/render").apply { mkdirs() }
+
+    @Before
+    fun grant() {
+        val ctx = RuntimeEnvironment.getApplication()
+        org.robolectric.shadows.ShadowSettings.setCanDrawOverlays(true)
+        Settings.Secure.putString(
+            ctx.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+            "${ctx.packageName}/${LangSenseAccessibilityService::class.java.name}"
+        )
+    }
+
+    private fun shot(v: View, name: String) {
+        val w = v.width.takeIf { it > 0 } ?: 1440
+        val h = v.height.takeIf { it > 0 } ?: 3120
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        v.draw(Canvas(bmp))
+        File(out, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    /** 상세 화면 스크롤 내용 전체(화면 밖 포함)를 한 장으로. */
+    private fun detail(a: Activity, name: String) {
+        val f = a.javaClass.getDeclaredField("detailScroll").apply { isAccessible = true }
+        val sv = f.get(a) as android.view.ViewGroup
+        val child = sv.getChildAt(0)
+        child.measure(View.MeasureSpec.makeMeasureSpec(sv.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        child.layout(0, 0, child.measuredWidth, child.measuredHeight)
+        val bmp = Bitmap.createBitmap(child.measuredWidth, child.measuredHeight, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        a.window.decorView.background?.let { it.setBounds(0, 0, bmp.width, bmp.height); it.draw(c) }
+        child.draw(c)
+        File(out, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    private fun settle() = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1000))
+
+    private fun launch(theme: String): Activity {
+        Prefs(RuntimeEnvironment.getApplication()).uiTheme = theme
+        val c = Robolectric.buildActivity(SettingsActivity::class.java).setup()
+        settle()
+        return c.get()
+    }
+
+    private fun call(a: Activity, name: String, vararg args: Any) {
+        val m = a.javaClass.declaredMethods.first { it.name == name && it.parameterCount == args.size }
+        m.isAccessible = true
+        m.invoke(a, *args)
+        settle()
+    }
+
+    @Test
+    fun 첫화면_테마별() {
+        for (t in listOf(Prefs.THEME_SYSTEM, Prefs.THEME_DARK, Prefs.THEME_BEIGE, Prefs.THEME_CYBER, Prefs.THEME_HIGH_CONTRAST)) {
+            val a = launch(t)
+            shot(a.window.decorView, "list_$t")
+            a.finish()
+        }
+    }
+
+    @Test
+    fun 플래시_상세와_색_고르기() {
+        val a = launch(Prefs.THEME_SYSTEM)
+        call(a, "showGroup", "flash")
+        detail(a, "flash_detail")
+        call(a, "showColorWheel", "한국어", "#F2A7A7", { _: String -> Unit } as Function1<String, Unit>)
+        ShadowDialog.getLatestDialog().window!!.decorView.let { shot(it, "wheel_dialog") }
+    }
+
+    @Test
+    fun 한영타_슬라이더() {
+        val a = launch(Prefs.THEME_SYSTEM)
+        call(a, "showGroup", "replace")
+        detail(a, "replace_detail")
+    }
+}
