@@ -249,8 +249,8 @@ class QuickMenuOverlayView(
     }
 
     companion object {
-        /** HTML 수납 애니메이션(≈0.46s 트랜지션) 후 창을 제거하기까지의 지연(ms). */
-        private const val COLLAPSE_REMOVE_MS = 320L
+        /** HTML 수납 스프링(감쇠 1.0·0.3s, 배지에 닿기 전 투명 ≈0.23s + 역순 스태거 최대 100ms) 뒤 창을 떼기까지(ms). */
+        private const val COLLAPSE_REMOVE_MS = 400L
 
         /**
          * 로드 워치독(ms). 이 시간 안에 메뉴가 초기화(ack)되지 않으면 창을 제거한다 —

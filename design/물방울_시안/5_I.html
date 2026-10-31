@@ -1,0 +1,166 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;font-family:'Noto Sans CJK KR',sans-serif}
+.hdr{display:flex}.hdr div{width:400px;text-align:center;font:700 17px sans-serif;padding:10px 0;background:#222;color:#fff}
+.row{display:flex}
+.cell{width:400px;height:300px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
+.dark{background:radial-gradient(ellipse at 50% 50%,#0d2244,#030c1a)}
+.light{background:#fff}
+.light::before{content:'오늘 날씨가 맑고 기온이 조금 올라 산책하기 좋은 하루가 되겠습니다. 미세먼지는 보통 수준이고 오후에는 바람이 조금 불겠습니다.';position:absolute;inset:16px;font-size:16px;line-height:1.75;color:#333}
+.photo{background:linear-gradient(135deg,#f6d365,#fda085 45%,#a1c4fd)}
+.cap{position:absolute;bottom:10px;font-size:14px;font-weight:700;color:#999}
+.lbl{position:relative;z-index:2;margin-top:14px;font-size:20px;font-weight:700;color:#e8f6ff;text-shadow:0 1px 3px #000a}
+.light .lbl,.photo .lbl{color:#1d2c4a;text-shadow:0 1px 2px #fff8}
+.wrap{position:relative}
+.orb{width:160px;height:112px;border-radius:40px;position:relative;overflow:hidden;z-index:1}
+.now{background:rgba(20,60,180,.12);border:3px solid rgba(180,240,255,.55);
+ box-shadow:0 0 0 3px rgba(180,240,255,.55),0 0 40px 12px rgba(120,200,255,.7),0 0 100px 28px rgba(80,150,255,.4),inset 0 0 44px 12px rgba(127,210,255,.12)}
+.now .g{position:absolute;inset:-12% -16%;background:radial-gradient(ellipse 62% 44% at 40% 9%,rgba(255,255,255,.64),rgba(232,247,255,.3) 42%,transparent 72%)}
+/* 애니 물방울: 위(광원 쪽)는 짙고 아래는 밝다 — 빛이 통과해 아래에 모인다 */
+.an{background:linear-gradient(180deg,rgba(18,42,120,.78) 0%,rgba(40,95,200,.55) 45%,rgba(120,200,255,.55) 85%,rgba(190,235,255,.7) 100%);
+ box-shadow:0 0 30px 8px rgba(120,200,255,.45),inset 0 -1px 0 rgba(255,255,255,.35)}
+/* 윤곽: 위는 가늘고 아래는 굵게(애니 물방울 윤곽) — 테두리 대신 안쪽 그림자로 */
+.an::before{content:'';position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 1px 0 0 rgba(150,215,255,.55),inset 0 -3px 0 0 rgba(20,50,140,.55)}
+/* 위 하이라이트: 창 모양(물방울 윗면을 닮은 둥근 사각, 살짝 기울임) + 작은 점 */
+.win{position:absolute;left:13%;top:12%;width:34%;height:22%;border-radius:12px 18px 10px 14px;background:#fff;transform:rotate(-8deg);opacity:.95}
+.dot{position:absolute;left:52%;top:13%;width:9px;height:9px;border-radius:50%;background:#fff}
+.dot2{position:absolute;left:59%;top:21%;width:4px;height:4px;border-radius:50%;background:#fff}
+/* 아래 가장자리 가는 빛(아래 키와의 하이라이트) */
+.edge{position:absolute;left:14%;right:14%;bottom:6px;height:10px;border-bottom:2.5px solid rgba(235,250,255,.95);border-radius:0 0 24px 24px;
+ -webkit-mask-image:linear-gradient(90deg,transparent,#000 25%,#000 75%,transparent)}
+/* 아래 투과광(밝게 모이는 곳) */
+.glow{position:absolute;left:25%;right:25%;bottom:4px;height:30%;background:radial-gradient(ellipse at 50% 100%,rgba(230,250,255,.75),transparent 70%)}
+/* 떨어진 그림자 + 그림자 속 반사광 */
+.shadow{position:absolute;left:10%;right:10%;bottom:-14px;height:18px;border-radius:50%;background:radial-gradient(ellipse at 50% 40%,rgba(10,30,90,.40),transparent 70%);z-index:0}
+.bounce{position:absolute;left:30%;right:30%;bottom:-10px;height:8px;border-radius:50%;background:radial-gradient(ellipse,rgba(160,225,255,.55),transparent 70%);z-index:0}
+/* 젤리(사탕) 변형: 색을 더 맑게 */
+.jelly{background:linear-gradient(180deg,rgba(60,40,170,.80) 0%,rgba(70,120,230,.6) 50%,rgba(110,225,255,.62) 88%,rgba(200,245,255,.8) 100%)}
+.jelly .win{border-radius:50% 60% 45% 55%;width:26%;height:20%;left:16%;top:13%;transform:rotate(-14deg)}
+.sp{position:absolute;right:-6px;top:-8px;width:22px;height:22px;z-index:3}
+.sp::before,.sp::after{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(closest-side,#fff,rgba(255,255,255,0))}
+.sp::before{width:3px;height:22px}.sp::after{width:22px;height:3px}
+
+/* H: 윤곽을 따라 감기는 빛(가로 띠 없음) */
+.h{background:radial-gradient(ellipse 115% 105% at 50% 18%,rgba(70,40,175,.86) 0%,rgba(75,105,225,.72) 52%,rgba(120,195,255,.66) 100%);
+ box-shadow:0 0 26px 6px rgba(130,190,255,.40),
+  inset 0 -16px 18px -8px rgba(205,248,255,.90),
+  inset 0 -2px 0 0 rgba(130,255,235,.70),
+  inset 0 -5px 0 -1px rgba(255,175,235,.30),
+  inset 0 2px 5px 0 rgba(20,10,80,.35)}
+.h .b1{position:absolute;left:15%;top:13%;width:24%;height:17%;border-radius:55% 65% 45% 60%/60% 55% 50% 45%;background:#fff;transform:rotate(-16deg);filter:blur(.4px)}
+.h .b2{position:absolute;left:41%;top:12%;width:7%;height:9%;border-radius:50%;background:#fff;filter:blur(.3px)}
+.h .b3{position:absolute;right:13%;top:30%;width:3.2%;height:16%;border-radius:4px;background:rgba(255,255,255,.85);transform:rotate(14deg);filter:blur(.3px)}
+.h .half{position:absolute;left:8%;right:8%;top:4%;height:46%;border-radius:36px 36px 50% 50%/30px 30px 22px 22px;
+ background:linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,0));filter:blur(1.5px)}
+.h .cg{position:absolute;left:22%;right:22%;bottom:3px;height:36%;background:radial-gradient(ellipse at 50% 100%,rgba(235,252,255,.55),transparent 72%);filter:blur(2px)}
+.h2{background:radial-gradient(ellipse 115% 105% at 50% 18%,rgba(30,55,150,.86) 0%,rgba(45,110,215,.72) 52%,rgba(110,205,255,.66) 100%)}
+
+.i{width:160px;height:112px;position:relative;z-index:1;filter:drop-shadow(0 0 14px rgba(110,180,255,.45))}
+</style></head><body><div class="hdr"><div>H′(지난 시안)</div><div>I1 투명 보석 — 애니 塗り①(부드럽게)</div><div>I2 투명 보석 — 애니 塗り②(셀, 경계 또렷)</div></div><div class="row"><div class="cell dark"><div class="wrap"><div class="shadow"></div><div class="bounce"></div><div class="orb h h2"><div class="half"></div><div class="cg"></div><div class="b1"></div><div class="b2"></div><div class="b3"></div></div><div class="sp"></div></div><div class="lbl">설정</div><div class="cap">어두운 화면</div></div><div class="cell dark"><div class="wrap"><div class="shadow"></div><div class="bounce"></div><div class="i"><svg viewBox="0 0 160 112" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">
+<defs><radialGradient id="bd1" cx="58%" cy="52%" r="62%"><stop offset="0" stop-color="#101a6b"/><stop offset=".62" stop-color="#1f3ca8"/><stop offset="1" stop-color="#3f74d8"/></radialGradient><filter id="bl1"><feGaussianBlur stdDeviation="3"/></filter>
+<clipPath id="c1"><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z"/></clipPath>
+<mask id="rim1"><rect x="-10" y="-10" width="180" height="132" fill="black"/><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z" fill="white"/><path d="M45,5 H125 A40,40 0 0 1 165,45 V77 A40,40 0 0 1 125,117 H45 A40,40 0 0 1 5,77 V45 A40,40 0 0 1 45,5 Z" fill="black"/></mask>
+<linearGradient id="rf1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".38" stop-color="#fff"/><stop offset=".52" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<mask id="br1"><rect x="-10" y="-10" width="180" height="132" fill="black"/><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z" fill="white"/><path d="M37,-3 H117 A40,40 0 0 1 157,37 V69 A40,40 0 0 1 117,109 H37 A40,40 0 0 1 -3,69 V37 A40,40 0 0 1 37,-3 Z" fill="black"/></mask>
+<linearGradient id="bf1" x1="1" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#9ff3ff"/><stop offset=".35" stop-color="#9ff3ff"/><stop offset=".5" stop-color="#9ff3ff" stop-opacity="0"/></linearGradient>
+</defs>
+<g clip-path="url(#c1)">
+<rect width="160" height="112" fill="url(#bd1)"/>
+<ellipse filter="url(#bl1)" cx="98" cy="100" rx="92" ry="52" fill="#2f4fc4" opacity=".8"/>
+<ellipse filter="url(#bl1)" cx="112" cy="101" rx="54" ry="25" transform="rotate(-14 112 101)" fill="#6fd2ff" opacity=".85"/>
+<ellipse filter="url(#bl1)" cx="126" cy="99" rx="25" ry="10" transform="rotate(-18 126 99)" fill="#d8faff" opacity=".9"/>
+</g>
+<rect width="160" height="112" fill="url(#rf1)" mask="url(#rim1)"/>
+<rect width="160" height="112" fill="url(#bf1)" mask="url(#br1)"/>
+<ellipse cx="34" cy="24" rx="7" ry="4.5" transform="rotate(-28 34 24)" fill="#fff"/>
+<circle cx="48" cy="17" r="2.6" fill="#fff"/>
+</svg></div></div><div class="lbl">설정</div><div class="cap">어두운 화면</div></div><div class="cell dark"><div class="wrap"><div class="shadow"></div><div class="bounce"></div><div class="i"><svg viewBox="0 0 160 112" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">
+<defs>
+<clipPath id="c2"><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z"/></clipPath>
+<mask id="rim2"><rect x="-10" y="-10" width="180" height="132" fill="black"/><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z" fill="white"/><path d="M45,5 H125 A40,40 0 0 1 165,45 V77 A40,40 0 0 1 125,117 H45 A40,40 0 0 1 5,77 V45 A40,40 0 0 1 45,5 Z" fill="black"/></mask>
+<linearGradient id="rf2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".38" stop-color="#fff"/><stop offset=".52" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<mask id="br2"><rect x="-10" y="-10" width="180" height="132" fill="black"/><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z" fill="white"/><path d="M37,-3 H117 A40,40 0 0 1 157,37 V69 A40,40 0 0 1 117,109 H37 A40,40 0 0 1 -3,69 V37 A40,40 0 0 1 37,-3 Z" fill="black"/></mask>
+<linearGradient id="bf2" x1="1" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#9ff3ff"/><stop offset=".35" stop-color="#9ff3ff"/><stop offset=".5" stop-color="#9ff3ff" stop-opacity="0"/></linearGradient>
+</defs>
+<g clip-path="url(#c2)">
+<rect width="160" height="112" fill="#1b2a86"/>
+<ellipse cx="98" cy="100" rx="92" ry="52" fill="#2f4fc4" opacity="1"/>
+<ellipse cx="112" cy="101" rx="54" ry="25" transform="rotate(-14 112 101)" fill="#6fd2ff" opacity="1"/>
+<ellipse cx="126" cy="99" rx="25" ry="10" transform="rotate(-18 126 99)" fill="#d8faff" opacity="1"/>
+</g>
+<rect width="160" height="112" fill="url(#rf2)" mask="url(#rim2)"/>
+<rect width="160" height="112" fill="url(#bf2)" mask="url(#br2)"/>
+<ellipse cx="34" cy="24" rx="7" ry="4.5" transform="rotate(-28 34 24)" fill="#fff"/>
+<circle cx="48" cy="17" r="2.6" fill="#fff"/>
+</svg></div></div><div class="lbl">설정</div><div class="cap">어두운 화면</div></div></div><div class="row"><div class="cell light"><div class="wrap"><div class="shadow"></div><div class="bounce"></div><div class="orb h h2"><div class="half"></div><div class="cg"></div><div class="b1"></div><div class="b2"></div><div class="b3"></div></div><div class="sp"></div></div><div class="lbl">설정</div><div class="cap">흰 화면(글)</div></div><div class="cell light"><div class="wrap"><div class="shadow"></div><div class="bounce"></div><div class="i"><svg viewBox="0 0 160 112" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">
+<defs><radialGradient id="bd3" cx="58%" cy="52%" r="62%"><stop offset="0" stop-color="#101a6b"/><stop offset=".62" stop-color="#1f3ca8"/><stop offset="1" stop-color="#3f74d8"/></radialGradient><filter id="bl3"><feGaussianBlur stdDeviation="3"/></filter>
+<clipPath id="c3"><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z"/></clipPath>
+<mask id="rim3"><rect x="-10" y="-10" width="180" height="132" fill="black"/><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z" fill="white"/><path d="M45,5 H125 A40,40 0 0 1 165,45 V77 A40,40 0 0 1 125,117 H45 A40,40 0 0 1 5,77 V45 A40,40 0 0 1 45,5 Z" fill="black"/></mask>
+<linearGradient id="rf3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".38" stop-color="#fff"/><stop offset=".52" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<mask id="br3"><rect x="-10" y="-10" width="180" height="132" fill="black"/><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z" fill="white"/><path d="M37,-3 H117 A40,40 0 0 1 157,37 V69 A40,40 0 0 1 117,109 H37 A40,40 0 0 1 -3,69 V37 A40,40 0 0 1 37,-3 Z" fill="black"/></mask>
+<linearGradient id="bf3" x1="1" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#9ff3ff"/><stop offset=".35" stop-color="#9ff3ff"/><stop offset=".5" stop-color="#9ff3ff" stop-opacity="0"/></linearGradient>
+</defs>
+<g clip-path="url(#c3)">
+<rect width="160" height="112" fill="url(#bd3)"/>
+<ellipse filter="url(#bl3)" cx="98" cy="100" rx="92" ry="52" fill="#2f4fc4" opacity=".8"/>
+<ellipse filter="url(#bl3)" cx="112" cy="101" rx="54" ry="25" transform="rotate(-14 112 101)" fill="#6fd2ff" opacity=".85"/>
+<ellipse filter="url(#bl3)" cx="126" cy="99" rx="25" ry="10" transform="rotate(-18 126 99)" fill="#d8faff" opacity=".9"/>
+</g>
+<rect width="160" height="112" fill="url(#rf3)" mask="url(#rim3)"/>
+<rect width="160" height="112" fill="url(#bf3)" mask="url(#br3)"/>
+<ellipse cx="34" cy="24" rx="7" ry="4.5" transform="rotate(-28 34 24)" fill="#fff"/>
+<circle cx="48" cy="17" r="2.6" fill="#fff"/>
+</svg></div></div><div class="lbl">설정</div><div class="cap">흰 화면(글)</div></div><div class="cell light"><div class="wrap"><div class="shadow"></div><div class="bounce"></div><div class="i"><svg viewBox="0 0 160 112" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">
+<defs>
+<clipPath id="c4"><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z"/></clipPath>
+<mask id="rim4"><rect x="-10" y="-10" width="180" height="132" fill="black"/><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z" fill="white"/><path d="M45,5 H125 A40,40 0 0 1 165,45 V77 A40,40 0 0 1 125,117 H45 A40,40 0 0 1 5,77 V45 A40,40 0 0 1 45,5 Z" fill="black"/></mask>
+<linearGradient id="rf4" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".38" stop-color="#fff"/><stop offset=".52" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<mask id="br4"><rect x="-10" y="-10" width="180" height="132" fill="black"/><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z" fill="white"/><path d="M37,-3 H117 A40,40 0 0 1 157,37 V69 A40,40 0 0 1 117,109 H37 A40,40 0 0 1 -3,69 V37 A40,40 0 0 1 37,-3 Z" fill="black"/></mask>
+<linearGradient id="bf4" x1="1" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#9ff3ff"/><stop offset=".35" stop-color="#9ff3ff"/><stop offset=".5" stop-color="#9ff3ff" stop-opacity="0"/></linearGradient>
+</defs>
+<g clip-path="url(#c4)">
+<rect width="160" height="112" fill="#1b2a86"/>
+<ellipse cx="98" cy="100" rx="92" ry="52" fill="#2f4fc4" opacity="1"/>
+<ellipse cx="112" cy="101" rx="54" ry="25" transform="rotate(-14 112 101)" fill="#6fd2ff" opacity="1"/>
+<ellipse cx="126" cy="99" rx="25" ry="10" transform="rotate(-18 126 99)" fill="#d8faff" opacity="1"/>
+</g>
+<rect width="160" height="112" fill="url(#rf4)" mask="url(#rim4)"/>
+<rect width="160" height="112" fill="url(#bf4)" mask="url(#br4)"/>
+<ellipse cx="34" cy="24" rx="7" ry="4.5" transform="rotate(-28 34 24)" fill="#fff"/>
+<circle cx="48" cy="17" r="2.6" fill="#fff"/>
+</svg></div></div><div class="lbl">설정</div><div class="cap">흰 화면(글)</div></div></div><div class="row"><div class="cell photo"><div class="wrap"><div class="shadow"></div><div class="bounce"></div><div class="orb h h2"><div class="half"></div><div class="cg"></div><div class="b1"></div><div class="b2"></div><div class="b3"></div></div><div class="sp"></div></div><div class="lbl">설정</div><div class="cap">사진·밝은 색</div></div><div class="cell photo"><div class="wrap"><div class="shadow"></div><div class="bounce"></div><div class="i"><svg viewBox="0 0 160 112" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">
+<defs><radialGradient id="bd5" cx="58%" cy="52%" r="62%"><stop offset="0" stop-color="#101a6b"/><stop offset=".62" stop-color="#1f3ca8"/><stop offset="1" stop-color="#3f74d8"/></radialGradient><filter id="bl5"><feGaussianBlur stdDeviation="3"/></filter>
+<clipPath id="c5"><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z"/></clipPath>
+<mask id="rim5"><rect x="-10" y="-10" width="180" height="132" fill="black"/><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z" fill="white"/><path d="M45,5 H125 A40,40 0 0 1 165,45 V77 A40,40 0 0 1 125,117 H45 A40,40 0 0 1 5,77 V45 A40,40 0 0 1 45,5 Z" fill="black"/></mask>
+<linearGradient id="rf5" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".38" stop-color="#fff"/><stop offset=".52" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<mask id="br5"><rect x="-10" y="-10" width="180" height="132" fill="black"/><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z" fill="white"/><path d="M37,-3 H117 A40,40 0 0 1 157,37 V69 A40,40 0 0 1 117,109 H37 A40,40 0 0 1 -3,69 V37 A40,40 0 0 1 37,-3 Z" fill="black"/></mask>
+<linearGradient id="bf5" x1="1" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#9ff3ff"/><stop offset=".35" stop-color="#9ff3ff"/><stop offset=".5" stop-color="#9ff3ff" stop-opacity="0"/></linearGradient>
+</defs>
+<g clip-path="url(#c5)">
+<rect width="160" height="112" fill="url(#bd5)"/>
+<ellipse filter="url(#bl5)" cx="98" cy="100" rx="92" ry="52" fill="#2f4fc4" opacity=".8"/>
+<ellipse filter="url(#bl5)" cx="112" cy="101" rx="54" ry="25" transform="rotate(-14 112 101)" fill="#6fd2ff" opacity=".85"/>
+<ellipse filter="url(#bl5)" cx="126" cy="99" rx="25" ry="10" transform="rotate(-18 126 99)" fill="#d8faff" opacity=".9"/>
+</g>
+<rect width="160" height="112" fill="url(#rf5)" mask="url(#rim5)"/>
+<rect width="160" height="112" fill="url(#bf5)" mask="url(#br5)"/>
+<ellipse cx="34" cy="24" rx="7" ry="4.5" transform="rotate(-28 34 24)" fill="#fff"/>
+<circle cx="48" cy="17" r="2.6" fill="#fff"/>
+</svg></div></div><div class="lbl">설정</div><div class="cap">사진·밝은 색</div></div><div class="cell photo"><div class="wrap"><div class="shadow"></div><div class="bounce"></div><div class="i"><svg viewBox="0 0 160 112" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">
+<defs>
+<clipPath id="c6"><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z"/></clipPath>
+<mask id="rim6"><rect x="-10" y="-10" width="180" height="132" fill="black"/><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z" fill="white"/><path d="M45,5 H125 A40,40 0 0 1 165,45 V77 A40,40 0 0 1 125,117 H45 A40,40 0 0 1 5,77 V45 A40,40 0 0 1 45,5 Z" fill="black"/></mask>
+<linearGradient id="rf6" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".38" stop-color="#fff"/><stop offset=".52" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<mask id="br6"><rect x="-10" y="-10" width="180" height="132" fill="black"/><path d="M40,0 H120 A40,40 0 0 1 160,40 V72 A40,40 0 0 1 120,112 H40 A40,40 0 0 1 0,72 V40 A40,40 0 0 1 40,0 Z" fill="white"/><path d="M37,-3 H117 A40,40 0 0 1 157,37 V69 A40,40 0 0 1 117,109 H37 A40,40 0 0 1 -3,69 V37 A40,40 0 0 1 37,-3 Z" fill="black"/></mask>
+<linearGradient id="bf6" x1="1" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#9ff3ff"/><stop offset=".35" stop-color="#9ff3ff"/><stop offset=".5" stop-color="#9ff3ff" stop-opacity="0"/></linearGradient>
+</defs>
+<g clip-path="url(#c6)">
+<rect width="160" height="112" fill="#1b2a86"/>
+<ellipse cx="98" cy="100" rx="92" ry="52" fill="#2f4fc4" opacity="1"/>
+<ellipse cx="112" cy="101" rx="54" ry="25" transform="rotate(-14 112 101)" fill="#6fd2ff" opacity="1"/>
+<ellipse cx="126" cy="99" rx="25" ry="10" transform="rotate(-18 126 99)" fill="#d8faff" opacity="1"/>
+</g>
+<rect width="160" height="112" fill="url(#rf6)" mask="url(#rim6)"/>
+<rect width="160" height="112" fill="url(#bf6)" mask="url(#br6)"/>
+<ellipse cx="34" cy="24" rx="7" ry="4.5" transform="rotate(-28 34 24)" fill="#fff"/>
+<circle cx="48" cy="17" r="2.6" fill="#fff"/>
+</svg></div></div><div class="lbl">설정</div><div class="cap">사진·밝은 색</div></div></div></body></html>

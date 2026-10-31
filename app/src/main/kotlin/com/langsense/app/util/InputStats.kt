@@ -102,6 +102,14 @@ object InputStats {
     fun keysPerMinute(day: Day): Int? =
         if (day.typingMs < 10_000L || day.keys == 0) null else (day.keys * 60_000L / day.typingMs).toInt()
 
+    /**
+     * 글자 변경 이벤트 하나가 터치 키보드 "한 타"인지 — 바뀐 글자 수만 본다. 한글 조합(ㅎ→하→한: 1글자를 1글자로 바꿈,
+     * 한+ㅏ→하나: 1글자를 2글자로)과 영어 단어 조합(hel→hell)은 늘어난 글자가 0~2 라 1타, 자동완성·붙여넣기(3글자 이상
+     * 늘어남)와 지우기는 세지 않는다.
+     * 한계: 이벤트가 100ms(notificationTimeout) 안에 몰리면 시스템이 하나로 합쳐 빠른 타자는 적게 센다 — 확장: 측정 중에만 0 으로.
+     */
+    fun isTouchKeystroke(added: Int, removed: Int): Boolean = added >= 1 && (added - removed) in 0..2
+
     /** 직전 키와의 간격 중 "치던 시간"으로 셀 몫. 처음이거나 쉬었으면 0. */
     fun typingGap(previousAt: Long, now: Long): Long {
         if (previousAt <= 0L) return 0L

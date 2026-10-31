@@ -371,9 +371,13 @@ class Prefs(context: Context) {
     }
 
     // ---- 언어별 플래시 색상 ----
+    /** 저장된 색. 예전 기본값 그대로면 null — 직접 고르지 않은 사용자도 새 파스텔 기본값을 받게 한다(2026-10). */
+    private fun storedColor(key: String, oldDefault: String): String? =
+        sp.getString(key, null)?.takeUnless { it.equals(oldDefault, ignoreCase = true) }
+
     fun colorHex(lang: String): String = when (lang) {
-        ImeLocaleParser.KO -> sp.getString(KEY_COLOR_KO, DEFAULT_KO) ?: DEFAULT_KO
-        ImeLocaleParser.EN -> sp.getString(KEY_COLOR_EN, DEFAULT_EN) ?: DEFAULT_EN
+        ImeLocaleParser.KO -> storedColor(KEY_COLOR_KO, OLD_DEFAULT_KO) ?: DEFAULT_KO
+        ImeLocaleParser.EN -> storedColor(KEY_COLOR_EN, OLD_DEFAULT_EN) ?: DEFAULT_EN
         // [일본어 비활성화] ImeLocaleParser.JA -> sp.getString(KEY_COLOR_JA, DEFAULT_JA) ?: DEFAULT_JA
         else -> DEFAULT_OTHER
     }
@@ -396,9 +400,11 @@ class Prefs(context: Context) {
         )
     }
 
-    /** 포커스 없음 경고 플래시의 ARGB — 색은 고정 회색, 불투명도는 플래시 설정을 따른다. */
-    fun warningFlashArgb(): Int =
-        Color.argb(alphaFromPercent(flashOpacityPercent), 0x55, 0x55, 0x55)
+    /** 포커스 없음 경고 플래시의 ARGB — 색은 기타 언어와 같은 회색, 불투명도는 플래시 설정을 따른다. */
+    fun warningFlashArgb(): Int {
+        val rgb = Color.parseColor(DEFAULT_OTHER)
+        return Color.argb(alphaFromPercent(flashOpacityPercent), Color.red(rgb), Color.green(rgb), Color.blue(rgb))
+    }
 
     /** "#RRGGBB" 파싱(실패 시 default, default 도 실패하면 회색). 플래시/배지 색 공용. */
     private fun parseColorOrDefault(hex: String, default: String): Int =
@@ -512,11 +518,14 @@ class Prefs(context: Context) {
         const val DEFAULT_BADGE_BG = "#000000"
         const val DEFAULT_BADGE_TEXT = "#FFFFFF"
 
-        const val DEFAULT_KO = "#CC2D2D"
-        const val DEFAULT_EN = "#1A6EBD"
+        /** 2026-10 파스텔 기본값(사용자 요청 — 예전 진한 빨강·파랑이 원색이라 강했다). 글자색은 플래시가 바탕 밝기로 고른다. */
+        const val DEFAULT_KO = "#F2A7A7"
+        const val DEFAULT_EN = "#A9C8F0"
+        private const val OLD_DEFAULT_KO = "#CC2D2D"
+        private const val OLD_DEFAULT_EN = "#1A6EBD"
         // [일본어 비활성화] 색 기본값/키 보존(현재 미사용, 추후 재도입 시 참조 복구).
         const val DEFAULT_JA = "#2D8C4E"
-        const val DEFAULT_OTHER = "#555555"
+        const val DEFAULT_OTHER = "#C9C9D3"
 
         const val KEY_FLASH_ENABLED = "flash_enabled"
         const val KEY_FLASH_DURATION = "flash_duration_ms"

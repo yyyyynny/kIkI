@@ -387,6 +387,21 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         if (reused) view.reopen()
     }
 
+    /**
+     * 첫 메뉴 열림이 늦던 주원인(WebView 엔진을 프로세스에 처음 올리는 비용, S25+ 약 0.3~0.4초)을 서비스가 한가할 때
+     * 미리 치른다 — 빈 WebView 하나를 만들었다 바로 버린다. 저사양(움직임 줄이기) 기기는 메모리를 아끼려 하지 않는다.
+     * 한계: 엔진 적재만 당기고 메뉴 HTML 읽기는 열 때 한다 — 확장: 그래도 늦으면 메뉴 창 자체를 숨겨 둔 채 미리 만든다.
+     */
+    fun prewarmQuickMenu() = onMain {
+        if (released || prefs.radialReduceMotion) return@onMain
+        android.os.Looper.myQueue().addIdleHandler {
+            if (!released && quickMenuView == null && cachedQuickMenu == null) {
+                runCatching { android.webkit.WebView(context).destroy() }
+            }
+            false
+        }
+    }
+
     /** 닫힌 메뉴의 유휴 캐시 폐기(만료·메모리 압박·정리). 서비스의 onTrimMemory 에서도 호출. */
     fun trimQuickMenuCache(): Unit = onMain {
         handler.removeCallbacks(quickMenuCacheExpire)
@@ -495,6 +510,10 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         // 실패 시 removeChip 으로 pendingNode 까지 회수 — 여기서 그냥 빠지면 칩도 타이머도 없어
         // 방금 세팅한 pendingNode 를 회수할 주체가 사라진다(노드 풀 누수).
         runCatching { wm.addView(view, params) }.onFailure { removeChip(); return@onMain }
+        // 툭 나타나지 않게 위에서 살짝 내려오며 나타난다(감속 곡선). 사라질 땐: 누르면 즉시, 시간이 다 되면 짧게 흐려진다.
+        view.alpha = 0f
+        view.translationY = -dp(6f).toFloat()
+        view.animate().alpha(1f).translationY(0f).setDuration(CHIP_ENTER_MS).setInterpolator(CHIP_EASE).start()
         chipView = view
         lastChipConverted = converted
         lastChipSelStart = selStart
@@ -502,7 +521,11 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
 
         chipDismiss = Runnable {
             chipOutcomeListener?.invoke(original, converted, InputStats.Outcome.IGNORED)
-            removeChip()
+            chipDismiss = null
+            view.isEnabled = false      // 흐려지는 동안 눌려 "무시"와 "교체"가 둘 다 세지지 않게
+            lastChipConverted = null    // 같은 선택이 다시 오면 흐려지는 칩을 재사용하지 말고 새로 띄운다
+            // 흐려지는 사이 새 칩이 떴으면 그 칩은 건드리지 않는다.
+            view.animate().alpha(0f).setDuration(CHIP_EXIT_MS).withEndAction { if (chipView === view) removeChip() }.start()
         }.also { handler.postDelayed(it, timeoutMs) }
     }
 
@@ -683,6 +706,9 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     private fun dp(value: Float): Int = (value * context.resources.displayMetrics.density).roundToInt()
 
     companion object {
+        private const val CHIP_ENTER_MS = 200L
+        private const val CHIP_EXIT_MS = 120L
+        private val CHIP_EASE = android.view.animation.PathInterpolator(0.23f, 1f, 0.32f, 1f)
         /** 플래시 렌더/억제 추적용(실기기에서 "추가 깜박임"이 트리거인지 렌더인지 판별). */
         private const val TAG = "OverlayManager"
 

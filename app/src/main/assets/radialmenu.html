@@ -101,6 +101,9 @@ html, body {
   transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1), stroke-opacity 0.25s;
 }
 .line-crisp.lit { stroke-opacity: 0.95; stroke-width: 1.8; }
+/* 풀모션: 선의 나타남도 오브 스프링이 직접 쓴다(배지→오브로 뻗어 나가며 그려짐) — 트랜지션은 강조(lit)만. */
+body:not(.reduce-motion) .menu .line-glow,
+body:not(.reduce-motion) .menu .line-crisp { transition: stroke-opacity 0.25s; }
 
 /* 별(트윙클)은 오브 스태거 대상이 아니라 기존처럼 한 덩어리로 페이드(옛 .constellation 규칙 이식). */
 .stars-fade {
@@ -122,20 +125,15 @@ html, body {
   transition: none;
   will-change: transform, opacity;
 }
+/* 열고 닫는 움직임은 JS 스프링이 오브마다 transform·opacity 를 직접 쓴다(2026-10-17, apple-design: 중간에 되돌릴 수
+   있게 · 나온 길로 들어가게). 아래 끝 상태는 움직임 줄이기 모드(150ms 페이드, reduce 규칙)와 스프링이 없는 경우용. */
 .menu.open .orb-wrap {
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
-  transition:
-    transform 240ms cubic-bezier(0.23, 1, 0.32, 1),
-    opacity 240ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-/* 닫기: 제자리에서 0.85 배로 줄며 160ms 안에 사라진다(튕김·스태거 없음, JS setOpen 참조). */
 .menu.closing .orb-wrap {
   opacity: 0;
   transform: translate(-50%, -50%) scale(0.85);
-  transition:
-    transform 160ms cubic-bezier(0.23, 1, 0.32, 1),
-    opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 /* 둥실(bob)은 등장 트랜지션(최대 240ms + 스태거)이 끝난 뒤 시작한다(+280ms). 닫는 동안에도 같은
    선언을 유지해 애니메이션이 이어지게 한다 — 끊기면 떠 있던 오브가 사라지는 순간 제자리로 툭 떨어진다. */
@@ -630,7 +628,7 @@ body.reduce-motion .orb {
     // 어느 정도 자리 잡을 때쯤 그 사이 호가 이어지도록.
     const delayIdx = idxA === 'b' ? idxB : Math.max(idxA, idxB);
     const delayMs = delayIdx * STAGGER_MS;
-    lineElems.push({ el: glow, delayMs }, { el: crisp, delayMs });
+    lineElems.push({ el: glow, delayMs, a: idxA, b: idxB }, { el: crisp, delayMs, a: idxA, b: idxB });
 
     // 곡선 호흡용 위/아래 변형: 끝점(a,b)은 그대로, 제어점만 선분에 수직으로 살짝 밀어낸다
     // (= 곡선의 배가 위아래로 우아하게 휘고, 오브/배지에 붙는 지점은 흔들리지 않는다).
@@ -821,11 +819,108 @@ body.reduce-motion .orb {
     badge.classList.remove('pulse'); void badge.offsetWidth; badge.classList.add('pulse');
   }
 
+  /* ── 스프링(2026-10-17) ─────────────────────────────────
+     애플식 두 매개변수(감쇠비 ζ · 반응 시간 response)를 질량 1 스프링으로 바꿔 매 프레임 적분한다:
+     k = (2π/response)², c = 4πζ/response. 목표만 바꾸면 지금 위치·속도에서 이어지므로 여는 도중 닫아도 튀지 않는다.
+     열기 = 배지에서 출발해 제자리까지(ζ 0.8, 0.45s — 1.5% 남짓 넘침, 스태거 45ms),
+     닫기 = 나온 길로 배지에 들어감(ζ 1.0, 0.3s, 역순 스태거 25ms). 움직임 줄이기 모드는 CSS 150ms 페이드 그대로. */
+  const OPEN_SPRING = { zeta: 0.8, response: 0.45, stagger: 45 };
+  const CLOSE_SPRING = { zeta: 1.0, response: 0.3, stagger: 25 };
+  let springs = [];        // 오브마다 { x: 진행도(0=배지, 1=제자리), v: 속도, startAt }
+  let springCfg = OPEN_SPRING;
+  let springTarget = 0;
+  let springRaf = 0;
+  let lastFrame = 0;
+  const useSpring = () => !document.body.classList.contains('reduce-motion');
+
+  function setSpringTarget(target, cfg) {
+    springTarget = target;
+    springCfg = cfg;
+    const now = performance.now();
+    const n = orbWraps.length;
+    while (springs.length < n) springs.push({ x: 0, v: 0, startAt: 0 });
+    springs.length = n;
+    springs.forEach((s, i) => {
+      // 멈춰 있던 오브만 순서대로 출발한다. 이미 움직이는 중이면(중간에 되돌리기) 기다리지 않고 바로 돈다.
+      const resting = Math.abs(s.v) < 0.01 && Math.abs(s.x - (1 - target)) < 0.02;
+      const order = target === 1 ? i : (n - 1 - i);
+      s.startAt = resting ? now + order * cfg.stagger : now;
+    });
+    lastFrame = now;
+    if (!springRaf) springRaf = requestAnimationFrame(stepSprings);
+  }
+
+  function stepSprings(now) {
+    springRaf = 0;
+    const dt = Math.min(0.032, Math.max(0, (now - lastFrame) / 1000));
+    lastFrame = now;
+    const w = 2 * Math.PI / springCfg.response;
+    const k = w * w, c = 2 * springCfg.zeta * w;
+    let moving = false;
+    springs.forEach(s => {
+      if (now < s.startAt) { moving = true; return; }
+      // 2ms 단위로 쪼개 적분(120Hz 화면·프레임 누락에도 안정)
+      for (let t = dt; t > 0; t -= 0.002) {
+        const h = Math.min(0.002, t);
+        s.v += (-k * (s.x - springTarget) - c * s.v) * h;
+        s.x += s.v * h;
+      }
+      if (Math.abs(s.x - springTarget) < 0.001 && Math.abs(s.v) < 0.01) { s.x = springTarget; s.v = 0; }
+      else moving = true;
+    });
+    renderSprings();
+    if (moving) springRaf = requestAnimationFrame(stepSprings);
+    else if (!isOpen) menu.classList.remove('closing');
+  }
+
+  function renderSprings() {
+    springs.forEach((s, i) => {
+      const wEl = orbWraps[i];
+      if (!wEl) return;
+      const q = 1 - s.x;
+      const dx = parseFloat(wEl.style.getPropertyValue('--dx')) || 0;
+      const dy = parseFloat(wEl.style.getPropertyValue('--dy')) || 0;
+      const sc = 0.6 + 0.4 * s.x;
+      wEl.style.transform = `translate(-50%, -50%) translate(${(dx * q).toFixed(2)}px, ${(dy * q).toFixed(2)}px) scale(${sc.toFixed(4)})`;
+      // 열 땐 앞부분에서 빨리 또렷해지고, 닫을 땐 배지에 거의 닿기 전에 사라진다.
+      wEl.style.opacity = Math.max(0, Math.min(1, (s.x - 0.04) / 0.36)).toFixed(3);
+    });
+    // 선: 배지→오브 선은 그 오브의 진행도만큼 배지에서부터 그려지고, 오브 사이 호는 늦게 오는 쪽을 따라 나타난다.
+    lineElems.forEach(({ el, a, b }) => {
+      const pa = a === 'b' ? 1 : (springs[a] ? springs[a].x : 0);
+      const pb = springs[b] ? springs[b].x : 0;
+      const p = Math.max(0, Math.min(1, Math.min(pa, pb)));
+      el.style.opacity = Math.min(1, p / 0.4).toFixed(3);
+      if (a === 'b') {
+        el.setAttribute('pathLength', '1');
+        el.style.strokeDasharray = '1 1';
+        el.style.strokeDashoffset = (1 - p).toFixed(3);
+      }
+    });
+  }
+
   function setOpen(open) {
     if (open === isOpen) return;
     isOpen = open;
     pulseBadge();
     badge.setAttribute('aria-expanded', String(open));
+    if (useSpring()) {
+      clearTimeout(closeTimer);
+      if (open) {
+        // .open 이 붙는 프레임에 오브가 제자리에 한 번 보였다 사라지지 않게, 지금 진행도(보통 배지 쪽)를 먼저 그린다.
+        renderSprings();
+        menu.classList.remove('closing');
+        menu.classList.add('open');
+        scrim.classList.add('show');
+        setSpringTarget(1, OPEN_SPRING);
+      } else {
+        menu.classList.add('closing');
+        menu.classList.remove('open');
+        scrim.classList.remove('show');
+        setSpringTarget(0, CLOSE_SPRING);
+      }
+      return;
+    }
     if (open) {
       // expand: 오브가 STAGGER_MS 간격으로 순서대로 피어나고, 그 오브로 향하는 선(과 앞
       // 오브와의 호)도 같은 지연으로 함께 나타난다(자연스럽게 동기화 — addLine 참조).
@@ -1028,6 +1123,9 @@ body.reduce-motion .orb {
         menu.classList.remove('open', 'closing');
         scrim.classList.remove('show');
       }
+      // 스프링도 배지 쪽 접힘에서 다시 시작한다(재사용 창에 지난번 제자리 값이 남아 있으면 열림이 안 보인다).
+      if (springRaf) { cancelAnimationFrame(springRaf); springRaf = 0; }
+      springs = orbWraps.map(() => ({ x: 0, v: 0, startAt: 0 }));
       // 네이티브 배지 중심(CSS px=dp)에 팬의 배지 지점(BX,BY)을 맞춘다.
       // 스테이지(460×420)는 뷰포트보다 넓을 수 있으므로, 화면 안 유지는 스테이지 사각형이 아니라
       // **팬 실측 범위**(오브+라벨+여백) 기준으로 앵커를 최소 보정한다 — 과거의 스테이지 기준

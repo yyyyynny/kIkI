@@ -2,12 +2,12 @@ name: CI
 
 # 트리거(웹앱 템플릿과 동일 원칙):
 #  - pull_request: PR 생성/갱신 시
-#  - push: main 및 claude/** 작업 브랜치
+#  - push: main 및 claude/** · ccr-* 작업 브랜치(클라우드 세션이 만드는 브랜치 이름 두 가지)
 #  - workflow_dispatch: Actions 탭에서 수동 실행
 on:
   pull_request:
   push:
-    branches: [main, "claude/**"]
+    branches: [main, "claude/**", "ccr-*"]
   workflow_dispatch:
 
 # 같은 ref 에 새 커밋이 오면 이전 실행을 자동 취소 → 빠른 피드백, 러너 절약

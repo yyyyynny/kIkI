@@ -77,4 +77,15 @@ class UiPaletteTest {
             assertTrue(text, ColorMath.contrast(t, ColorMath.parseHex(card)!!) >= UiPalette.TEXT_CONTRAST)
         }
     }
+
+    @Test
+    fun HSV_변환은_왕복해도_같은_색() {
+        assertEquals(0xFFFF0000.toInt(), ColorMath.hsvToRgb(0f, 1f, 1f))
+        assertEquals(0xFF0000FF.toInt(), ColorMath.hsvToRgb(240f, 1f, 1f))
+        for (hex in listOf("#F2A7A7", "#A9C8F0", "#1A6EBD", "#000000", "#FFFFFF", "#7F3FBF")) {
+            val c = ColorMath.parseHex(hex)!!
+            val (h, s, v) = ColorMath.rgbToHsv(c).let { Triple(it[0], it[1], it[2]) }
+            assertEquals(hex, ColorMath.toHex(ColorMath.hsvToRgb(h, s, v)))
+        }
+    }
 }

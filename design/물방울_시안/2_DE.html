@@ -1,0 +1,81 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;font-family:'Noto Sans CJK KR',sans-serif}
+.hdr{display:flex}.hdr div{width:400px;text-align:center;font:700 18px sans-serif;padding:10px 0;background:#222;color:#fff}
+.row{display:flex}
+.cell{width:400px;height:300px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
+.dark{background:radial-gradient(ellipse at 50% 50%,#0d2244,#030c1a)}
+.light{background:#fff}
+.light::before{content:'오늘 날씨가 맑고 기온이 조금 올라 산책하기 좋은 하루가 되겠습니다. 미세먼지는 보통 수준이고 오후에는 바람이 조금 불겠습니다.';position:absolute;inset:16px;font-size:16px;line-height:1.75;color:#333}
+.photo{background:linear-gradient(135deg,#f6d365,#fda085 45%,#a1c4fd)}
+.cap{position:absolute;bottom:10px;font-size:14px;font-weight:700;color:#999}
+.lbl{position:relative;z-index:2;margin-top:12px;font-size:20px;font-weight:700;color:#e8f6ff;text-shadow:0 1px 3px #000a}
+.light .lbl,.photo .lbl{color:#1d2c4a;text-shadow:0 1px 2px #fff8}
+.orb{width:160px;height:112px;border-radius:40px;position:relative;overflow:hidden;z-index:1;
+ background:rgba(20,60,180,.12);border:3px solid rgba(180,240,255,.55);
+ box-shadow:0 0 0 3px rgba(180,240,255,.55),0 0 40px 12px rgba(120,200,255,.7),0 0 100px 28px rgba(80,150,255,.4),inset 0 0 44px 12px rgba(127,210,255,.12)}
+.now .g{position:absolute;inset:-12% -16%;background:radial-gradient(ellipse 62% 44% at 40% 9%,rgba(255,255,255,.64),rgba(232,247,255,.3) 42%,transparent 72%)}
+.nw{background:radial-gradient(ellipse 80% 75% at 50% 45%,rgba(40,90,200,.10),rgba(20,50,150,.30) 100%);
+ box-shadow:0 0 0 3px rgba(180,240,255,.55),0 0 40px 12px rgba(120,200,255,.55),0 0 90px 24px rgba(80,150,255,.3),
+ inset 0 0 18px 2px rgba(10,30,100,.35),0 10px 22px -4px rgba(15,35,90,.45)}
+.nw .ca{position:absolute;inset:0;background:radial-gradient(ellipse 45% 30% at 62% 92%,rgba(190,235,255,.55),transparent 70%)}
+.nw svg{position:absolute;inset:0;width:100%;height:100%}
+.soft svg .hi{opacity:.85}.soft svg .sp2{display:none}
+.star{position:absolute;width:26px;height:26px;right:30px;top:4px;z-index:3;pointer-events:none}
+.star::before,.star::after{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(closest-side,#fff,rgba(255,255,255,0))}
+.star::before{width:3px;height:26px}.star::after{width:26px;height:3px}
+.wrap{position:relative}
+</style></head><body><div class="hdr"><div>지금</div><div>D 은은(초승달·점 하나)</div><div>E 또렷(초승달·점 둘·짧은 반짝임)</div></div><div class="row"><div class="cell dark"><div class="orb now"><div class="g"></div></div><div class="lbl">설정</div><div class="cap">어두운 화면</div></div><div class="cell dark"><div class="orb nw soft"><div class="ca"></div><svg viewBox="0 0 160 112"><defs>
+<mask id="cm1"><rect width="160" height="112" fill="black"/><ellipse cx="78" cy="57" rx="62" ry="43" fill="white"/><ellipse cx="84" cy="64" rx="63" ry="44" fill="black"/></mask>
+<radialGradient id="fg1" cx="20" cy="22" r="78" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset=".45" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<mask id="rm1"><rect width="160" height="112" fill="black"/><ellipse cx="80" cy="56" rx="66" ry="46" fill="white"/><ellipse cx="77" cy="52" rx="66" ry="46" fill="black"/></mask>
+<radialGradient id="rg1" cx="132" cy="96" r="40" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e6f7ff" stop-opacity=".85"/><stop offset="1" stop-color="#e6f7ff" stop-opacity="0"/></radialGradient>
+</defs>
+<rect class="hi" width="160" height="112" fill="url(#fg1)" mask="url(#cm1)"/>
+<rect width="160" height="112" fill="url(#rg1)" mask="url(#rm1)"/>
+<circle cx="112" cy="21" r="4.6" fill="#fff"/><circle class="sp2" cx="123" cy="27" r="2.2" fill="#fff"/>
+</svg></div><div class="lbl">설정</div><div class="cap">어두운 화면</div></div><div class="cell dark"><div class="wrap"><div class="orb nw"><div class="ca"></div><svg viewBox="0 0 160 112"><defs>
+<mask id="cm2"><rect width="160" height="112" fill="black"/><ellipse cx="78" cy="57" rx="62" ry="43" fill="white"/><ellipse cx="84" cy="64" rx="63" ry="44" fill="black"/></mask>
+<radialGradient id="fg2" cx="20" cy="22" r="78" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset=".45" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<mask id="rm2"><rect width="160" height="112" fill="black"/><ellipse cx="80" cy="56" rx="66" ry="46" fill="white"/><ellipse cx="77" cy="52" rx="66" ry="46" fill="black"/></mask>
+<radialGradient id="rg2" cx="132" cy="96" r="40" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e6f7ff" stop-opacity=".85"/><stop offset="1" stop-color="#e6f7ff" stop-opacity="0"/></radialGradient>
+</defs>
+<rect class="hi" width="160" height="112" fill="url(#fg2)" mask="url(#cm2)"/>
+<rect width="160" height="112" fill="url(#rg2)" mask="url(#rm2)"/>
+<circle cx="112" cy="21" r="4.6" fill="#fff"/><circle class="sp2" cx="123" cy="27" r="2.2" fill="#fff"/>
+</svg></div><div class="star"></div></div><div class="lbl">설정</div><div class="cap">어두운 화면</div></div></div><div class="row"><div class="cell light"><div class="orb now"><div class="g"></div></div><div class="lbl">설정</div><div class="cap">흰 화면(글)</div></div><div class="cell light"><div class="orb nw soft"><div class="ca"></div><svg viewBox="0 0 160 112"><defs>
+<mask id="cm3"><rect width="160" height="112" fill="black"/><ellipse cx="78" cy="57" rx="62" ry="43" fill="white"/><ellipse cx="84" cy="64" rx="63" ry="44" fill="black"/></mask>
+<radialGradient id="fg3" cx="20" cy="22" r="78" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset=".45" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<mask id="rm3"><rect width="160" height="112" fill="black"/><ellipse cx="80" cy="56" rx="66" ry="46" fill="white"/><ellipse cx="77" cy="52" rx="66" ry="46" fill="black"/></mask>
+<radialGradient id="rg3" cx="132" cy="96" r="40" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e6f7ff" stop-opacity=".85"/><stop offset="1" stop-color="#e6f7ff" stop-opacity="0"/></radialGradient>
+</defs>
+<rect class="hi" width="160" height="112" fill="url(#fg3)" mask="url(#cm3)"/>
+<rect width="160" height="112" fill="url(#rg3)" mask="url(#rm3)"/>
+<circle cx="112" cy="21" r="4.6" fill="#fff"/><circle class="sp2" cx="123" cy="27" r="2.2" fill="#fff"/>
+</svg></div><div class="lbl">설정</div><div class="cap">흰 화면(글)</div></div><div class="cell light"><div class="wrap"><div class="orb nw"><div class="ca"></div><svg viewBox="0 0 160 112"><defs>
+<mask id="cm4"><rect width="160" height="112" fill="black"/><ellipse cx="78" cy="57" rx="62" ry="43" fill="white"/><ellipse cx="84" cy="64" rx="63" ry="44" fill="black"/></mask>
+<radialGradient id="fg4" cx="20" cy="22" r="78" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset=".45" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<mask id="rm4"><rect width="160" height="112" fill="black"/><ellipse cx="80" cy="56" rx="66" ry="46" fill="white"/><ellipse cx="77" cy="52" rx="66" ry="46" fill="black"/></mask>
+<radialGradient id="rg4" cx="132" cy="96" r="40" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e6f7ff" stop-opacity=".85"/><stop offset="1" stop-color="#e6f7ff" stop-opacity="0"/></radialGradient>
+</defs>
+<rect class="hi" width="160" height="112" fill="url(#fg4)" mask="url(#cm4)"/>
+<rect width="160" height="112" fill="url(#rg4)" mask="url(#rm4)"/>
+<circle cx="112" cy="21" r="4.6" fill="#fff"/><circle class="sp2" cx="123" cy="27" r="2.2" fill="#fff"/>
+</svg></div><div class="star"></div></div><div class="lbl">설정</div><div class="cap">흰 화면(글)</div></div></div><div class="row"><div class="cell photo"><div class="orb now"><div class="g"></div></div><div class="lbl">설정</div><div class="cap">사진·밝은 색</div></div><div class="cell photo"><div class="orb nw soft"><div class="ca"></div><svg viewBox="0 0 160 112"><defs>
+<mask id="cm5"><rect width="160" height="112" fill="black"/><ellipse cx="78" cy="57" rx="62" ry="43" fill="white"/><ellipse cx="84" cy="64" rx="63" ry="44" fill="black"/></mask>
+<radialGradient id="fg5" cx="20" cy="22" r="78" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset=".45" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<mask id="rm5"><rect width="160" height="112" fill="black"/><ellipse cx="80" cy="56" rx="66" ry="46" fill="white"/><ellipse cx="77" cy="52" rx="66" ry="46" fill="black"/></mask>
+<radialGradient id="rg5" cx="132" cy="96" r="40" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e6f7ff" stop-opacity=".85"/><stop offset="1" stop-color="#e6f7ff" stop-opacity="0"/></radialGradient>
+</defs>
+<rect class="hi" width="160" height="112" fill="url(#fg5)" mask="url(#cm5)"/>
+<rect width="160" height="112" fill="url(#rg5)" mask="url(#rm5)"/>
+<circle cx="112" cy="21" r="4.6" fill="#fff"/><circle class="sp2" cx="123" cy="27" r="2.2" fill="#fff"/>
+</svg></div><div class="lbl">설정</div><div class="cap">사진·밝은 색</div></div><div class="cell photo"><div class="wrap"><div class="orb nw"><div class="ca"></div><svg viewBox="0 0 160 112"><defs>
+<mask id="cm6"><rect width="160" height="112" fill="black"/><ellipse cx="78" cy="57" rx="62" ry="43" fill="white"/><ellipse cx="84" cy="64" rx="63" ry="44" fill="black"/></mask>
+<radialGradient id="fg6" cx="20" cy="22" r="78" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset=".45" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<mask id="rm6"><rect width="160" height="112" fill="black"/><ellipse cx="80" cy="56" rx="66" ry="46" fill="white"/><ellipse cx="77" cy="52" rx="66" ry="46" fill="black"/></mask>
+<radialGradient id="rg6" cx="132" cy="96" r="40" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e6f7ff" stop-opacity=".85"/><stop offset="1" stop-color="#e6f7ff" stop-opacity="0"/></radialGradient>
+</defs>
+<rect class="hi" width="160" height="112" fill="url(#fg6)" mask="url(#cm6)"/>
+<rect width="160" height="112" fill="url(#rg6)" mask="url(#rm6)"/>
+<circle cx="112" cy="21" r="4.6" fill="#fff"/><circle class="sp2" cx="123" cy="27" r="2.2" fill="#fff"/>
+</svg></div><div class="star"></div></div><div class="lbl">설정</div><div class="cap">사진·밝은 색</div></div></div></body></html>

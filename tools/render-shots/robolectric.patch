@@ -1,0 +1,21 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index a64b26b..e80bc5b 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -128,6 +128,8 @@ android {
+         viewBinding = true
+     }
+ 
++    testOptions { unitTests.isIncludeAndroidResources = true } // 렌더 확인용(임시, 커밋 안 함)
++
+     sourceSets {
+         getByName("main") {
+             java.srcDirs("src/main/kotlin")
+@@ -143,6 +145,7 @@ dependencies {
+     implementation(libs.androidx.appcompat)
+ 
+     testImplementation(libs.junit)
++    testImplementation("org.robolectric:robolectric:4.14.1") // 렌더 확인용(임시, 커밋 안 함)
+ }
+ 
+ /**
