@@ -71,7 +71,7 @@
 | 항목 | 값 |
 |---|---|
 | 최소 SDK | API 29 (Android 10) |
-| targetSdk | API 35 (Android 15) — 그 이후 OS 에서도 이 기준으로 동작 |
+| targetSdk | API 36 (Android 16) — 그 이후 OS 에서도 이 기준으로 동작(2026-11: 35 → 36) |
 | 실행 OS 범위 | Android 10 ~ **17** (2026-10-16 범위 확대 — 실제 테스트 기기가 Android 17) |
 | 주 타겟 기기 | Samsung Galaxy Tab S6 Lite, Galaxy Tab S9 FE+, **Galaxy S25+**(One UI 9.0 · Android 17, 펀치홀) |
 | One UI 버전 | One UI 3.x ~ **9.x** (2026-10-16: 9.x 제외 → 지원. 9.x 동작은 S25+ 실기기로 확인) |
@@ -98,14 +98,16 @@
 | 항목 | 버전 | 비고 |
 |---|---|---|
 | JDK | **17** (Temurin) | AGP 9.x / Gradle 9.x 최소 요구 |
-| Gradle | **9.8.2** | `gradle/wrapper/gradle-wrapper.properties` — 정식판만(프리뷰·RC 금지) |
-| AGP | **9.5.0** | `gradle/libs.versions.toml` — 정식판만(9.6 프리뷰 금지, 2026-11 올림) |
-| compileSdk / targetSdk | **35** | minSdk 29 |
-| build-tools | **35.0.0** | CI 에서 `sdkmanager` 로 설치 |
+| Gradle | **9.8.2** | `gradle/wrapper/gradle-wrapper.properties` |
+| AGP | **9.5.0** | `gradle/libs.versions.toml` — Kotlin 내장(모듈에 `kotlin-android` 플러그인 적용 안 함) |
+| Kotlin | **2.4.21** | 루트 `build.gradle.kts` 에 `apply false` 로만 선언 — AGP 내장 Kotlin(기본 2.2.10)의 버전을 올리는 용도 |
+| compileSdk | **37** | core-ktx 1.19 가 37 이상 요구. 컴파일 기준일 뿐 동작은 안 바뀐다 |
+| targetSdk / minSdk | **36** / 29 | 37 로 올리지 않은 이유는 `gradle/libs.versions.toml` 상단 주석 |
+| build-tools | **36.0.0** | AGP 9.5 기본값. CI 에서 `sdkmanager` 로 설치(`platforms;android-37.0`) |
 | Node.js | **24** | 프로젝트 표준(JS 기반 도구/스크립트 작성 시 24 기준) |
 
 - CI 사용법·실패 진단·브랜치 보호 설정은 `docs/CI_가이드.md` 참조.
-- `coreKtx` 가 1.16.0 에 머무는 이유(1.17+ 는 compileSdk 36 요구)는 `gradle/libs.versions.toml` 상단 주석 참조.
+- 버전은 정식판만 쓴다(alpha·beta·RC·프리뷰 금지). 라이브러리 버전과 못 올리는 것의 이유는 `gradle/libs.versions.toml` 상단 주석.
 
 ---
 

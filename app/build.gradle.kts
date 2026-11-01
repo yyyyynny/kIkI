@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -49,12 +50,12 @@ fun gitCommitDateVersionName(): String {
 
 android {
     namespace = "com.langsense.app"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.langsense.app"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 36
         // ⚠️ versionCode 는 날짜와 무관한, 릴리스마다 수동으로 정확히 1씩 올리는 평범한 정수다.
         // (a) Play 스토어가 업로드마다 반드시 증가하는 정수를 요구하고, (b) Prefs.MARKER_SINCE /
         // isMarkerFresh 의 NEW·이사 안내 자동 만료 계산("도입 후 3버전 지나면 사라짐")이 이 값이
@@ -116,6 +117,12 @@ android {
 
     buildFeatures {
         viewBinding = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 

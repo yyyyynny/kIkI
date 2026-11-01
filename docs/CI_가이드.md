@@ -26,7 +26,7 @@
 - **수동 실행**: 저장소 상단 **Actions** 탭 → 왼쪽 **CI** → 오른쪽 **Run workflow** 버튼
 
 ### 툴체인(고정 버전)
-- JDK **17** (Temurin) · Gradle **9.8.2** · AGP **9.5.0** · Android compileSdk **35** · Node.js **24**
+- JDK **17** (Temurin) · Gradle **9.8.2** · AGP **9.5.0** · Android compileSdk **37** / targetSdk **36** · Node.js **24**
 - 자세한 고정 버전은 루트 `CLAUDE.md` 의 "빌드/툴체인 버전(고정)" 표 참조.
 
 ---
