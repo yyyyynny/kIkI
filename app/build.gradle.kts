@@ -1,23 +1,17 @@
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import java.util.concurrent.TimeUnit
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
 }
 
-/** git 명령을 실행해 표준출력을 돌려준다. 실패하면 예외 — 호출부가 runCatching 으로 감싼다. */
-fun runGit(vararg args: String): String {
-    val proc = ProcessBuilder("git", *args)
-        .directory(rootDir)
-        .redirectErrorStream(true)
-        .start()
-    val output = proc.inputStream.bufferedReader().readText().trim()
-    val exited = proc.waitFor(10, TimeUnit.SECONDS)
-    check(exited && proc.exitValue() == 0)
-    return output
-}
+/** git 명령을 실행해 표준출력을 돌려준다. 실패하면 예외 — 호출부가 runCatching 으로 감싼다.
+ *  설정 시점 직접 프로세스 실행(ProcessBuilder)은 Gradle 11 에서 오류가 되므로 providers.exec 를 쓴다. */
+fun runGit(vararg args: String): String =
+    providers.exec {
+        commandLine("git", *args)
+        workingDir = rootDir
+    }.standardOutput.asText.get().trim()
 
 /**
  * versionName 을 마지막 커밋 날짜에서 "yy.M.d.nn" 형식(예: 2026-09-19 의 4번째 커밋 →
@@ -120,21 +114,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         viewBinding = true
-    }
-
-    sourceSets {
-        getByName("main") {
-            java.srcDirs("src/main/kotlin")
-        }
-        getByName("test") {
-            java.srcDirs("src/test/kotlin")
-        }
     }
 }
 

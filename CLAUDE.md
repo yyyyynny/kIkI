@@ -81,7 +81,7 @@
 ## 기술 스택
 
 - **언어**: Kotlin 2.x
-- **빌드**: Gradle + AGP 8.x
+- **빌드**: Gradle 9 + AGP 9.x(Kotlin 내장 — `org.jetbrains.kotlin.android` 플러그인 없음)
 - **최소 의존성 원칙**: 외부 라이브러리 최소화 (AndroidX Core, Lifecycle만 허용)
 - **핵심 Android 컴포넌트**:
   - `AccessibilityService` — 키 이벤트/텍스트 선택/윈도우 이벤트 감지 핵심
@@ -97,17 +97,15 @@
 
 | 항목 | 버전 | 비고 |
 |---|---|---|
-| JDK | **17** (Temurin) | AGP 8.x / Gradle 8.11.1 요구 |
-| Gradle | **8.11.1** | `gradle/wrapper/gradle-wrapper.properties` |
-| AGP | **8.7.3** | `gradle/libs.versions.toml` — ⚠️ **9.x 는 Gradle 9.1+ 요구**(하단 참조), 별도 작업으로 보류 |
+| JDK | **17** (Temurin) | AGP 9.x / Gradle 9.x 최소 요구 |
+| Gradle | **9.8.2** | `gradle/wrapper/gradle-wrapper.properties` — 정식판만(프리뷰·RC 금지) |
+| AGP | **9.5.0** | `gradle/libs.versions.toml` — 정식판만(9.6 프리뷰 금지, 2026-11 올림) |
 | compileSdk / targetSdk | **35** | minSdk 29 |
 | build-tools | **35.0.0** | CI 에서 `sdkmanager` 로 설치 |
 | Node.js | **24** | 프로젝트 표준(JS 기반 도구/스크립트 작성 시 24 기준) |
 
 - CI 사용법·실패 진단·브랜치 보호 설정은 `docs/CI_가이드.md` 참조.
-- **AGP 를 9.x 로 못 올리는 이유 + 그 때문에 `coreKtx`/`lifecycle` 도 상한선이 걸린 이유**는
-  `gradle/libs.versions.toml` 상단 주석에 상세 기록(2026-07, 실제 빌드로 검증됨). AGP 를 9.x 로
-  올리는 순간 그 두 제약도 함께 풀리니, 나중에 AGP 업그레이드 시 같이 처리할 것.
+- `coreKtx` 가 1.16.0 에 머무는 이유(1.17+ 는 compileSdk 36 요구)는 `gradle/libs.versions.toml` 상단 주석 참조.
 
 ---
 
