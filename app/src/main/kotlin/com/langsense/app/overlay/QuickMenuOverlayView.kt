@@ -77,6 +77,10 @@ class QuickMenuOverlayView(
     private var dismissed = false
     private var destroyed = false
 
+    /** 수납 애니메이션 중(창 제거 예약됨) — 이때 배지를 다시 누르면 [cancelCollapse] 로 다시 펼친다. */
+    private var collapsing = false
+    private val collapseDone = Runnable { dismiss() }
+
     /** HTML 이 KikiInit 을 끝내고 ack 했는지(워치독이 창을 닫을지 판단). */
     private var menuReady = false
 
@@ -175,6 +179,7 @@ class QuickMenuOverlayView(
     fun reopen() {
         if (destroyed || isDead) return
         dismissed = false
+        collapsing = false
         menuReady = false
         mainHandler.removeCallbacksAndMessages(null)
         initMenu()
@@ -184,8 +189,19 @@ class QuickMenuOverlayView(
     /** 외부(배지 재탭/스크림)에서 우아한 수납 요청 — 수납 애니메이션 후 창 제거. */
     fun requestCollapse() {
         if (dismissed || destroyed) return
+        collapsing = true
         evalJs("window.KikiCollapse && window.KikiCollapse();")
-        mainHandler.postDelayed({ dismiss() }, COLLAPSE_REMOVE_MS)
+        mainHandler.removeCallbacks(collapseDone)
+        mainHandler.postDelayed(collapseDone, COLLAPSE_REMOVE_MS)
+    }
+
+    /** 수납 중이면 창 제거를 취소하고 다시 펼친다. 수납 중이 아니면 false(호출자가 닫기로 처리). */
+    fun cancelCollapse(): Boolean {
+        if (!collapsing || dismissed || destroyed) return false
+        collapsing = false
+        mainHandler.removeCallbacks(collapseDone)
+        evalJs("window.KikiReopen && window.KikiReopen();")
+        return true
     }
 
     /** WebView 를 완전히 파괴한다(재사용 불가). 여러 번 호출해도 안전. */
@@ -237,8 +253,7 @@ class QuickMenuOverlayView(
                 // "배지 숨기기" 항목은 onClick 안에서 이 메뉴 창 제거까지 동기로 이어질 수 있다.
                 if (dismissed || destroyed) return@post
                 // 수납 애니메이션을 잠깐 보인 뒤 창 제거(항목 실행은 이미 완료).
-                evalJs("window.KikiCollapse && window.KikiCollapse();")
-                mainHandler.postDelayed({ dismiss() }, COLLAPSE_REMOVE_MS)
+                requestCollapse()
             }
         }
 

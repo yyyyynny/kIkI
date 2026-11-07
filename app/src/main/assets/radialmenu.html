@@ -152,11 +152,11 @@ body:not(.reduce-motion) .menu .line-crisp { transition: stroke-opacity 0.25s; }
   position: relative;
 
   /* 오브 배경(네이비)은 강조색 2종과 색상 계열이 달라 커스터마이즈 대상에서 제외한다 —
-     backdrop-filter 가 없는 저사양 모드에서 이 배경이 사실상 오브의 표면색이 되므로(아래
-     body.reduce-motion .orb 참조), 통일하면 그 기본 외형이 하늘색으로 바뀌는 회귀가 된다. */
+     저사양 모드에서 이 배경이 사실상 오브의 표면색이 되므로(아래 body.reduce-motion .orb 참조),
+     통일하면 그 기본 외형이 하늘색으로 바뀌는 회귀가 된다.
+     backdrop-filter 는 뺐다(2026-11): 투명 WebView 라 뒤 앱 화면은 못 흐리고 자기 안의 별·선만
+     흐려 GPU 비용 대비 효과가 거의 없었다. */
   background: rgba(20, 60, 180, 0.12);
-  backdrop-filter: blur(10px) saturate(1.3);
-  -webkit-backdrop-filter: blur(10px) saturate(1.3);
 
   /* same glass + cyan rim treatment as the badge */
   border: 1.5px solid rgba(var(--kiki-rim-rgb),0.55);
@@ -360,8 +360,6 @@ body:not(.reduce-motion) .menu .line-crisp { transition: stroke-opacity 0.25s; }
   gap: 1px;
 
   background: rgba(4, 11, 26, 0.90);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   border: 1.5px solid rgba(127,210,255,0.55);
 
   box-shadow:
@@ -472,12 +470,10 @@ body.reduce-motion .menu .orb-light,
 body.reduce-motion .orb-light > * { animation: none; }
 body.reduce-motion .orb-light { mix-blend-mode: normal; }
 body.reduce-motion .dust { animation: none; opacity: var(--d-lo, 0.20); }
-/* 저사양 모드의 최대 단일 이득: backdrop-filter(매 프레임 배경 readback + 블러) 와 50px 스프레드
-   글로우를 뺀다. 유리 질감은 약해지지만 정적인 림+글로우로 같은 인상을 유지한다.
+/* 저사양 모드: 50px 스프레드 글로우를 빼고 정적인 림+글로우로 같은 인상을 유지한다.
    풀모션 기기(reduce-motion 클래스 없음)는 원본 그대로. */
 body.reduce-motion .orb {
-  backdrop-filter: none; -webkit-backdrop-filter: none;
-  /* 이 네이비 배경은 커스터마이즈 대상에서 제외(위 .orb 참조) — backdrop-filter 가 없어 이
+  /* 이 네이비 배경은 커스터마이즈 대상에서 제외(위 .orb 참조) — 이
      배경이 곧 오브의 실제 표면색이 되므로, 강조색과 통일하면 저사양 모드(Tab S6 Lite 기본
      ON)의 기본 외형이 하늘색으로 바뀌는 회귀가 된다. */
   background: rgba(20, 60, 180, 0.30);
@@ -1264,6 +1260,8 @@ body.reduce-motion .orb {
     };
     // 네이티브가 배지 재탭 등으로 우아한 수납을 요청할 때(수납 애니메이션만; 창 제거는 네이티브).
     window.KikiCollapse = function () { setOpen(false); };
+    // 닫히는 도중 배지를 다시 누르면: 스프링이 지금 자리·속도에서 다시 펼쳐진다(네이티브가 창 제거를 취소한 뒤 호출).
+    window.KikiReopen = function () { setOpen(true); };
     // KikiInit 이 끝내 오지 않으면(로드 지연/실패) 기본 라벨로 열지 않는다 — HTML 기본 라벨
     // 순서와 네이티브 항목 순서가 달라 "숨기기를 눌렀는데 앱이 열리는" 오동작이 되기 때문.
     // 대신 창을 닫아 사용자가 화면을 되찾게 한다(네이티브 워치독과 이중 안전망).
