@@ -1,23 +1,18 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import java.util.concurrent.TimeUnit
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
 }
 
-/** git 명령을 실행해 표준출력을 돌려준다. 실패하면 예외 — 호출부가 runCatching 으로 감싼다. */
-fun runGit(vararg args: String): String {
-    val proc = ProcessBuilder("git", *args)
-        .directory(rootDir)
-        .redirectErrorStream(true)
-        .start()
-    val output = proc.inputStream.bufferedReader().readText().trim()
-    val exited = proc.waitFor(10, TimeUnit.SECONDS)
-    check(exited && proc.exitValue() == 0)
-    return output
-}
+/** git 명령을 실행해 표준출력을 돌려준다. 실패하면 예외 — 호출부가 runCatching 으로 감싼다.
+ *  설정 시점 직접 프로세스 실행(ProcessBuilder)은 Gradle 11 에서 오류가 되므로 providers.exec 를 쓴다. */
+fun runGit(vararg args: String): String =
+    providers.exec {
+        commandLine("git", *args)
+        workingDir = rootDir
+    }.standardOutput.asText.get().trim()
 
 /**
  * versionName 을 마지막 커밋 날짜에서 "yy.M.d.nn" 형식(예: 2026-09-19 의 4번째 커밋 →
@@ -55,12 +50,12 @@ fun gitCommitDateVersionName(): String {
 
 android {
     namespace = "com.langsense.app"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.langsense.app"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 36
         // ⚠️ versionCode 는 날짜와 무관한, 릴리스마다 수동으로 정확히 1씩 올리는 평범한 정수다.
         // (a) Play 스토어가 업로드마다 반드시 증가하는 정수를 요구하고, (b) Prefs.MARKER_SINCE /
         // isMarkerFresh 의 NEW·이사 안내 자동 만료 계산("도입 후 3버전 지나면 사라짐")이 이 값이
@@ -120,21 +115,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         viewBinding = true
     }
+}
 
-    sourceSets {
-        getByName("main") {
-            java.srcDirs("src/main/kotlin")
-        }
-        getByName("test") {
-            java.srcDirs("src/test/kotlin")
-        }
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 

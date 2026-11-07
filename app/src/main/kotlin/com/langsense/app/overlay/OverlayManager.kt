@@ -315,12 +315,12 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     /** 배지 탭 피드백 펄스를 외부(직접 액션 실행 경로)에서도 재사용할 수 있게 공개. */
     fun pulseBadge() = onMain { if (!released) badgeView?.pulse() }
 
-    /** 배지 탭 시: 열려 있으면 (수납 애니메이션과 함께) 닫고, 닫혀 있으면 배지를 앵커로 메뉴를 연다. */
+    /** 배지 탭 시: 열려 있으면 (수납 애니메이션과 함께) 닫고, 닫히는 중이면 다시 펼치고, 닫혀 있으면 배지를 앵커로 메뉴를 연다. */
     fun toggleQuickMenu() = onMain {
         if (released) return@onMain
         quickMenuView?.let {
             badgeView?.pulse()
-            it.requestCollapse() // 수납 애니메이션 후 onDismiss 콜백이 윈도우를 제거한다
+            if (!it.cancelCollapse()) it.requestCollapse() // 수납 애니메이션 후 onDismiss 콜백이 윈도우를 제거한다
             return@onMain
         }
         val bv = badgeView ?: return@onMain

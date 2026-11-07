@@ -71,7 +71,7 @@
 | 항목 | 값 |
 |---|---|
 | 최소 SDK | API 29 (Android 10) |
-| targetSdk | API 35 (Android 15) — 그 이후 OS 에서도 이 기준으로 동작 |
+| targetSdk | API 36 (Android 16) — 그 이후 OS 에서도 이 기준으로 동작(2026-11: 35 → 36) |
 | 실행 OS 범위 | Android 10 ~ **17** (2026-10-16 범위 확대 — 실제 테스트 기기가 Android 17) |
 | 주 타겟 기기 | Samsung Galaxy Tab S6 Lite, Galaxy Tab S9 FE+, **Galaxy S25+**(One UI 9.0 · Android 17, 펀치홀) |
 | One UI 버전 | One UI 3.x ~ **9.x** (2026-10-16: 9.x 제외 → 지원. 9.x 동작은 S25+ 실기기로 확인) |
@@ -81,7 +81,7 @@
 ## 기술 스택
 
 - **언어**: Kotlin 2.x
-- **빌드**: Gradle + AGP 8.x
+- **빌드**: Gradle 9 + AGP 9.x(Kotlin 내장 — `org.jetbrains.kotlin.android` 플러그인 없음)
 - **최소 의존성 원칙**: 외부 라이브러리 최소화 (AndroidX Core, Lifecycle만 허용)
 - **핵심 Android 컴포넌트**:
   - `AccessibilityService` — 키 이벤트/텍스트 선택/윈도우 이벤트 감지 핵심
@@ -97,17 +97,17 @@
 
 | 항목 | 버전 | 비고 |
 |---|---|---|
-| JDK | **17** (Temurin) | AGP 8.x / Gradle 8.11.1 요구 |
-| Gradle | **8.11.1** | `gradle/wrapper/gradle-wrapper.properties` |
-| AGP | **8.7.3** | `gradle/libs.versions.toml` — ⚠️ **9.x 는 Gradle 9.1+ 요구**(하단 참조), 별도 작업으로 보류 |
-| compileSdk / targetSdk | **35** | minSdk 29 |
-| build-tools | **35.0.0** | CI 에서 `sdkmanager` 로 설치 |
+| JDK | **17** (Temurin) | AGP 9.x / Gradle 9.x 최소 요구 |
+| Gradle | **9.8.2** | `gradle/wrapper/gradle-wrapper.properties` |
+| AGP | **9.5.0** | `gradle/libs.versions.toml` — Kotlin 내장(모듈에 `kotlin-android` 플러그인 적용 안 함) |
+| Kotlin | **2.4.21** | 루트 `build.gradle.kts` 에 `apply false` 로만 선언 — AGP 내장 Kotlin(기본 2.2.10)의 버전을 올리는 용도 |
+| compileSdk | **37** | core-ktx 1.19 가 37 이상 요구. 컴파일 기준일 뿐 동작은 안 바뀐다 |
+| targetSdk / minSdk | **36** / 29 | 37 로 올리지 않은 이유는 `gradle/libs.versions.toml` 상단 주석 |
+| build-tools | **36.0.0** | AGP 9.5 기본값. CI 에서 `sdkmanager` 로 설치(`platforms;android-37.0`) |
 | Node.js | **24** | 프로젝트 표준(JS 기반 도구/스크립트 작성 시 24 기준) |
 
 - CI 사용법·실패 진단·브랜치 보호 설정은 `docs/CI_가이드.md` 참조.
-- **AGP 를 9.x 로 못 올리는 이유 + 그 때문에 `coreKtx`/`lifecycle` 도 상한선이 걸린 이유**는
-  `gradle/libs.versions.toml` 상단 주석에 상세 기록(2026-07, 실제 빌드로 검증됨). AGP 를 9.x 로
-  올리는 순간 그 두 제약도 함께 풀리니, 나중에 AGP 업그레이드 시 같이 처리할 것.
+- 버전은 정식판만 쓴다(alpha·beta·RC·프리뷰 금지). 라이브러리 버전과 못 올리는 것의 이유는 `gradle/libs.versions.toml` 상단 주석.
 
 ---
 
@@ -611,8 +611,7 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
   (ζ 0.8·0.45s, 넘침 1.5% 남짓, 스태거 45ms), 배지→오브 선은 그 오브 진행도만큼 배지에서부터 그려진다(`pathLength=1` + dash). 닫기 =
   나온 길로 배지에 들어감(ζ 1.0·0.3s, 역순 스태거 25ms, 창 제거 `COLLAPSE_REMOVE_MS`=400). 목표만 바꾸므로 여는 도중 닫아도 그 자리·속도에서
   이어진다. 움직임 줄이기 모드는 CSS 150ms 페이드 그대로(스프링 안 씀). ⚠️ `.open` 을 붙이기 전에 `renderSprings()` 로 접힘 상태를 먼저
-  그려야 한다(안 그러면 한 프레임 제자리에 보였다 사라진다). 한계: 닫히는 도중 배지를 다시 눌러도 다시 열리지 않는다(네이티브가 창을
-  떼는 중) — 확장: JS 가 닫힘 완료를 알리게 하고 그 전엔 `reopen` 으로 되돌리기. 예전 240ms 곡선·`scale(0)` 이력은 git 기록 참조.
+  그려야 한다(안 그러면 한 프레임 제자리에 보였다 사라진다). 닫히는 도중 배지를 다시 누르면 창 제거를 취소하고 그 자리·속도에서 다시 펼친다(`cancelCollapse` → JS `KikiReopen`, 2026-11, 실기기 미검증). 예전 240ms 곡선·`scale(0)` 이력은 git 기록 참조.
   첫 열림 지연: 서비스 시작 후 한가할 때 빈 WebView 를 한 번 만들었다 버려 엔진을 미리 올린다(`OverlayManager.prewarmQuickMenu`, 움직임
   줄이기 기기는 생략, 효과 실기기 미측정).
 - **앵커 추종·화면 안 유지(KikiInit)**: 앵커(dp)는 배지 중심 화면 좌표에서 **메뉴 창 자신의 화면 위치를 뺀**
@@ -699,7 +698,7 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
   다시 평가해 `KikiInit(cfg.activeFlags)` 로 넘긴다 — 설정에서 토글만 바꾸고 메뉴를 열지 않은
   채 배지를 탭해도(캐시 유휴 상태) 다음 오픈에 최신 상태로 뜬다.
 - "저사양 모드(움직임 줄이기)" ON: 원본의 연속 애니메이션(오브 morph/부유/선 호흡) 정지 + 별/먼지
-  **미생성** + 오브의 `backdrop-filter`/50px 글로우 제거(reduce 모드에서만 외형 단순화 — 풀모션 기기는
+  **미생성** + 50px 글로우 제거(오브 `backdrop-filter` 는 2026-11 모든 모드에서 뺐다 — 투명 WebView 라 뒤 앱을 못 흐린다)(reduce 모드에서만 외형 단순화 — 풀모션 기기는
   원본 그대로). 사용자가 설정에서 명시하지 않았으면 **기기 자동 판정**(`Prefs.radialReduceMotion`:
   isLowRamDevice || 총 메모리 ≤ 4GiB || 시스템 애니메이션 배율 0) — Tab S6 Lite(4GB)는 기본 ON.
   HTML 은 `prefers-reduced-motion` 도 같은 모드로 취급.
