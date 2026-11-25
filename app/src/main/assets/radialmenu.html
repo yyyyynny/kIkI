@@ -739,6 +739,12 @@ body.reduce-motion .orb {
 
     /* tap an orb: ripple burst + spring bounce, then run action / collapse */
     function activate(ev) {
+      // 열린 뒤 한 번만, 그리고 제자리 가까이 펼쳐진 오브만 받는다. 접힌 오브는 투명해도 배지 자리에서 탭을 받아,
+      // 닫히는 중·막 열린 메뉴에서 배지 자리를 누르면 마지막 항목(기본 '배지 숨기기')이 실행됐고, 빠른 두 번 탭은
+      // 토글을 두 번 실행해 원상복구했다. 걸러진 탭은 문서로 올라가 다시 열기(닫히는 중)에 쓰인다.
+      if (!isOpen || tappedOnce || (useSpring() && springs[i] && springs[i].x < 0.5)) return;
+      tappedOnce = true;
+      ev.stopPropagation();
       const rect = menu.getBoundingClientRect();
       let px, py;
       if (ev.clientX !== undefined && ev.clientX !== 0) {
@@ -895,9 +901,11 @@ body.reduce-motion .orb {
     });
   }
 
+  let tappedOnce = false;
   function setOpen(open) {
     if (open === isOpen) return;
     isOpen = open;
+    if (open) tappedOnce = false;
     pulseBadge();
     badge.setAttribute('aria-expanded', String(open));
     if (useSpring()) {

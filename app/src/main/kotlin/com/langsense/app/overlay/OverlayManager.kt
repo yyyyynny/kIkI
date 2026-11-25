@@ -578,10 +578,13 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         // 교체 전 실제 커서. 칩이 떠 있는 동안 사용자가 교체 범위 뒤에 더 쳤으면(한/영 전환 직후 제안) 그 커서를 길이 차만큼
         // 옮겨 지킨다 — 교체 자리 뒤로 되돌리면 이어 치던 위치를 잃는다.
         val liveCaret = runCatching { node.textSelectionEnd }.getOrDefault(-1)
-        if (trySetText(node, newText)) {
-            // ACTION_SET_TEXT 는 Editable 전체를 갈아끼우므로 대부분의 에디터에서 커서가 문서
-            // 끝으로 튄다. 교체한 자리 뒤로 되돌려 사용자가 이어서 타이핑할 수 있게 한다
-            // (지원하지 않는 에디터도 있으므로 best-effort).
+        // TextView 는 접근성 노드에 앞 10만 자(TextUtils PARCEL_SAFE_TEXT_LENGTH)만 넘긴다. 잘린 글로 칸 전체를
+        // 덮어쓰면 그 뒤 글이 지워지므로, 그 길이에 닿았으면 교체 범위만 붙여넣는다.
+        val replaced = (liveText.length < ACCESSIBILITY_TEXT_LIMIT && trySetText(node, newText)) ||
+            pasteFallback(node, converted, es, ee)
+        if (replaced) {
+            // ACTION_SET_TEXT 는 커서를 문서 끝으로, 붙여넣기는 교체 자리 뒤로 옮긴다. 이어 치던 자리(있으면)나 교체 자리
+            // 뒤로 되돌려 사용자가 이어서 타이핑할 수 있게 한다(지원하지 않는 에디터도 있으므로 best-effort).
             val caret = if (liveCaret > ee && liveCaret <= liveText.length) liveCaret + converted.length - (ee - es)
             else es + converted.length
             val caretArgs = Bundle().apply {
@@ -589,9 +592,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
                 putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, caret)
             }
             runCatching { node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, caretArgs) }
-            return
         }
-        pasteFallback(node, converted, es, ee)
     }
 
     /**
@@ -630,7 +631,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
      * 붙여넣기는 "현재 선택 영역을 대체"하므로 선택영역 재설정이 핵심이다.
      * 그래도 실패하면 클립보드에는 변환 결과가 남아 사용자가 직접 붙여넣을 수 있다.
      */
-    private fun pasteFallback(node: AccessibilityNodeInfo, converted: String, s: Int, e: Int) {
+    private fun pasteFallback(node: AccessibilityNodeInfo, converted: String, s: Int, e: Int): Boolean {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         runCatching { cm?.setPrimaryClip(ClipData.newPlainText("langsense", converted)) }
 
@@ -658,6 +659,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
                 }
             }
         }
+        return pasted
     }
 
     private fun removeChip() {
@@ -706,6 +708,8 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     private fun dp(value: Float): Int = (value * context.resources.displayMetrics.density).roundToInt()
 
     companion object {
+        /** 접근성 노드가 넘기는 글 길이 상한(TextUtils.PARCEL_SAFE_TEXT_LENGTH). 이 길이면 잘렸을 수 있다. */
+        private const val ACCESSIBILITY_TEXT_LIMIT = 100_000
         private const val CHIP_ENTER_MS = 200L
         private const val CHIP_EXIT_MS = 120L
         private val CHIP_EASE = android.view.animation.PathInterpolator(0.23f, 1f, 0.32f, 1f)

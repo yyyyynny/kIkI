@@ -205,6 +205,10 @@ IME 언어가 변경될 때 전체 화면에 플래시 오버레이를 표시하
   취소해 "드래그하려 했는데 선택 창이 뜨는" 오발동을 막는다. 발동하면 그 탭은 일반 탭
   (`performClick`/메뉴 열기)으로 이어지지 않는다. `OverlayManager.setBadgeLongPressHandler` 로
   서비스가 1회 주입(`badgeTapHandler` 와 동일한 패턴).
+  ⚠️ **서비스에서 직접 `showInputMethodPicker()` 를 부르면 다른 앱 위에선 조용히 무시된다**(2026-11 에뮬레이터 API 36 로 확인 —
+  시스템은 입력 포커스 창의 앱만 허용, 로그 "Ignoring showInputMethodPickerFromClient"). 그래서 투명 화면 `ui/ImePickerActivity` 가
+  잠깐 포커스를 받아 100ms 뒤 선택 창을 띄우고, 선택 창이 닫혀 포커스가 돌아오면 스스로 닫힌다(선택 창이 떠 있는 동안 닫으면
+  선택 창도 함께 닫힘).
 
 ### Feature 3: 포커스 없는 상태 키 입력 경고
 

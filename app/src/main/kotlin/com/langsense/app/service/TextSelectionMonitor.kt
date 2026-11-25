@@ -66,7 +66,7 @@ class TextSelectionMonitor(
     }
 
     companion object {
-        const val MIN_SELECTION = 2
+        const val MIN_SELECTION = 1
 
         /** 한영타 교정이 의미 있는 선택 길이 상한(문자). 단어~짧은 문장 범위를 넉넉히 덮는다. */
         const val MAX_SELECTION = 200

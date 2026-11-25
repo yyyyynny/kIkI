@@ -90,10 +90,18 @@ class FlashOverlayView(context: Context) : FrameLayout(context) {
 
     private fun playCycle(remaining: Int, durationMs: Long, onEnd: () -> Unit) {
         animate().cancel()
+        cancelPendingCycle()
         alpha = 1f
+        // 유지 구간은 postDelayed 로 둔다 — 애니메이터 startDelay 는 시스템 애니메이션 배율이 곱해져, '애니메이션 제거'(배율 0)
+        // 에서 0 이 되고 첫 프레임에 바로 투명해져 플래시가 전혀 안 보였다. 페이드아웃은 배율 0 이면 즉시 사라진다.
+        val fade = Runnable { pendingCycle = null; fadeOut(remaining, durationMs, onEnd) }
+        pendingCycle = fade
+        postDelayed(fade, durationMs / 2)
+    }
+
+    private fun fadeOut(remaining: Int, durationMs: Long, onEnd: () -> Unit) {
         animate()
             .alpha(0f)
-            .setStartDelay(durationMs / 2) // 잠깐 보이게 유지 후 페이드아웃
             .setDuration(durationMs)
             .withEndAction {
                 // cancel() 에 의한 호출(재진입)이면 무시한다 — 그렇지 않으면 cancel() 호출 도중
@@ -124,7 +132,7 @@ class FlashOverlayView(context: Context) : FrameLayout(context) {
         /**
          * [play] 가 실제로 화면을 점유하는 총 시간(ms).
          *
-         * 1사이클 = 유지([playCycle] 의 startDelay = dur/2) + 페이드아웃(dur) = 1.5×dur 이고,
+         * 1사이클 = 유지([playCycle] 의 postDelayed = dur/2) + 페이드아웃(dur) = 1.5×dur 이고,
          * 사이클 사이에 [INTER_BLINK_MS] 가 끼므로 총 길이는 설정값(dur)보다 항상 길다.
          * OverlayManager 의 동일 색 중복 억제 창이 이 실제 재생 길이에 연동되도록 여기(사이클
          * 구조가 정의된 파일)에 진실 수식을 둔다.

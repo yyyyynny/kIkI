@@ -19,6 +19,7 @@ import android.widget.Toast
 import com.langsense.app.R
 import com.langsense.app.overlay.OverlayManager
 import com.langsense.app.overlay.QuickMenuItem
+import com.langsense.app.ui.ImePickerActivity
 import com.langsense.app.ui.MainActivity
 import com.langsense.app.ui.SettingsActivity
 import com.langsense.app.util.HardwareKeyboardDetector
@@ -596,13 +597,11 @@ class LangSenseAccessibilityService : AccessibilityService(),
      * 키보드에서 전환 키를 찾을 필요 없이 배지에서 바로 진입할 수 있다.
      */
     private fun handleBadgeLongPress() {
-        val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
-        if (imm == null) {
-            toastMsg(getString(R.string.badge_long_press_switch_failed))
-            return
-        }
-        runCatching { imm.showInputMethodPicker() }
-            .onFailure { toastMsg(getString(R.string.badge_long_press_switch_failed)) }
+        // 서비스에서 직접 부르면 다른 앱 위에선 시스템이 조용히 무시한다(포커스 창의 앱만 허용) — 투명 화면을 거친다.
+        runCatching {
+            startActivity(Intent(this, ImePickerActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION))
+        }.onFailure { toastMsg(getString(R.string.badge_long_press_switch_failed)) }
     }
 
     private fun launchActivity(cls: Class<*>) {

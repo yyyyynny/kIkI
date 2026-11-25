@@ -19,8 +19,9 @@
         </intent>
     </queries>
 
+    <!-- 클라우드 백업 끔: 입력 통계(칩이 뜬 영문·교체 문자열)·진단 기록이 기기 밖으로 나가지 않게("보내는 것: 없음" 고지). 기기 간 직접 이전은 Android 12+ 에서 그대로 된다. -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -41,6 +42,14 @@
             접근성 설정 화면의 톱니바퀴(설정)에서 시스템(다른 프로세스)이 직접 실행할 수 있도록
             exported=true. 민감한 동작이 없는 단순 설정 화면이다.
         -->
+        <activity
+            android:name=".ui.ImePickerActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <activity
             android:name=".ui.SettingsActivity"
             android:exported="true"
