@@ -166,7 +166,8 @@ data class UiPalette(
             val night = when (themeId) {
                 Prefs.THEME_LIGHT, Prefs.THEME_BEIGE -> false
                 Prefs.THEME_DARK, Prefs.THEME_CYBER, Prefs.THEME_HIGH_CONTRAST -> true
-                else -> (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                // 기기 실제 밝기 — 이 화면의 resources 는 앱이 강제한 야간 모드로 덮여 있어 시스템 미리보기가 반대로 그려졌다.
+                else -> (android.content.res.Resources.getSystem().configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
                     Configuration.UI_MODE_NIGHT_YES
             }
             val config = Configuration(context.resources.configuration).apply {

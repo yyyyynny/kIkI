@@ -119,7 +119,8 @@ object InputStats {
 
     // ── 단어별 ──
 
-    private fun clean(s: String): String = s.replace('\t', ' ').replace('\n', ' ').trim()
+    // '\r' 도 지운다 — 디코딩의 lineSequence() 는 CR 에서도 줄을 나눠, CRLF 가 든 선택의 기록이 통째로 버려졌다.
+    private fun clean(s: String): String = s.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ').trim()
 
     /** 같은 단어인지 가르는 키 — 대소문자는 무시한다(`Dkssud`·`dkssud` 는 같은 실수). */
     fun wordKey(original: String): String = clean(original).lowercase()

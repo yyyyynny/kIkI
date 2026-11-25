@@ -482,7 +482,12 @@ class SettingsActivity : AppCompatActivity() {
             isClickable = true
             isFocusable = true
             background = rippleBoundedBackground()
-            setOnClickListener { showGroup(item.group); revealAnchor(item.anchors) }
+            setOnClickListener {
+                // 화면 키보드를 내린다 — 1단 화면에선 키보드가 상세의 절반을 가려 찾아간 줄이 안 보였다.
+                (getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)
+                    ?.hideSoftInputFromWindow(window.decorView.windowToken, 0)
+                showGroup(item.group); revealAnchor(item.anchors)
+            }
         }
         row.addView(TextView(this).apply {
             text = highlightTerms(item.name, query)
@@ -541,9 +546,15 @@ class SettingsActivity : AppCompatActivity() {
      * 검색 결과로 들어온 설정 줄을 찾아 보이게 스크롤하고 잠깐 강조한다. [anchors] 는 그 줄에 보이는
      * 문구 후보(앞에서부터 첫 번째로 찾은 것). 못 찾으면 그룹 맨 위에 그대로 둔다.
      */
-    private fun revealAnchor(anchors: List<String>) {
-        detailScroll.post {
-            val target = anchors.firstNotNullOfOrNull { findTextView(detailContainer, it) } ?: return@post
+    private fun revealAnchor(anchors: List<String>, tries: Int = 0) {
+        detailScroll.postDelayed({
+            // 1단 화면은 목록이 빠지는 효과가 끝난 뒤에야 상세가 보이고 배치된다 — 그 전엔 줄 위치가 전부 0이라 맨 위로만 갔다.
+            // 한계: 16ms 간격 최대 30번(약 0.5초)만 기다린다 — 확장: 전환 효과가 길어지면 늘릴 것.
+            if ((detailScroll.visibility != View.VISIBLE || detailScroll.alpha < 1f) && tries < 30) {
+                revealAnchor(anchors, tries + 1)
+                return@postDelayed
+            }
+            val target = anchors.firstNotNullOfOrNull { findTextView(detailContainer, it) } ?: return@postDelayed
             // 라벨 자체보다 그 설정 줄(라벨의 부모 줄)을 강조해야 스위치·슬라이더까지 한눈에 들어온다.
             val row = (target.parent as? View)?.takeIf { it !== detailContainer } ?: target
             var y = 0
@@ -568,7 +579,7 @@ class SettingsActivity : AppCompatActivity() {
                 })
                 start()
             }
-        }
+        }, if (tries == 0) 0L else 16L)
     }
 
     /** [root] 아래에서 글자가 정확히 [text] 인 첫 TextView(보이는 것만). */
@@ -897,7 +908,7 @@ class SettingsActivity : AppCompatActivity() {
                 )
                 addView(descRow(getString(R.string.settings_radial_max_radius_desc)))
                 addView(descRow(getString(R.string.settings_radial_reduce_motion_desc)))
-                addView(switchRow(getString(R.string.settings_radial_reduce_motion), prefs.radialReduceMotion) {
+                addView(boundSwitchRow(getString(R.string.settings_radial_reduce_motion), { prefs.radialReduceMotion }) {
                     prefs.radialReduceMotion = it; markSaved(); refreshRailSummaries()
                 })
             })
@@ -940,7 +951,7 @@ class SettingsActivity : AppCompatActivity() {
         ) { c ->
             c.addView(sectionCard(getString(R.string.settings_nofocus)).apply {
                 addView(descRow(getString(R.string.settings_nofocus_desc)))
-                addView(switchRow(getString(R.string.settings_nofocus_enabled), prefs.noFocusEnabled) {
+                addView(boundSwitchRow(getString(R.string.settings_nofocus_enabled), { prefs.noFocusEnabled }) {
                     prefs.noFocusEnabled = it; markSaved(); refreshRailSummaries()
                 })
                 addView(
@@ -962,7 +973,7 @@ class SettingsActivity : AppCompatActivity() {
         ) { c ->
             c.addView(sectionCard(getString(R.string.settings_exclude_touch_kb)).apply {
                 addView(descRow(getString(R.string.settings_exclude_touch_kb_desc)))
-                addView(switchRow(getString(R.string.settings_exclude_touch_kb_enabled), prefs.excludeTouchKeyboard) {
+                addView(boundSwitchRow(getString(R.string.settings_exclude_touch_kb_enabled), { prefs.excludeTouchKeyboard }) {
                     prefs.excludeTouchKeyboard = it; markSaved(); refreshRailSummaries()
                 })
             })
@@ -1494,6 +1505,11 @@ class SettingsActivity : AppCompatActivity() {
             finish()
             return
         }
+        // 다른 화면(접근성 설정의 kIkI 설정 등)에서 테마를 바꿨으면 이 화면은 옛 팔레트다 — MainActivity 와 같이 다시 만든다.
+        if (appliedTheme != ThemeManager.signature(this, prefs.uiTheme)) {
+            recreate()
+            return
+        }
         // 외부(래디얼 메뉴)에서 바뀐 토글 값을 현재 prefs 기준으로 다시 맞춘다(stale 표시 방지).
         // 배지 오버레이는 이 화면 위에도 떠 있어 보면서 메뉴로 토글할 수 있으므로 요약도 함께.
         syncToggles()
@@ -1959,7 +1975,8 @@ class SettingsActivity : AppCompatActivity() {
         }
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle(label)
-            .setView(body)
+            // 스크롤로 감싼다 — 대화상자 본문은 스크롤이 없어, 폰 가로처럼 낮은 화면에선 색 코드 입력칸이 잘려 안 보였다.
+            .setView(android.widget.ScrollView(this).apply { addView(body) })
             .setNegativeButton(R.string.settings_color_cancel, null)
             .setPositiveButton(R.string.settings_color_apply) { _, _ ->
                 // 입력칸에 직접 친 값이 있으면 그것을, 아니면 고리·사각형에서 고른 색을
