@@ -70,6 +70,9 @@ class SettingsActivity : AppCompatActivity() {
      */
     private val boundToggles = mutableListOf<Pair<CompoundButton, () -> Boolean>>()
 
+    /** 스위치가 아닌데 메뉴·칩 등 바깥에서도 바뀌는 표시(배지 크기 선택, 예외 단어 목록)를 다시 그리는 람다. [syncToggles] 가 부른다. */
+    private val boundRefreshers = mutableListOf<() -> Unit>()
+
     /** onResume 동기화 중 onCheckedChanged 가 prefs 를 되쓰지 않도록 막는 가드. */
     private var syncingToggles = false
 
@@ -673,6 +676,7 @@ class SettingsActivity : AppCompatActivity() {
         // 새로 만들므로, 비우지 않으면 이미 떨어져 나간 뷰가 계속 쌓여 syncToggles/refreshPreviews 가
         // 죽은 뷰까지 훑고 참조를 붙들어 둔다(그룹을 오갈수록 무한히 증가).
         boundToggles.clear()
+        boundRefreshers.clear()
         previewRefreshers.clear()
         detailContainer.removeAllViews()
         val g = groupDefs().firstOrNull { it.id == currentGroup } ?: return
@@ -1535,6 +1539,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun syncToggles() {
         syncingToggles = true
         boundToggles.forEach { (toggle, get) -> toggle.isChecked = get() }
+        boundRefreshers.forEach { it() }
         syncingToggles = false
     }
 
@@ -2013,9 +2018,10 @@ class SettingsActivity : AppCompatActivity() {
             }.also { group.addView(it) }
         }
         buttons.getOrNull(prefs.badgeSize)?.isChecked = true
+        boundRefreshers.add { buttons.getOrNull(prefs.badgeSize)?.isChecked = true } // 메뉴의 "배지 크기"로 바뀐 값
         group.setOnCheckedChangeListener { _, checkedId ->
             val idx = buttons.indexOfFirst { it.id == checkedId }
-            if (idx >= 0) { prefs.badgeSize = idx; markSaved() }
+            if (idx >= 0 && !syncingToggles) { prefs.badgeSize = idx; markSaved() }
         }
         container.addView(group)
         return container
@@ -2156,6 +2162,7 @@ class SettingsActivity : AppCompatActivity() {
                 })
             }
         }
+        boundRefreshers.add { rebuild() } // 칩 길게 누르기로 등록된 예외 단어
         val input = EditText(this@SettingsActivity).apply {
             hint = getString(R.string.settings_replace_exceptions_hint)
             filters = arrayOf(InputFilter.LengthFilter(40))
