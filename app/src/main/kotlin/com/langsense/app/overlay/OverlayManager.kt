@@ -275,12 +275,16 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
      */
     fun onScreenChanged() = onMain {
         if (released) return@onMain
+        // 열린 메뉴는 옛 화면 크기로 배치돼 회전하면 화면 밖에 남는다 — 닫는다(다음에 열 때 새 크기로 배치).
+        quickMenuView?.requestCollapse()
         val v = badgeView ?: return@onMain
         v.post {
             // 저장된 원래 위치에서 다시 클램프한다. 현재 좌표만 클램프하면 세로→가로에서 눌린
             // 값이 세로로 돌아와도 그대로 남아(유효 범위라 보정 안 됨) 배지가 영구히 이동한다.
             if (prefs.badgeX >= 0 && prefs.badgeY >= 0) v.moveWithinScreen(prefs.badgeX, prefs.badgeY)
-            else v.ensureOnScreen()
+            // 옮긴 적 없으면 새 화면의 기본 자리(우하단)로 — 현재 좌표만 클램프하면 가로에서 눌린 y 가 세로로 돌아와도 남아
+            // 배지가 화면 가운데쯤으로 영구히 옮겨졌다(에뮬레이터에서 확인).
+            else BadgeOverlayView.defaultPosition(v).let { (x, y) -> v.moveWithinScreen(x, y) }
         }
     }
 
@@ -520,7 +524,9 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         lastChipSelEnd = selEnd
 
         chipDismiss = Runnable {
-            chipOutcomeListener?.invoke(original, converted, InputStats.Outcome.IGNORED)
+            // "무시"는 전환 직후 자동 제안만 센다 — 드래그 선택(복사하려고 고른 것 등)의 시간 만료까지 세면 그만 묻기가
+            // 자동 제안을 엉뚱하게 꺼 버렸다.
+            if (exactRange) chipOutcomeListener?.invoke(original, converted, InputStats.Outcome.IGNORED)
             chipDismiss = null
             view.isEnabled = false      // 흐려지는 동안 눌려 "무시"와 "교체"가 둘 다 세지지 않게
             lastChipConverted = null    // 같은 선택이 다시 오면 흐려지는 칩을 재사용하지 말고 새로 띄운다
@@ -578,10 +584,13 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
         // 교체 전 실제 커서. 칩이 떠 있는 동안 사용자가 교체 범위 뒤에 더 쳤으면(한/영 전환 직후 제안) 그 커서를 길이 차만큼
         // 옮겨 지킨다 — 교체 자리 뒤로 되돌리면 이어 치던 위치를 잃는다.
         val liveCaret = runCatching { node.textSelectionEnd }.getOrDefault(-1)
-        if (trySetText(node, newText)) {
-            // ACTION_SET_TEXT 는 Editable 전체를 갈아끼우므로 대부분의 에디터에서 커서가 문서
-            // 끝으로 튄다. 교체한 자리 뒤로 되돌려 사용자가 이어서 타이핑할 수 있게 한다
-            // (지원하지 않는 에디터도 있으므로 best-effort).
+        // TextView 는 접근성 노드에 앞 10만 자(TextUtils PARCEL_SAFE_TEXT_LENGTH)만 넘긴다. 잘린 글로 칸 전체를
+        // 덮어쓰면 그 뒤 글이 지워지므로, 그 길이에 닿았으면 교체 범위만 붙여넣는다.
+        val replaced = (liveText.length < ACCESSIBILITY_TEXT_LIMIT && trySetText(node, newText)) ||
+            pasteFallback(node, converted, es, ee)
+        if (replaced) {
+            // ACTION_SET_TEXT 는 커서를 문서 끝으로, 붙여넣기는 교체 자리 뒤로 옮긴다. 이어 치던 자리(있으면)나 교체 자리
+            // 뒤로 되돌려 사용자가 이어서 타이핑할 수 있게 한다(지원하지 않는 에디터도 있으므로 best-effort).
             val caret = if (liveCaret > ee && liveCaret <= liveText.length) liveCaret + converted.length - (ee - es)
             else es + converted.length
             val caretArgs = Bundle().apply {
@@ -589,9 +598,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
                 putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, caret)
             }
             runCatching { node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, caretArgs) }
-            return
         }
-        pasteFallback(node, converted, es, ee)
     }
 
     /**
@@ -630,7 +637,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
      * 붙여넣기는 "현재 선택 영역을 대체"하므로 선택영역 재설정이 핵심이다.
      * 그래도 실패하면 클립보드에는 변환 결과가 남아 사용자가 직접 붙여넣을 수 있다.
      */
-    private fun pasteFallback(node: AccessibilityNodeInfo, converted: String, s: Int, e: Int) {
+    private fun pasteFallback(node: AccessibilityNodeInfo, converted: String, s: Int, e: Int): Boolean {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         runCatching { cm?.setPrimaryClip(ClipData.newPlainText("langsense", converted)) }
 
@@ -658,6 +665,7 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
                 }
             }
         }
+        return pasted
     }
 
     private fun removeChip() {
@@ -706,6 +714,8 @@ class OverlayManager(private val context: Context, private val prefs: Prefs) {
     private fun dp(value: Float): Int = (value * context.resources.displayMetrics.density).roundToInt()
 
     companion object {
+        /** 접근성 노드가 넘기는 글 길이 상한(TextUtils.PARCEL_SAFE_TEXT_LENGTH). 이 길이면 잘렸을 수 있다. */
+        private const val ACCESSIBILITY_TEXT_LIMIT = 100_000
         private const val CHIP_ENTER_MS = 200L
         private const val CHIP_EXIT_MS = 120L
         private val CHIP_EASE = android.view.animation.PathInterpolator(0.23f, 1f, 0.32f, 1f)

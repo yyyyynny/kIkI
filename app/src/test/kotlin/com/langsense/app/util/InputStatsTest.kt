@@ -56,8 +56,9 @@ class InputStatsTest {
         var w = InputStats.recordWord(emptyList(), "dkssud", "안녕", Outcome.ACCEPTED, 1)
         w = InputStats.recordWord(w, "Dkssud", "안녕", Outcome.IGNORED, 2)
         w = InputStats.recordWord(w, "a\tb", "ㅁ ㅠ", Outcome.IGNORED, 2)
+        w = InputStats.recordWord(w, "dkssud\r\nwjdakf", "안녕\r\n정말", Outcome.IGNORED, 2) // CRLF 가 든 선택도 살아남아야 한다
         val back = InputStats.decodeWords(InputStats.encodeWords(w))
-        assertEquals(2, back.size)
+        assertEquals(3, back.size)
         val d = back.first { InputStats.wordKey(it.original) == "dkssud" }
         assertEquals(1, d.accepted)
         assertEquals(1, d.ignored)

@@ -261,6 +261,11 @@ class QuickMenuOverlayView(
         fun onDismiss() {
             mainHandler.post { requestCollapse() }
         }
+
+        @JavascriptInterface
+        fun onReopen() {
+            mainHandler.post { cancelCollapse() }
+        }
     }
 
     companion object {
